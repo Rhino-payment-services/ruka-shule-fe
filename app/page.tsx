@@ -1,65 +1,104 @@
-import Image from "next/image";
+'use client';
+
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { RukapayLogo } from '@/components/RukapayLogo';
+import { Sparkles, ArrowRight } from 'lucide-react';
 
 export default function Home() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.history.scrollRestoration = 'manual';
+      window.scrollTo(0, 0);
+    }
+    
+    if (!loading) {
+      if (user) {
+        router.push('/dashboard');
+      }
+    }
+  }, [user, loading, router]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary to-[#0052A3]">
+        <div className="text-white text-lg">Loading...</div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-primary via-[#0052A3] to-[#003d7a] px-4 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse delay-1000" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-white/5 rounded-full blur-3xl" />
+      </div>
+
+      <div className="text-center text-white relative z-10 max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="mb-8 flex justify-center">
+          <div className="rounded-3xl bg-white/10 backdrop-blur-md p-6 shadow-2xl">
+            <RukapayLogo size="lg" showText={true} className="text-white" />
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        
+        <h1 className="mb-6 text-6xl md:text-7xl font-bold tracking-tight">
+          School Fee Management
+        </h1>
+        <p className="mb-12 text-2xl md:text-3xl text-blue-100 max-w-2xl mx-auto leading-relaxed">
+          Streamline payments, track fees, and manage students with ease
+        </p>
+        
+        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+          <Button
+            asChild
+            size="lg"
+            className="bg-white text-primary hover:bg-gray-100 shadow-2xl shadow-white/20 hover:shadow-white/30 transition-all duration-200 text-lg px-8 py-6 h-auto"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <Link href="/login" className="flex items-center gap-2">
+              Sign In
+              <ArrowRight className="h-5 w-5" />
+            </Link>
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            size="lg"
+            className="border-2 border-white/30 bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 shadow-xl text-lg px-8 py-6 h-auto hover:border-primary/50"
           >
-            Documentation
-          </a>
+            <Link href="/lookup" className="flex items-center gap-2">
+              Student Lookup
+              <Sparkles className="h-5 w-5" />
+            </Link>
+          </Button>
         </div>
-      </main>
+
+        {/* Feature Cards */}
+        <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
+          <div className="rounded-2xl bg-white/10 backdrop-blur-md p-6 border border-white/20 shadow-xl">
+            <div className="text-4xl mb-3">🔒</div>
+            <h3 className="text-xl font-semibold mb-2">Secure Payments</h3>
+            <p className="text-blue-100 text-sm">Bank-level security for all transactions</p>
+          </div>
+          <div className="rounded-2xl bg-white/10 backdrop-blur-md p-6 border border-white/20 shadow-xl">
+            <div className="text-4xl mb-3">📊</div>
+            <h3 className="text-xl font-semibold mb-2">Real-time Tracking</h3>
+            <p className="text-blue-100 text-sm">Monitor payments and fees in real-time</p>
+          </div>
+          <div className="rounded-2xl bg-white/10 backdrop-blur-md p-6 border border-white/20 shadow-xl">
+            <div className="text-4xl mb-3">⚡</div>
+            <h3 className="text-xl font-semibold mb-2">Easy Management</h3>
+            <p className="text-blue-100 text-sm">Simple interface for all your needs</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
