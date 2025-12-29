@@ -36,9 +36,12 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
+      // Wait a moment to ensure token is stored before redirecting
+      await new Promise(resolve => setTimeout(resolve, 100));
       router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Login failed. Please try again.');
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { error?: string } }; message?: string };
+      setError(axiosError.response?.data?.error || axiosError.message || 'Login failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -47,12 +50,12 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen overflow-hidden">
       {/* Left Panel - Login Form */}
-      <div className="flex w-full flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-white px-6 py-12 md:w-1/2 md:px-12">
+      <div className="flex w-full flex-col items-center justify-center bg-white px-6 py-12 md:w-1/2 md:px-12">
         <div className="w-full max-w-md animate-in fade-in slide-in-from-left-4 duration-500">
           {/* Logo */}
           <div className="mb-8">
-            <RukapayLogo size="lg" className="mb-6" />
-            <h1 className="mb-2 text-4xl font-bold tracking-tight bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+            <RukapayLogo size="lg" className="mb-6 text-[#08163d]" />
+            <h1 className="mb-2 text-4xl font-bold tracking-tight text-gray-900">
               Welcome Back
             </h1>
             <p className="text-muted-foreground text-lg">
@@ -86,7 +89,7 @@ export default function LoginPage() {
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="admin@school.com"
                       required
-                      className="pl-10 h-11 border-2 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      className="pl-10 h-10 border-2 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
                 </div>
@@ -108,7 +111,7 @@ export default function LoginPage() {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Enter your password"
                       required
-                      className="pl-10 pr-10 h-11 border-2 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      className="pl-10 pr-10 h-10 border-2 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
                     />
                     <button
                       type="button"
@@ -124,7 +127,7 @@ export default function LoginPage() {
                 <Button 
                   type="submit" 
                   disabled={loading} 
-                  className="w-full h-11 text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200"
+                  className="w-full h-10 text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200"
                 >
                   {loading ? (
                     <span className="flex items-center gap-2">
@@ -150,7 +153,7 @@ export default function LoginPage() {
       </div>
 
       {/* Right Panel - Promotional */}
-      <div className="hidden md:flex md:w-1/2 md:flex-col md:items-center md:justify-center md:px-12 relative overflow-hidden bg-gradient-to-br from-primary via-[#0052A3] to-[#003d7a]">
+      <div className="hidden md:flex md:w-1/2 md:flex-col md:items-center md:justify-center md:px-12 relative overflow-hidden bg-[#08163d]">
         {/* Animated Background Elements */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-white/10 rounded-full blur-3xl animate-pulse" />

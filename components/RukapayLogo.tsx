@@ -20,8 +20,13 @@ export function RukapayLogo({ className, size = 'md', showText = true }: Rukapay
     lg: 'text-2xl',
   };
 
+  // Extract text color from className if present, otherwise use default
+  const textColorMatch = className?.match(/text-\[#[0-9a-fA-F]{6}\]|text-white|text-\[#08163d\]/);
+  const textColor = textColorMatch ? textColorMatch[0] : 'text-[#08163d]';
+  const containerClassName = className?.replace(/text-\[#[0-9a-fA-F]{6}\]|text-white|text-\[#08163d\]/g, '').trim();
+  
   return (
-    <div className={cn('flex items-center gap-3', className)}>
+    <div className={cn('flex items-center gap-3', containerClassName || '')}>
       <div className={cn('relative', sizeClasses[size])}>
         <Image
           src="/images/logoRukapay2.png"
@@ -33,7 +38,7 @@ export function RukapayLogo({ className, size = 'md', showText = true }: Rukapay
         />
       </div>
       {showText && (
-        <span className={cn('font-bold bg-gradient-to-r from-primary to-[#0052A3] bg-clip-text text-transparent', textSizeClasses[size])}>
+        <span className={cn('font-bold', textColor, textSizeClasses[size])}>
           Rukapay
         </span>
       )}

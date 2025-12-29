@@ -67,20 +67,21 @@ export default function LookupPage() {
       if (response.data.data?.length === 0) {
         setError('No students found. Please check your information and try again.');
       }
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Failed to search. Please try again.');
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { error?: string } } };
+      setError(axiosError.response?.data?.error || 'Failed to search. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary to-[#0052A3]">
+    <div className="min-h-screen bg-[#08163d]">
       <div className="container mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8 text-center text-white">
           <Link href="/" className="mb-6 inline-flex items-center gap-2">
-            <RukapayLogo size="lg" showText={true} className="text-white" />
+            <RukapayLogo size="lg" showText={true} className="text-white [&_span]:text-white" />
           </Link>
           <h1 className="mt-4 text-4xl font-bold md:text-5xl tracking-tight">Student Lookup</h1>
           <p className="mt-3 text-lg text-blue-100">Find your student information to make payments</p>
@@ -95,7 +96,7 @@ export default function LookupPage() {
             </CardHeader>
             <CardContent>
               {/* Search Type Toggle */}
-              <div className="mb-6 flex gap-2 rounded-lg bg-gradient-to-r from-primary/10 to-primary/5 p-1 border border-primary/20">
+              <div className="mb-6 flex gap-2 rounded-lg bg-primary/10 p-1 border border-primary/20">
                 <button
                   type="button"
                   onClick={() => {
@@ -103,9 +104,9 @@ export default function LookupPage() {
                     setError('');
                     setStudents([]);
                   }}
-                  className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                  className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all duration-200 ${
                     searchType === 'student'
-                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30'
+                      ? 'bg-[#08163d] text-white shadow-lg shadow-primary/30'
                       : 'text-muted-foreground hover:text-foreground hover:bg-primary/5'
                   }`}
                 >
@@ -119,9 +120,9 @@ export default function LookupPage() {
                     setError('');
                     setStudents([]);
                   }}
-                  className={`flex-1 rounded-md px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
+                  className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition-all duration-200 ${
                     searchType === 'phone'
-                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30'
+                      ? 'bg-[#08163d] text-white shadow-lg shadow-primary/30'
                       : 'text-muted-foreground hover:text-foreground hover:bg-primary/5'
                   }`}
                 >
@@ -189,7 +190,7 @@ export default function LookupPage() {
                 <Button 
                   type="submit" 
                   disabled={loading} 
-                  className="w-full h-11 text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200"
+                  className="w-full h-10 text-base font-semibold shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 transition-all duration-200"
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">

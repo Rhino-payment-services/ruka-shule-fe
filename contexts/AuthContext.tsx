@@ -52,42 +52,74 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const response = await authAPI.login({ email, password });
-    const { data } = response.data;
-    // API returns user data directly in the response
+    console.log('Login response:', response.data);
+    
+    // Backend returns: { data: { token: "...", user: { ... } } }
+    const authData = response.data.data;
+    
+    if (!authData || !authData.token || !authData.user) {
+      console.error('Invalid response structure:', response.data);
+      throw new Error('Invalid response from server');
+    }
+    
     const userData = {
-      id: data.id || data.user?.id,
-      email: data.email || data.user?.email,
-      phone: data.phone || data.user?.phone,
-      role: data.role || data.user?.role,
-      school_id: data.school_id || data.user?.school_id,
+      id: authData.user.id,
+      email: authData.user.email,
+      phone: authData.user.phone,
+      role: authData.user.role,
+      school_id: authData.user.school_id,
     };
-    const token = data.token;
+    const token = authData.token;
 
-    setUser(userData as User);
+    // Validate role
+    if (!userData.role || !['admin', 'school_admin', 'parent'].includes(userData.role)) {
+      throw new Error('Invalid user role');
+    }
+
+    // Store token and user data FIRST, before setting state
     if (typeof window !== 'undefined') {
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(userData));
+      // Verify token was stored
+      const storedToken = localStorage.getItem('token');
+      if (storedToken !== token) {
+        console.error('Token storage failed!');
+        throw new Error('Failed to store authentication token');
+      } else {
+        console.log('Token stored successfully, length:', token.length, 'First 20 chars:', token.substring(0, 20));
+      }
     }
+    
+    setUser(userData as User);
   };
 
   const register = async (data: RegisterData) => {
     const response = await authAPI.register(data);
-    const { data: responseData } = response.data;
-    // API returns user data directly in the response
+    // Backend returns: { data: { token: "...", user: { ... } } }
+    const authData = response.data.data;
+    
+    if (!authData || !authData.token || !authData.user) {
+      throw new Error('Invalid response from server');
+    }
+    
     const userData = {
-      id: responseData.id || responseData.user?.id,
-      email: responseData.email || responseData.user?.email,
-      phone: responseData.phone || responseData.user?.phone,
-      role: responseData.role || responseData.user?.role,
-      school_id: responseData.school_id || responseData.user?.school_id,
+      id: authData.user.id,
+      email: authData.user.email,
+      phone: authData.user.phone,
+      role: authData.user.role,
+      school_id: authData.user.school_id,
     };
-    const token = responseData.token;
+    const token = authData.token;
 
-    setUser(userData as User);
+    // Store token and user data FIRST, before setting state
     if (typeof window !== 'undefined') {
       localStorage.setItem('token', token);
       localStorage.setItem('user', JSON.stringify(userData));
+      // Force a small delay to ensure localStorage is written
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
+    
+    setUser(userData as User);
   };
 
   const logout = () => {

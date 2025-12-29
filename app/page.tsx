@@ -27,14 +27,14 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary to-[#0052A3]">
+      <div className="flex min-h-screen items-center justify-center bg-[#08163d]">
         <div className="text-white text-lg">Loading...</div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-primary via-[#0052A3] to-[#003d7a] px-4 relative overflow-hidden">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#08163d] px-4 relative overflow-hidden">
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-96 h-96 bg-white/10 rounded-full blur-3xl animate-pulse" />
@@ -44,8 +44,8 @@ export default function Home() {
 
       <div className="text-center text-white relative z-10 max-w-4xl animate-in fade-in slide-in-from-bottom-4 duration-700">
         <div className="mb-8 flex justify-center">
-          <div className="rounded-3xl bg-white/10 backdrop-blur-md p-6 shadow-2xl">
-            <RukapayLogo size="lg" showText={true} className="text-white" />
+          <div className="rounded-3xl bg-white p-6 shadow-2xl">
+            <RukapayLogo size="lg" showText={true} className="text-[#08163d]" />
           </div>
         </div>
         
@@ -60,42 +60,42 @@ export default function Home() {
           <Button
             asChild
             size="lg"
-            className="bg-white text-primary hover:bg-gray-100 shadow-2xl shadow-white/20 hover:shadow-white/30 transition-all duration-200 text-lg px-8 py-6 h-auto"
+            className="bg-white text-[#08163d] hover:bg-gray-100 shadow-2xl shadow-white/20 hover:shadow-white/30 transition-all duration-200 text-base px-6 py-3 h-auto"
           >
             <Link href="/login" className="flex items-center gap-2">
               Sign In
-              <ArrowRight className="h-5 w-5" />
+              <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
           <Button
             asChild
             variant="outline"
             size="lg"
-            className="border-2 border-white/30 bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 shadow-xl text-lg px-8 py-6 h-auto hover:border-primary/50"
+            className="border-2 border-white/30 bg-white/10 backdrop-blur-sm text-white hover:bg-white/20 shadow-xl text-base px-6 py-3 h-auto hover:border-white/50"
           >
             <Link href="/lookup" className="flex items-center gap-2">
               Student Lookup
-              <Sparkles className="h-5 w-5" />
+              <Sparkles className="h-4 w-4" />
             </Link>
           </Button>
         </div>
 
         {/* Feature Cards */}
         <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-          <div className="rounded-2xl bg-white/10 backdrop-blur-md p-6 border border-white/20 shadow-xl">
+          <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-xl">
             <div className="text-4xl mb-3">🔒</div>
-            <h3 className="text-xl font-semibold mb-2">Secure Payments</h3>
-            <p className="text-blue-100 text-sm">Bank-level security for all transactions</p>
+            <h3 className="text-xl font-semibold mb-2 text-gray-900">Secure Payments</h3>
+            <p className="text-gray-600 text-sm">Bank-level security for all transactions</p>
           </div>
-          <div className="rounded-2xl bg-white/10 backdrop-blur-md p-6 border border-white/20 shadow-xl">
+          <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-xl">
             <div className="text-4xl mb-3">📊</div>
-            <h3 className="text-xl font-semibold mb-2">Real-time Tracking</h3>
-            <p className="text-blue-100 text-sm">Monitor payments and fees in real-time</p>
+            <h3 className="text-xl font-semibold mb-2 text-gray-900">Real-time Tracking</h3>
+            <p className="text-gray-600 text-sm">Monitor payments and fees in real-time</p>
           </div>
-          <div className="rounded-2xl bg-white/10 backdrop-blur-md p-6 border border-white/20 shadow-xl">
+          <div className="rounded-2xl bg-white p-6 border border-gray-200 shadow-xl">
             <div className="text-4xl mb-3">⚡</div>
-            <h3 className="text-xl font-semibold mb-2">Easy Management</h3>
-            <p className="text-blue-100 text-sm">Simple interface for all your needs</p>
+            <h3 className="text-xl font-semibold mb-2 text-gray-900">Easy Management</h3>
+            <p className="text-gray-600 text-sm">Simple interface for all your needs</p>
           </div>
         </div>
       </div>

@@ -79,7 +79,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   ].filter((item) => item.roles.includes(user?.role || ''));
 
   return (
-    <div className="flex min-h-screen bg-gradient-to-br from-gray-50 to-white">
+    <div className="flex min-h-screen bg-white">
       {/* Sidebar */}
       <aside
         className={cn(
@@ -89,7 +89,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       >
         <div className="flex h-full flex-col">
           {/* Logo */}
-          <div className="flex h-20 items-center justify-between border-b px-6 bg-gradient-to-r from-primary/5 to-transparent">
+          <div className="flex h-20 items-center justify-between border-b px-6 bg-primary/5">
             <RukapayLogo size="md" showText={true} />
             <Button
               variant="ghost"
@@ -116,7 +116,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   className={cn(
                     'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200',
                     isActive
-                      ? 'bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg shadow-primary/20'
+                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                   )}
                 >
@@ -128,9 +128,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </nav>
 
           {/* User Info & Logout */}
-          <div className="border-t bg-gradient-to-r from-gray-50 to-transparent p-4 space-y-3">
+          <div className="border-t bg-gray-50 p-4 space-y-3">
             <div className="flex items-center gap-3 px-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[#0052A3] text-sm font-semibold text-white shadow-lg">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-lg">
                 {user?.email?.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -191,7 +191,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary"></span>
             </Button>
             <div className="flex items-center gap-3 pl-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-primary to-[#0052A3] text-sm font-semibold text-white shadow-md">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-md">
                 {user?.email?.charAt(0).toUpperCase()}
               </div>
               <div className="hidden md:block">

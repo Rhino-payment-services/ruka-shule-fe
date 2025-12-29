@@ -39,7 +39,7 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const data: any = {
+      const data: { email: string; phone: string; password: string; role: string; school_id?: string } = {
         email: formData.email,
         phone: formData.phone,
         password: formData.password,
@@ -50,8 +50,9 @@ export default function RegisterPage() {
       }
       await register(data);
       router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.response?.data?.error || 'Registration failed. Please try again.');
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { error?: string } } };
+      setError(axiosError.response?.data?.error || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -60,12 +61,12 @@ export default function RegisterPage() {
   return (
     <div className="flex min-h-screen overflow-hidden">
       {/* Left Panel - Register Form */}
-      <div className="flex w-full flex-col items-center justify-center bg-gradient-to-br from-gray-50 to-white px-6 py-12 md:w-1/2 md:px-12">
+      <div className="flex w-full flex-col items-center justify-center bg-white px-6 py-12 md:w-1/2 md:px-12">
         <div className="w-full max-w-md animate-in fade-in slide-in-from-left-4 duration-500">
           {/* Logo */}
           <div className="mb-8">
             <RukapayLogo size="lg" className="mb-6" />
-            <h1 className="mb-2 text-4xl font-bold tracking-tight bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">
+            <h1 className="mb-2 text-4xl font-bold tracking-tight text-gray-900">
               Get Started
             </h1>
             <p className="text-muted-foreground text-lg">
@@ -188,7 +189,7 @@ export default function RegisterPage() {
       </div>
 
       {/* Right Panel - Promotional */}
-      <div className="hidden md:flex md:w-1/2 md:flex-col md:items-center md:justify-center md:px-12 relative overflow-hidden bg-gradient-to-br from-primary via-[#0052A3] to-[#003d7a]">
+      <div className="hidden md:flex md:w-1/2 md:flex-col md:items-center md:justify-center md:px-12 relative overflow-hidden bg-primary">
         {/* Animated Background Elements */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-white/10 rounded-full blur-3xl animate-pulse" />
