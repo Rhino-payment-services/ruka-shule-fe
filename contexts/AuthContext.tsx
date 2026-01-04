@@ -9,6 +9,7 @@ interface User {
   phone: string;
   role: 'admin' | 'school_admin' | 'parent';
   school_id?: string;
+  school_code?: string;
 }
 
 interface AuthContextType {
@@ -68,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       phone: authData.user.phone,
       role: authData.user.role,
       school_id: authData.user.school_id,
+      school_code: authData.user.school_code,
     };
     const token = authData.token;
 
@@ -108,6 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       phone: authData.user.phone,
       role: authData.user.role,
       school_id: authData.user.school_id,
+      school_code: authData.user.school_code,
     };
     const token = authData.token;
 

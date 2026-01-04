@@ -7,6 +7,7 @@ import { schoolsAPI } from '@/lib/api';
 import { School, Plus, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useRouter } from 'next/navigation';
 import {
   Table,
   TableBody,
@@ -30,6 +31,7 @@ interface SchoolData {
 }
 
 export default function SchoolsPage() {
+  const router = useRouter();
   const [schools, setSchools] = useState<SchoolData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -64,7 +66,10 @@ export default function SchoolsPage() {
               <h1 className="text-3xl font-bold bg-gradient-to-r from-[#08163d] to-[#0a1f4f] bg-clip-text text-transparent">Schools</h1>
               <p className="mt-2 text-muted-foreground">Manage and onboard schools</p>
             </div>
-            <Button className="bg-[#08163d] hover:bg-[#0a1f4f] text-white shadow-lg hover:shadow-xl transition-all">
+            <Button 
+              onClick={() => router.push('/dashboard/schools/onboard')}
+              className="bg-[#08163d] hover:bg-[#0a1f4f] text-white shadow-lg hover:shadow-xl transition-all"
+            >
               <Plus className="mr-2 h-4 w-4" />
               Onboard School
             </Button>

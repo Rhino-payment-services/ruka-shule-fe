@@ -124,7 +124,9 @@ export const schoolsAPI = {
   list: (page = 1, pageSize = 10) =>
     api.get(`/schools?page=${page}&page_size=${pageSize}`),
   get: (id: string) => api.get(`/schools/${id}`),
+  getMySchool: () => api.get('/schools/me'), // For school_admin to get their own school
   create: (data: Record<string, unknown>) => api.post('/schools', data),
+  register: (data: Record<string, unknown>) => api.post('/schools/register', data), // For school_admin self-registration
 };
 
 // Students API
@@ -152,10 +154,13 @@ export const paymentsAPI = {
 export const feesAPI = {
   list: (page = 1, pageSize = 10) =>
     api.get(`/fees?page=${page}&page_size=${pageSize}`),
+  get: (id: string) => api.get(`/fees/${id}`),
   listByClass: (className: string, page = 1, pageSize = 10) =>
     api.get(`/fees/class/${className}?page=${page}&page_size=${pageSize}`),
   create: (data: Record<string, unknown>) => api.post('/fees', data),
   createClassFee: (data: Record<string, unknown>) => api.post('/fees/class', data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/fees/${id}`, data),
+  delete: (id: string) => api.delete(`/fees/${id}`),
 };
 
 // Receipts API
