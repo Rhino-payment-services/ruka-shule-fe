@@ -125,6 +125,7 @@ export const schoolsAPI = {
     api.get(`/schools?page=${page}&page_size=${pageSize}`),
   get: (id: string) => api.get(`/schools/${id}`),
   getMySchool: () => api.get('/schools/me'), // For school_admin to get their own school
+  lookup: (identifier: string) => api.get(`/schools/lookup?identifier=${identifier}`), // Public lookup by code or merchant ID
   create: (data: Record<string, unknown>) => api.post('/schools', data),
   register: (data: Record<string, unknown>) => api.post('/schools/register', data), // For school_admin self-registration
 };
@@ -157,6 +158,8 @@ export const feesAPI = {
   get: (id: string) => api.get(`/fees/${id}`),
   listByClass: (className: string, page = 1, pageSize = 10) =>
     api.get(`/fees/class/${className}?page=${page}&page_size=${pageSize}`),
+  getBySchoolAndClass: (schoolId: string, className: string, page = 1, pageSize = 10) =>
+    api.get(`/fees/public?school_id=${schoolId}&class=${className}&page=${page}&page_size=${pageSize}`), // Public endpoint
   create: (data: Record<string, unknown>) => api.post('/fees', data),
   createClassFee: (data: Record<string, unknown>) => api.post('/fees/class', data),
   update: (id: string, data: Record<string, unknown>) => api.put(`/fees/${id}`, data),

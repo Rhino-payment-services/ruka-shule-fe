@@ -18,7 +18,9 @@ interface StudentRow {
   last_name: string;
   phone: string;
   class: string;
-  parent_id?: string;
+  parent_first_name?: string;
+  parent_last_name?: string;
+  parent_phone?: string;
 }
 
 interface ImportResult {
@@ -62,7 +64,7 @@ export default function ImportStudentsPage() {
         const jsonData = XLSX.utils.sheet_to_json(firstSheet) as any[];
 
         // Map Excel columns to our student structure
-        // Expected columns: Student ID, Registration ID, First Name, Last Name, Phone, Class, Parent ID (optional)
+        // Expected columns: Student ID, Registration ID, First Name, Last Name, Phone, Class, Parent First Name, Parent Last Name, Parent Phone (optional)
         const students: StudentRow[] = jsonData.map((row, index) => {
           // Try different possible column names
           const studentId = row['Student ID'] || row['student_id'] || row['StudentID'] || row['STUDENT_ID'] || '';
@@ -71,7 +73,9 @@ export default function ImportStudentsPage() {
           const lastName = row['Last Name'] || row['last_name'] || row['LastName'] || row['LAST_NAME'] || '';
           const phone = row['Phone'] || row['phone'] || row['PHONE'] || '';
           const className = row['Class'] || row['class'] || row['CLASS'] || '';
-          const parentId = row['Parent ID'] || row['parent_id'] || row['ParentID'] || row['PARENT_ID'] || undefined;
+          const parentFirstName = row['Parent First Name'] || row['parent_first_name'] || row['ParentFirstName'] || row['PARENT_FIRST_NAME'] || undefined;
+          const parentLastName = row['Parent Last Name'] || row['parent_last_name'] || row['ParentLastName'] || row['PARENT_LAST_NAME'] || undefined;
+          const parentPhone = row['Parent Phone'] || row['parent_phone'] || row['ParentPhone'] || row['PARENT_PHONE'] || undefined;
 
           return {
             student_id: String(studentId).trim(),
@@ -80,7 +84,9 @@ export default function ImportStudentsPage() {
             last_name: String(lastName).trim(),
             phone: String(phone).trim(),
             class: String(className).trim(),
-            parent_id: parentId ? String(parentId).trim() : undefined,
+            parent_first_name: parentFirstName ? String(parentFirstName).trim() : undefined,
+            parent_last_name: parentLastName ? String(parentLastName).trim() : undefined,
+            parent_phone: parentPhone ? String(parentPhone).trim() : undefined,
           };
         }).filter((student) => {
           // Filter out empty rows
@@ -128,7 +134,9 @@ export default function ImportStudentsPage() {
           last_name: student.last_name,
           phone: student.phone,
           class: student.class,
-          parent_id: student.parent_id,
+          parent_first_name: student.parent_first_name,
+          parent_last_name: student.parent_last_name,
+          parent_phone: student.parent_phone,
         });
         importResult.success++;
       } catch (err: unknown) {
@@ -270,7 +278,9 @@ export default function ImportStudentsPage() {
                     <li>Last Name (required)</li>
                     <li>Phone (required)</li>
                     <li>Class (required)</li>
-                    <li>Parent ID (optional)</li>
+                    <li>Parent First Name (optional)</li>
+                    <li>Parent Last Name (optional)</li>
+                    <li>Parent Phone (optional)</li>
                   </ul>
                 </div>
               </div>
