@@ -20,7 +20,7 @@ import {
 
 interface Student {
   id: string;
-  student_id: string;
+  registration_id: string;
   first_name: string;
   last_name: string;
   phone: string;
@@ -70,16 +70,21 @@ const VALID_CLASSES = [
   'University Year 1', 'University Year 2', 'University Year 3', 'University Year 4', 'University Year 5',
 ];
 
+// Valid terms
+const TERMS = ['Term 1', 'Term 2', 'Term 3'];
+
 type Step = 'school' | 'student';
 
 export default function LookupPage() {
   const [step, setStep] = useState<Step>('school');
   const [schoolIdentifier, setSchoolIdentifier] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
+  const [selectedTerm, setSelectedTerm] = useState('');
   const [studentId, setStudentId] = useState('');
   
   const [school, setSchool] = useState<School | null>(null);
   const [fees, setFees] = useState<Fee[]>([]);
+  const [allFees, setAllFees] = useState<Fee[]>([]); // Store all fees for filtering
   const [students, setStudents] = useState<Student[]>([]);
   
   const [loading, setLoading] = useState(false);
@@ -125,20 +130,47 @@ export default function LookupPage() {
     }
   };
 
-  const fetchFees = async (schoolId: string, className: string) => {
+  const fetchFees = async (schoolId: string, className: string, term?: string) => {
     try {
       const feesResponse = await feesAPI.getBySchoolAndClass(schoolId, className);
-      setFees(feesResponse.data.data || []);
+      const fetchedFees = feesResponse.data.data || [];
+      setAllFees(fetchedFees);
+      
+      // Filter by term if selected
+      if (term) {
+        const filteredFees = fetchedFees.filter((fee: Fee) => 
+          fee.term === term || !fee.term // Include fees without term (annual fees)
+        );
+        setFees(filteredFees);
+      } else {
+        setFees(fetchedFees);
+      }
     } catch (err) {
       console.error('Failed to fetch fees:', err);
       setFees([]);
+      setAllFees([]);
     }
   };
 
   const handleClassChange = async (className: string) => {
     setSelectedClass(className);
+    setSelectedTerm(''); // Reset term when class changes
     if (school && className) {
       await fetchFees(school.id, className);
+    }
+  };
+
+  const handleTermChange = (term: string) => {
+    setSelectedTerm(term);
+    // Filter fees by term
+    if (term) {
+      const filteredFees = allFees.filter((fee: Fee) => 
+        fee.term === term || !fee.term // Include fees without term (annual fees)
+      );
+      setFees(filteredFees);
+    } else {
+      // Show all fees if no term selected
+      setFees(allFees);
     }
   };
 
@@ -175,7 +207,7 @@ export default function LookupPage() {
       }
 
       const response = await studentsAPI.lookup({ 
-        student_id: studentId.trim(), 
+        registration_id: studentId.trim(), 
         school_code: school.code 
       });
 
@@ -315,31 +347,60 @@ export default function LookupPage() {
                         </CardContent>
                       </Card>
 
-                      {/* Class Selector */}
-                      <div className="space-y-2">
-                        <Label htmlFor="class">Select Class</Label>
-                        <Select value={selectedClass} onValueChange={handleClassChange}>
-                          <SelectTrigger id="class" className="w-full">
-                            <SelectValue placeholder="Select a class" />
-                          </SelectTrigger>
-                          <SelectContent className="max-h-[300px]">
-                            {VALID_CLASSES.map((className) => (
-                              <SelectItem key={className} value={className}>
-                                {className}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <p className="text-xs text-muted-foreground">
-                          Select the class to view applicable fees
-                        </p>
+                      {/* Class and Term Selectors */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="class">Select Class</Label>
+                          <Select value={selectedClass} onValueChange={handleClassChange}>
+                            <SelectTrigger id="class" className="w-full">
+                              <SelectValue placeholder="Select a class" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-[300px]">
+                              {VALID_CLASSES.map((className) => (
+                                <SelectItem key={className} value={className}>
+                                  {className}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Select the class to view applicable fees
+                          </p>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="term">Select Term</Label>
+                          <Select 
+                            value={selectedTerm || 'all_terms'} 
+                            onValueChange={(value) => handleTermChange(value === 'all_terms' ? '' : value)}
+                            disabled={!selectedClass}
+                          >
+                            <SelectTrigger id="term" className="w-full">
+                              <SelectValue placeholder="Select a term" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all_terms">All Terms</SelectItem>
+                              {TERMS.map((term) => (
+                                <SelectItem key={term} value={term}>
+                                  {term}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="text-xs text-muted-foreground">
+                            Filter fees by term (optional)
+                          </p>
+                        </div>
                       </div>
 
                       {/* Fees Display */}
                       {selectedClass && fees.length > 0 && (
                         <Card className="border-2 border-primary/20">
                           <CardHeader>
-                            <CardTitle className="text-lg">Fees for {selectedClass}</CardTitle>
+                            <CardTitle className="text-lg">
+                              Fees for {selectedClass}
+                              {selectedTerm && ` - ${selectedTerm}`}
+                            </CardTitle>
                           </CardHeader>
                           <CardContent>
                             <div className="space-y-3">
@@ -348,7 +409,7 @@ export default function LookupPage() {
                                   <div>
                                     <p className="font-medium">{fee.name}</p>
                                     <p className="text-sm text-muted-foreground">
-                                      {fee.academic_year} • {fee.term}
+                                      {fee.academic_year}{fee.term ? ` • ${fee.term}` : ' • Annual'}
                                       {fee.due_date && ` • Due: ${new Date(fee.due_date).toLocaleDateString()}`}
                                     </p>
                                   </div>
@@ -420,15 +481,15 @@ export default function LookupPage() {
 
                   <form onSubmit={handleStudentSearch} className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="student_id">Student ID</Label>
+                      <Label htmlFor="registration_id">Registration ID</Label>
                       <div className="relative">
                         <GraduationCap className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
-                          id="student_id"
+                          id="registration_id"
                           type="text"
                           value={studentId}
                           onChange={(e) => setStudentId(e.target.value)}
-                          placeholder="Enter student ID"
+                          placeholder="Enter registration ID"
                           className="pl-10"
                         />
                       </div>
@@ -470,7 +531,7 @@ export default function LookupPage() {
                               <div className="space-y-2 text-sm">
                                 <div className="flex items-center gap-2">
                                   <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                                  <span><strong>Student ID:</strong> {student.student_id}</span>
+                                  <span><strong>Registration ID:</strong> {student.registration_id}</span>
                                 </div>
                               <div className="flex items-center gap-2">
                                   <School className="h-4 w-4 text-muted-foreground" />

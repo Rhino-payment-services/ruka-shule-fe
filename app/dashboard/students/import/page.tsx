@@ -5,19 +5,21 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { studentsAPI } from '@/lib/api';
-import { Upload, FileSpreadsheet, ArrowLeft, Loader2, CheckCircle2, XCircle } from 'lucide-react';
+import { Upload, FileSpreadsheet, ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import * as XLSX from 'xlsx';
+import { toast } from 'sonner';
 
 interface StudentRow {
-  student_id: string;
   registration_id: string;
   first_name: string;
   last_name: string;
   phone: string;
   class: string;
+  stream?: string;  // Arts, Sciences, General, etc.
+  scholarship_type?: string;  // Full, Partial, Merit, etc.
+  scholarship_percentage?: number;  // Discount percentage
   parent_first_name?: string;
   parent_last_name?: string;
   parent_phone?: string;
@@ -37,19 +39,19 @@ export default function ImportStudentsPage() {
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [error, setError] = useState('');
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
     if (!selectedFile.name.endsWith('.xlsx') && !selectedFile.name.endsWith('.xls')) {
-      setError('Please select an Excel file (.xlsx or .xls)');
+      toast.error('Invalid file type', {
+        description: 'Please select an Excel file (.xlsx or .xls)',
+      });
       return;
     }
 
     setFile(selectedFile);
-    setError('');
     setResult(null);
     parseExcelFile(selectedFile);
   };
@@ -63,44 +65,104 @@ export default function ImportStudentsPage() {
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet) as any[];
 
-        // Map Excel columns to our student structure
-        // Expected columns: Student ID, Registration ID, First Name, Last Name, Phone, Class, Parent First Name, Parent Last Name, Parent Phone (optional)
-        const students: StudentRow[] = jsonData.map((row, index) => {
-          // Try different possible column names
-          const studentId = row['Student ID'] || row['student_id'] || row['StudentID'] || row['STUDENT_ID'] || '';
-          const regId = row['Registration ID'] || row['registration_id'] || row['RegistrationID'] || row['REG_ID'] || '';
-          const firstName = row['First Name'] || row['first_name'] || row['FirstName'] || row['FIRST_NAME'] || '';
-          const lastName = row['Last Name'] || row['last_name'] || row['LastName'] || row['LAST_NAME'] || '';
+        const students: StudentRow[] = jsonData.map((row) => {
+          const registrationId =
+            row['Registration ID'] ||
+            row['registration_id'] ||
+            row['RegistrationID'] ||
+            row['REG_ID'] ||
+            row['Student ID'] ||
+            row['student_id'] ||
+            row['StudentID'] ||
+            row['STUDENT_ID'] ||
+            '';
+          const firstName =
+            row['First Name'] ||
+            row['first_name'] ||
+            row['FirstName'] ||
+            row['FIRST_NAME'] ||
+            '';
+          const lastName =
+            row['Last Name'] ||
+            row['last_name'] ||
+            row['LastName'] ||
+            row['LAST_NAME'] ||
+            '';
           const phone = row['Phone'] || row['phone'] || row['PHONE'] || '';
           const className = row['Class'] || row['class'] || row['CLASS'] || '';
-          const parentFirstName = row['Parent First Name'] || row['parent_first_name'] || row['ParentFirstName'] || row['PARENT_FIRST_NAME'] || undefined;
-          const parentLastName = row['Parent Last Name'] || row['parent_last_name'] || row['ParentLastName'] || row['PARENT_LAST_NAME'] || undefined;
-          const parentPhone = row['Parent Phone'] || row['parent_phone'] || row['ParentPhone'] || row['PARENT_PHONE'] || undefined;
+          const parentFirstName =
+            row['Parent First Name'] ||
+            row['parent_first_name'] ||
+            row['ParentFirstName'] ||
+            row['PARENT_FIRST_NAME'] ||
+            undefined;
+          const parentLastName =
+            row['Parent Last Name'] ||
+            row['parent_last_name'] ||
+            row['ParentLastName'] ||
+            row['PARENT_LAST_NAME'] ||
+            undefined;
+          const parentPhone =
+            row['Parent Phone'] ||
+            row['parent_phone'] ||
+            row['ParentPhone'] ||
+            row['PARENT_PHONE'] ||
+            undefined;
+          
+          // New fields: Stream and Scholarship
+          const stream =
+            row['Stream'] ||
+            row['stream'] ||
+            row['STREAM'] ||
+            row['Subject Combination'] ||
+            undefined;
+          const scholarshipType =
+            row['Scholarship Type'] ||
+            row['scholarship_type'] ||
+            row['ScholarshipType'] ||
+            row['SCHOLARSHIP_TYPE'] ||
+            undefined;
+          const scholarshipPercentage =
+            row['Scholarship Percentage'] ||
+            row['scholarship_percentage'] ||
+            row['ScholarshipPercentage'] ||
+            row['SCHOLARSHIP_PERCENTAGE'] ||
+            row['Discount'] ||
+            row['discount'] ||
+            undefined;
 
           return {
-            student_id: String(studentId).trim(),
-            registration_id: String(regId).trim(),
+            registration_id: String(registrationId).trim(),
             first_name: String(firstName).trim(),
             last_name: String(lastName).trim(),
             phone: String(phone).trim(),
             class: String(className).trim(),
+            stream: stream ? String(stream).trim() : undefined,
+            scholarship_type: scholarshipType ? String(scholarshipType).trim() : undefined,
+            scholarship_percentage: scholarshipPercentage ? parseFloat(String(scholarshipPercentage)) : undefined,
             parent_first_name: parentFirstName ? String(parentFirstName).trim() : undefined,
             parent_last_name: parentLastName ? String(parentLastName).trim() : undefined,
             parent_phone: parentPhone ? String(parentPhone).trim() : undefined,
           };
         }).filter((student) => {
-          // Filter out empty rows
-          return student.student_id && student.first_name && student.last_name;
+          return student.registration_id && student.first_name && student.last_name;
         });
 
         if (students.length === 0) {
-          setError('No valid student data found in the Excel file. Please check the column headers.');
+          toast.error('No valid student data found', {
+            description: 'Please check the column headers in your Excel file.',
+          });
           return;
         }
 
         setPreview(students);
+        toast.success(`Found ${students.length} students`, {
+          description: 'Review the preview and click Import to proceed.',
+        });
       } catch (err) {
-        setError('Failed to parse Excel file. Please ensure it is a valid Excel file.');
+        toast.error('Failed to parse Excel file', {
+          description: 'Please ensure it is a valid Excel file.',
+        });
         console.error('Excel parsing error:', err);
       }
     };
@@ -109,12 +171,11 @@ export default function ImportStudentsPage() {
 
   const handleImport = async () => {
     if (!preview.length) {
-      setError('No students to import');
+      toast.error('No students to import');
       return;
     }
 
     setImporting(true);
-    setError('');
     setResult(null);
 
     const importResult: ImportResult = {
@@ -123,41 +184,91 @@ export default function ImportStudentsPage() {
       errors: [],
     };
 
-    // Import students one by one
     for (let i = 0; i < preview.length; i++) {
       const student = preview[i];
       try {
-        await studentsAPI.create({
-          student_id: student.student_id,
+        const payload: any = {
           registration_id: student.registration_id,
           first_name: student.first_name,
           last_name: student.last_name,
           phone: student.phone,
           class: student.class,
-          parent_first_name: student.parent_first_name,
-          parent_last_name: student.parent_last_name,
-          parent_phone: student.parent_phone,
-        });
+        };
+
+        // Stream/Subject combination
+        if (student.stream) {
+          payload.stream = student.stream;
+        }
+
+        // Scholarship information
+        if (student.scholarship_type) {
+          payload.scholarship_type = student.scholarship_type;
+        }
+        if (student.scholarship_percentage && !isNaN(student.scholarship_percentage)) {
+          payload.scholarship_percentage = student.scholarship_percentage;
+        }
+
+        // Parent information
+        if (student.parent_first_name) {
+          payload.parent_first_name = student.parent_first_name;
+        }
+        if (student.parent_last_name) {
+          payload.parent_last_name = student.parent_last_name;
+        }
+        if (student.parent_phone) {
+          payload.parent_phone = student.parent_phone;
+        }
+
+        await studentsAPI.create(payload);
         importResult.success++;
       } catch (err: unknown) {
-        const axiosError = err as { response?: { data?: { error?: string } }; message?: string };
+        const axiosError = err as {
+          response?: { data?: { error?: string } };
+          message?: string;
+        };
         importResult.failed++;
         importResult.errors.push({
-          row: i + 2, // +2 because Excel rows start at 1 and we have a header
-          error: axiosError.response?.data?.error || axiosError.message || 'Unknown error',
+          row: i + 2,
+          error:
+            axiosError.response?.data?.error ||
+            axiosError.message ||
+            'Unknown error',
         });
       }
     }
 
     setResult(importResult);
     setImporting(false);
+
+    if (importResult.failed === 0) {
+      toast.success('Import completed successfully!', {
+        description: `Successfully imported ${importResult.success} students.`,
+      });
+      // Clear preview and redirect immediately
+      setPreview([]);
+      setFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+      // Redirect to students list to see the imported students
+      router.push('/dashboard/students');
+    } else {
+      toast.warning('Import completed with errors', {
+        description: `${importResult.success} succeeded, ${importResult.failed} failed. Check the errors below.`,
+      });
+      // Still redirect if some succeeded, but show errors
+      if (importResult.success > 0) {
+        setTimeout(() => {
+          router.push('/dashboard/students');
+        }, 3000);
+      }
+    }
   };
 
   return (
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
         <div className="space-y-6 max-w-5xl mx-auto">
-          {/* Header */}
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
@@ -178,55 +289,33 @@ export default function ImportStudentsPage() {
             </div>
           </div>
 
-          {/* Error Message */}
-          {error && (
-            <Alert className="bg-red-50 border-red-200 text-red-800">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* Import Result */}
-          {result && (
-            <Alert
-              className={
-                result.failed === 0
-                  ? 'bg-green-50 border-green-200 text-green-800'
-                  : 'bg-yellow-50 border-yellow-200 text-yellow-800'
-              }
-            >
-              <AlertDescription>
+          {result && result.failed > 0 && (
+            <Card className="border-yellow-200 bg-yellow-50">
+              <CardHeader>
+                <CardTitle className="text-yellow-800">Import Errors</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    {result.failed === 0 ? (
-                      <CheckCircle2 className="h-5 w-5" />
-                    ) : (
-                      <XCircle className="h-5 w-5" />
-                    )}
-                    <span className="font-semibold">
-                      Import completed: {result.success} succeeded, {result.failed} failed
-                    </span>
+                  <p className="text-sm text-yellow-800">
+                    {result.errors.length} error(s) occurred during import:
+                  </p>
+                  <div className="max-h-48 overflow-auto">
+                    <ul className="list-disc list-inside space-y-1 text-sm text-yellow-800">
+                      {result.errors.slice(0, 20).map((err, idx) => (
+                        <li key={idx}>
+                          Row {err.row}: {err.error}
+                        </li>
+                      ))}
+                      {result.errors.length > 20 && (
+                        <li>... and {result.errors.length - 20} more errors</li>
+                      )}
+                    </ul>
                   </div>
-                  {result.errors.length > 0 && (
-                    <div className="mt-2 text-sm">
-                      <p className="font-medium">Errors:</p>
-                      <ul className="list-disc list-inside space-y-1 mt-1">
-                        {result.errors.slice(0, 10).map((err, idx) => (
-                          <li key={idx}>
-                            Row {err.row}: {err.error}
-                          </li>
-                        ))}
-                        {result.errors.length > 10 && (
-                          <li>... and {result.errors.length - 10} more errors</li>
-                        )}
-                      </ul>
-                    </div>
-                  )}
                 </div>
-              </AlertDescription>
-            </Alert>
+              </CardContent>
+            </Card>
           )}
 
-          {/* File Upload Card */}
           <Card>
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -265,19 +354,22 @@ export default function ImportStudentsPage() {
                   </Button>
                 </div>
 
-                {/* Excel Format Instructions */}
                 <div className="bg-muted/50 rounded-lg p-4 text-sm">
                   <p className="font-medium mb-2">Expected Excel Format:</p>
                   <p className="text-muted-foreground mb-2">
                     Your Excel file should have the following columns (case-insensitive):
                   </p>
                   <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                    <li>Student ID (required)</li>
-                    <li>Registration ID (required)</li>
+                    <li>
+                      Registration ID (required) - School&apos;s internal student identifier
+                    </li>
                     <li>First Name (required)</li>
                     <li>Last Name (required)</li>
                     <li>Phone (required)</li>
                     <li>Class (required)</li>
+                    <li>Stream (optional) - Arts, Sciences, General, Business, Technical</li>
+                    <li>Scholarship Type (optional) - Full, Partial, Merit, Need-based, Sports</li>
+                    <li>Scholarship Percentage (optional) - Discount % (0-100)</li>
                     <li>Parent First Name (optional)</li>
                     <li>Parent Last Name (optional)</li>
                     <li>Parent Phone (optional)</li>
@@ -287,7 +379,6 @@ export default function ImportStudentsPage() {
             </CardContent>
           </Card>
 
-          {/* Preview Card */}
           {preview.length > 0 && (
             <Card>
               <CardHeader>
@@ -302,26 +393,37 @@ export default function ImportStudentsPage() {
                     <table className="w-full text-sm">
                       <thead className="bg-muted sticky top-0">
                         <tr>
-                          <th className="p-2 text-left">Student ID</th>
+                          <th className="p-2 text-left">Registration ID</th>
                           <th className="p-2 text-left">First Name</th>
                           <th className="p-2 text-left">Last Name</th>
                           <th className="p-2 text-left">Phone</th>
                           <th className="p-2 text-left">Class</th>
+                          <th className="p-2 text-left">Stream</th>
+                          <th className="p-2 text-left">Scholarship</th>
                         </tr>
                       </thead>
                       <tbody>
                         {preview.slice(0, 50).map((student, idx) => (
                           <tr key={idx} className="border-t">
-                            <td className="p-2">{student.student_id}</td>
+                            <td className="p-2">{student.registration_id}</td>
                             <td className="p-2">{student.first_name}</td>
                             <td className="p-2">{student.last_name}</td>
                             <td className="p-2">{student.phone}</td>
                             <td className="p-2">{student.class}</td>
+                            <td className="p-2">{student.stream || '-'}</td>
+                            <td className="p-2">
+                              {student.scholarship_type 
+                                ? `${student.scholarship_type}${student.scholarship_percentage ? ` (${student.scholarship_percentage}%)` : ''}`
+                                : '-'}
+                            </td>
                           </tr>
                         ))}
                         {preview.length > 50 && (
                           <tr>
-                            <td colSpan={5} className="p-2 text-center text-muted-foreground">
+                            <td
+                              colSpan={7}
+                              className="p-2 text-center text-muted-foreground"
+                            >
                               ... and {preview.length - 50} more rows
                             </td>
                           </tr>
@@ -374,4 +476,3 @@ export default function ImportStudentsPage() {
     </ProtectedRoute>
   );
 }
-

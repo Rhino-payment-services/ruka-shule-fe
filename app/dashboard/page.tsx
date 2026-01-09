@@ -131,9 +131,28 @@ export default function DashboardPage() {
       }
       
       const [studentsRes, paymentsRes] = await Promise.all([
-        studentsAPI.list(1, 1),
+        studentsAPI.list(1, 1), // Only need 1 for the list, but we'll use total count
         paymentsAPI.list(1, 1),
       ]);
+      
+      // Extract total counts from paginated responses
+      let totalStudents = 0;
+      if (studentsRes.data.total !== undefined) {
+        // Paginated response with total count
+        totalStudents = studentsRes.data.total || 0;
+      } else {
+        // Fallback to array length if not paginated
+        totalStudents = studentsRes.data.data?.length || studentsRes.data.data?.data?.length || 0;
+      }
+      
+      let totalPayments = 0;
+      if (paymentsRes.data.total !== undefined) {
+        // Paginated response with total count
+        totalPayments = paymentsRes.data.total || 0;
+      } else {
+        // Fallback to array length if not paginated
+        totalPayments = paymentsRes.data.data?.length || paymentsRes.data.data?.data?.length || 0;
+      }
       
       // Calculate total revenue from payments
       let revenue = 0;
@@ -152,8 +171,8 @@ export default function DashboardPage() {
       
       setStats({
         totalSchools: 0,
-        totalStudents: studentsRes.data.data?.length || studentsRes.data.data?.data?.length || 0,
-        totalPayments: paymentsRes.data.data?.length || paymentsRes.data.data?.data?.length || 0,
+        totalStudents: totalStudents,
+        totalPayments: totalPayments,
         totalRevenue: revenue,
       });
     } catch (error: unknown) {

@@ -18,7 +18,7 @@ interface Payment {
   reference: string;
   status: string;
   payment_method: string;
-  student_id: string;
+  registration_id: string;
   student_name?: string;
   fee_name?: string;
   paid_at?: string;
@@ -26,7 +26,7 @@ interface Payment {
 }
 
 interface StudentPaymentSummary {
-  student_id: string;
+  registration_id: string;
   student_name: string;
   class: string;
   total_paid: number;
@@ -78,12 +78,12 @@ export default function PaymentsPage() {
 
     try {
       setSearching(true);
-      // Try to find student by student_id, phone, or name
-      const lookupParams: { student_id?: string; phone?: string; school_code?: string } = {};
+      // Try to find student by registration_id, phone, or name
+      const lookupParams: { registration_id?: string; phone?: string; school_code?: string } = {};
       
-      // Check if it looks like a student ID
+      // Check if it looks like a registration ID
       if (searchQuery.match(/^[A-Z0-9-]+$/)) {
-        lookupParams.student_id = searchQuery;
+        lookupParams.registration_id = searchQuery;
       } else if (searchQuery.match(/^\+?[0-9]+$/)) {
         // Looks like a phone number
         lookupParams.phone = searchQuery;
@@ -203,7 +203,7 @@ export default function PaymentsPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Student</p>
                       <p className="font-semibold">{searchResults.student_name}</p>
-                      <p className="text-xs text-muted-foreground">ID: {searchResults.student_id}</p>
+                      <p className="text-xs text-muted-foreground">ID: {searchResults.registration_id}</p>
                       <p className="text-xs text-muted-foreground">Class: {searchResults.class}</p>
                     </div>
                     <div>
@@ -296,7 +296,7 @@ export default function PaymentsPage() {
                             <TableCell>
                               <div>
                                 <p className="font-medium">{payment.student_name || 'N/A'}</p>
-                                <p className="text-xs text-muted-foreground">ID: {payment.student_id}</p>
+                                <p className="text-xs text-muted-foreground">ID: {payment.registration_id}</p>
                               </div>
                             </TableCell>
                             <TableCell>{payment.fee_name || 'N/A'}</TableCell>

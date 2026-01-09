@@ -132,7 +132,7 @@ export const schoolsAPI = {
 
 // Students API
 export const studentsAPI = {
-  lookup: (params: { student_id?: string; school_code?: string; phone?: string }) =>
+  lookup: (params: { registration_id?: string; school_code?: string; phone?: string }) =>
     api.get('/students/lookup', { params }),
   list: (page = 1, pageSize = 10) =>
     api.get(`/students?page=${page}&page_size=${pageSize}`),
@@ -149,6 +149,12 @@ export const paymentsAPI = {
     api.get(`/payments?page=${page}&page_size=${pageSize}`),
   getSummary: (studentId: string) =>
     api.get(`/payments/student/${studentId}/summary`),
+  listByStudent: (studentId: string) =>
+    api.get(`/payments/student/${studentId}`),
+  getTermStatus: (studentId: string, academicYear: string, term: string) =>
+    api.get(`/payments/student/${studentId}/term`, {
+      params: { academic_year: academicYear, term },
+    }),
 };
 
 // Fees API

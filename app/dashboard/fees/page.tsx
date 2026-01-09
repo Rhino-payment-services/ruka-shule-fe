@@ -35,14 +35,18 @@ interface Fee {
   currency: string;
   fee_type: 'school_fees' | 'other_fees';
   academic_year: string;
-  term: string;
+  term?: string | null; // Optional - null for annual fees
   class?: string | null;
+  stream?: string | null; // Arts, Sciences, General, etc.
   due_date?: string | null;
   status: 'active' | 'inactive';
   school_id: string;
   created_at: string;
   updated_at?: string;
 }
+
+const STREAMS = ['General', 'Arts', 'Sciences', 'Business', 'Technical'];
+const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 
 export default function FeesPage() {
   const [fees, setFees] = useState<Fee[]>([]);
@@ -56,8 +60,9 @@ export default function FeesPage() {
     currency: 'UGX',
     fee_type: 'school_fees' as 'school_fees' | 'other_fees',
     academic_year: new Date().getFullYear().toString(),
-    term: 'Term 1',
+    term: '', // Optional - empty for annual fees
     class: '',
+    stream: '', // Optional - empty for all streams
     due_date: '',
   });
 
@@ -86,11 +91,21 @@ export default function FeesPage() {
         currency: formData.currency,
         fee_type: formData.fee_type,
         academic_year: formData.academic_year,
-        term: formData.term,
       };
 
+      // Term is optional - only add if selected
+      if (formData.term) {
+        payload.term = formData.term;
+      }
+
+      // Class is optional - only add if selected
       if (formData.class) {
         payload.class = formData.class;
+      }
+
+      // Stream is optional - only add if selected
+      if (formData.stream) {
+        payload.stream = formData.stream;
       }
 
       if (formData.due_date) {
@@ -116,8 +131,9 @@ export default function FeesPage() {
       currency: fee.currency,
       fee_type: fee.fee_type,
       academic_year: fee.academic_year,
-      term: fee.term,
+      term: fee.term || '',
       class: fee.class || '',
+      stream: fee.stream || '',
       due_date: fee.due_date ? fee.due_date.split('T')[0] : '',
     });
     setIsEditDialogOpen(true);
@@ -132,6 +148,12 @@ export default function FeesPage() {
       if (formData.name !== editingFee.name) payload.name = formData.name;
       if (parseFloat(formData.amount) !== editingFee.amount) payload.amount = parseFloat(formData.amount);
       if (formData.fee_type !== editingFee.fee_type) payload.fee_type = formData.fee_type;
+      if (formData.term !== (editingFee.term || '')) {
+        payload.term = formData.term || null;
+      }
+      if (formData.stream !== (editingFee.stream || '')) {
+        payload.stream = formData.stream || null;
+      }
       if (formData.due_date !== (editingFee.due_date?.split('T')[0] || '')) {
         payload.due_date = formData.due_date || null;
       }
@@ -168,8 +190,9 @@ export default function FeesPage() {
       currency: 'UGX',
       fee_type: 'school_fees',
       academic_year: new Date().getFullYear().toString(),
-      term: 'Term 1',
+      term: '',
       class: '',
+      stream: '',
       due_date: '',
     });
   };
@@ -232,9 +255,10 @@ export default function FeesPage() {
                       <TableHead>Name</TableHead>
                       <TableHead>Type</TableHead>
                       <TableHead>Amount</TableHead>
-                      <TableHead>Academic Year</TableHead>
+                      <TableHead>Year</TableHead>
                       <TableHead>Term</TableHead>
                       <TableHead>Class</TableHead>
+                      <TableHead>Stream</TableHead>
                       <TableHead>Due Date</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Actions</TableHead>
@@ -249,8 +273,9 @@ export default function FeesPage() {
                           {fee.currency} {fee.amount.toLocaleString()}
                         </TableCell>
                         <TableCell>{fee.academic_year}</TableCell>
-                        <TableCell>{fee.term}</TableCell>
-                        <TableCell>{fee.class || 'All Classes'}</TableCell>
+                        <TableCell>{fee.term || <span className="text-muted-foreground">All Terms</span>}</TableCell>
+                        <TableCell>{fee.class || <span className="text-muted-foreground">All</span>}</TableCell>
+                        <TableCell>{fee.stream || <span className="text-muted-foreground">All</span>}</TableCell>
                         <TableCell>
                           {fee.due_date ? new Date(fee.due_date).toLocaleDateString() : 'N/A'}
                         </TableCell>
@@ -355,30 +380,63 @@ export default function FeesPage() {
                     />
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="term">Term *</Label>
+                    <Label htmlFor="term">Term (Optional)</Label>
                     <Select
-                      value={formData.term}
-                      onValueChange={(value) => setFormData({ ...formData, term: value })}
+                      value={formData.term || 'all_terms'}
+                      onValueChange={(value) => setFormData({ ...formData, term: value === 'all_terms' ? '' : value })}
                     >
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="All Terms (Annual Fee)" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="Term 1">Term 1</SelectItem>
-                        <SelectItem value="Term 2">Term 2</SelectItem>
-                        <SelectItem value="Term 3">Term 3</SelectItem>
+                        <SelectItem value="all_terms">All Terms (Annual Fee)</SelectItem>
+                        {TERMS.map((term) => (
+                          <SelectItem key={term} value={term}>
+                            {term}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Leave empty for annual fees that apply to all terms
+                    </p>
                   </div>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="class">Class (Optional)</Label>
-                  <Input
-                    id="class"
-                    placeholder="e.g., P1, P2, S1 (leave empty for all classes)"
-                    value={formData.class}
-                    onChange={(e) => setFormData({ ...formData, class: e.target.value })}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="class">Class (Optional)</Label>
+                    <Input
+                      id="class"
+                      placeholder="e.g., P1, P2, S1"
+                      value={formData.class}
+                      onChange={(e) => setFormData({ ...formData, class: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Leave empty if fee applies to all classes
+                    </p>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="stream">Stream (Optional)</Label>
+                    <Select
+                      value={formData.stream || 'all_streams'}
+                      onValueChange={(value) => setFormData({ ...formData, stream: value === 'all_streams' ? '' : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Streams" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all_streams">All Streams</SelectItem>
+                        {STREAMS.map((stream) => (
+                          <SelectItem key={stream} value={stream}>
+                            {stream}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Different streams may have different fees (Arts vs Sciences)
+                    </p>
+                  </div>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="due_date">Due Date (Optional)</Label>
@@ -459,6 +517,46 @@ export default function FeesPage() {
                       <SelectItem value="other_fees">Other Fees</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-term">Term (Optional)</Label>
+                    <Select
+                      value={formData.term || 'all_terms'}
+                      onValueChange={(value) => setFormData({ ...formData, term: value === 'all_terms' ? '' : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Terms (Annual Fee)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all_terms">All Terms (Annual Fee)</SelectItem>
+                        {TERMS.map((term) => (
+                          <SelectItem key={term} value={term}>
+                            {term}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="edit-stream">Stream (Optional)</Label>
+                    <Select
+                      value={formData.stream || 'all_streams'}
+                      onValueChange={(value) => setFormData({ ...formData, stream: value === 'all_streams' ? '' : value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Streams" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all_streams">All Streams</SelectItem>
+                        {STREAMS.map((stream) => (
+                          <SelectItem key={stream} value={stream}>
+                            {stream}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-due_date">Due Date (Optional)</Label>
