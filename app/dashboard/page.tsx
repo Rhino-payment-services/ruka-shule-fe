@@ -114,6 +114,17 @@ export default function DashboardPage() {
         const schoolRes = await schoolsAPI.getMySchool();
         school = schoolRes.data.data;
         console.log('School data fetched successfully:', school);
+        console.log('Wallet data:', school?.wallet);
+        console.log('Business Wallet ID:', school?.business_wallet_id);
+        console.log('Merchant Code:', school?.merchant_code);
+        
+        // If wallet is null but we have merchant info, log a warning
+        if (school && !school.wallet && school.merchant_code) {
+          console.warn('School has merchant code but wallet information is not available. This may indicate:');
+          console.warn('  1. Wallet has not been created yet in RDBS Core');
+          console.warn('  2. Merchant onboarding is still in progress');
+          console.warn('  3. Error fetching wallet from RDBS Core (check backend logs)');
+        }
       } catch (err: any) {
         console.error('Failed to fetch school:', err);
         console.error('Error details:', {
@@ -358,11 +369,27 @@ function SchoolAdminDashboard({
                   <Wallet className="h-6 w-6 text-yellow-600" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-yellow-900">Wallet Balance</p>
-                    <p className="text-lg text-yellow-700">Loading wallet information...</p>
-                    {schoolData.business_wallet_id && (
-                      <p className="text-xs text-yellow-600 mt-1">
-                        Wallet ID: {schoolData.business_wallet_id}
-                      </p>
+                    {schoolData.merchant_code ? (
+                      <>
+                        <p className="text-lg text-yellow-700">Wallet information unavailable</p>
+                        <p className="text-xs text-yellow-600 mt-1">
+                          {schoolData.merchant_status === 'pending_onboarding' 
+                            ? 'Merchant onboarding in progress. Wallet will be available after approval.'
+                            : 'Unable to fetch wallet balance from payment system. Please contact support if this persists.'}
+                        </p>
+                        {schoolData.business_wallet_id && (
+                          <p className="text-xs text-yellow-600 mt-1">
+                            Wallet ID: {schoolData.business_wallet_id}
+                          </p>
+                        )}
+                        {schoolData.merchant_code && (
+                          <p className="text-xs text-yellow-600 mt-1">
+                            Merchant Code: {schoolData.merchant_code}
+                          </p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-lg text-yellow-700">Loading wallet information...</p>
                     )}
                   </div>
                 </div>

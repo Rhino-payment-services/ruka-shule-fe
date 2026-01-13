@@ -9,8 +9,29 @@ export const api = axios.create({
   },
 });
 
+// Public endpoints that don't require authentication
+const publicEndpoints = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/check-phone',
+  '/auth/check-email',
+  '/schools/lookup',
+  '/schools/check-name',
+  '/schools/check-phone',
+];
+
+const isPublicEndpoint = (url: string | undefined): boolean => {
+  if (!url) return false;
+  return publicEndpoints.some(endpoint => url.includes(endpoint));
+};
+
 // Add token to requests
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  // Skip adding auth headers for public endpoints
+  if (isPublicEndpoint(config.url)) {
+    return config;
+  }
+
   if (typeof window !== 'undefined') {
     // Always read fresh token from localStorage
     const token = localStorage.getItem('token');
@@ -58,10 +79,10 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    // Don't redirect on 401 for login/register endpoints - let them handle their own errors
-    const isAuthEndpoint = error.config?.url?.includes('/auth/login') || error.config?.url?.includes('/auth/register');
+    // Don't redirect on 401 for public endpoints - let them handle their own errors
+    const isPublic = isPublicEndpoint(error.config?.url);
     
-    if (error.response?.status === 401 && !isAuthEndpoint) {
+    if (error.response?.status === 401 && !isPublic) {
       if (typeof window !== 'undefined') {
         const token = localStorage.getItem('token');
         const now = Date.now();
@@ -117,6 +138,10 @@ export const authAPI = {
     api.post('/auth/register', data),
   login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data),
+  checkPhone: (phone: string) =>
+    api.get(`/auth/check-phone?phone=${encodeURIComponent(phone)}`),
+  checkEmail: (email: string) =>
+    api.get(`/auth/check-email?email=${encodeURIComponent(email)}`),
 };
 
 // Schools API
@@ -128,6 +153,10 @@ export const schoolsAPI = {
   lookup: (identifier: string) => api.get(`/schools/lookup?identifier=${identifier}`), // Public lookup by code or merchant ID
   create: (data: Record<string, unknown>) => api.post('/schools', data),
   register: (data: Record<string, unknown>) => api.post('/schools/register', data), // For school_admin self-registration
+  checkName: (name: string) =>
+    api.get(`/schools/check-name?name=${encodeURIComponent(name)}`),
+  checkPhone: (phone: string) =>
+    api.get(`/schools/check-phone?phone=${encodeURIComponent(phone)}`),
 };
 
 // Students API

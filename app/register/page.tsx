@@ -5,12 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Mail, Lock, Phone, Eye, EyeOff, Sparkles, User, School, ChevronRight, ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RukapayLogo } from '@/components/RukapayLogo';
-import { schoolsAPI } from '@/lib/api';
+import { schoolsAPI, authAPI } from '@/lib/api';
 
 type RegistrationStep = 'personal' | 'contact' | 'password' | 'school';
 
@@ -18,7 +19,7 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState({
     // User Information
     email: '',
-    phone: '',
+    phone: '+256',
     password: '',
     confirmPassword: '',
     firstName: '',
@@ -29,7 +30,6 @@ export default function RegisterPage() {
     schoolName: '',
     schoolAbbreviation: '',
     schoolAddress: '',
-    schoolPhone: '',
     schoolEmail: '',
   });
 
@@ -38,6 +38,8 @@ export default function RegisterPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [validating, setValidating] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { register } = useAuth();
   const router = useRouter();
 
@@ -57,18 +59,244 @@ export default function RegisterPage() {
       case 'personal':
         return formData.firstName && formData.lastName;
       case 'contact':
-        return formData.email && formData.phone;
+        // Phone should start with + and have at least 10 characters total (country code + number)
+        // Don't check fieldErrors here - validation happens on Next click
+        return formData.email && formData.phone && formData.phone.startsWith('+') && formData.phone.length >= 10;
       case 'password':
         return formData.password.length >= 6 && formData.password === formData.confirmPassword;
       case 'school':
-        return formData.schoolName && formData.schoolPhone && formData.schoolEmail;
+        // Phone should be valid (starts with + and has at least 10 characters)
+        const isPhoneValid = formData.phone && formData.phone.startsWith('+') && formData.phone.length >= 10;
+        return formData.schoolName && isPhoneValid && formData.schoolEmail;
       default:
         return false;
     }
   };
 
-  const handleNext = () => {
+  const validateUserPhone = async (phone: string): Promise<boolean> => {
+    if (!phone || phone.length < 10) {
+      const errorMsg = 'Please enter a valid phone number';
+      setFieldErrors(prev => ({ ...prev, phone: errorMsg }));
+      toast.error(errorMsg);
+      return false; // Phone too short
+    }
+
+    try {
+      // Backend now handles normalization and checks multiple formats
+      const response = await authAPI.checkPhone(phone);
+      
+      // Handle different response structures
+      const responseData = response.data?.data || response.data || {};
+      const exists = responseData.exists === true; // Explicitly check for true
+      
+      console.log('Phone validation result:', { 
+        phone, 
+        exists, 
+        responseData,
+        fullResponse: response.data 
+      });
+      
+      if (exists === true) {
+        // Phone exists - show error and prevent proceeding
+        const errorMsg = 'This phone number is already registered';
+        setFieldErrors(prev => ({ ...prev, phone: errorMsg }));
+        toast.error(errorMsg);
+        return false;
+      }
+
+      // Phone NOT found (exists = false or undefined) - this is GOOD, allow proceeding
+      console.log('Phone is available (not found), allowing proceeding');
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.phone;
+        return newErrors;
+      });
+      return true; // Phone is available, allow proceeding
+    } catch (err: any) {
+      // Handle 404 - endpoint might not be available (backend not updated)
+      if (err?.response?.status === 404) {
+        console.warn('Validation endpoint not available, skipping phone validation');
+        // Clear error and allow proceeding if endpoint doesn't exist
+        setFieldErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors.phone;
+          return newErrors;
+        });
+        return true;
+      }
+      // For other errors (500, network errors, etc.), log but allow proceeding
+      console.error('Error checking phone:', err);
+      // Clear any previous errors and allow proceeding
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.phone;
+        return newErrors;
+      });
+      return true; // Allow proceeding if validation fails (don't block user)
+    }
+  };
+
+  const validateUserEmail = async (email: string): Promise<boolean> => {
+    try {
+      const response = await authAPI.checkEmail(email);
+      
+      // Handle different response structures
+      const responseData = response.data?.data || response.data || {};
+      const exists = responseData.exists === true; // Explicitly check for true
+      
+      console.log('Email validation result:', { email, exists, responseData });
+      
+      if (exists === true) {
+        const errorMsg = 'This email is already registered';
+        setFieldErrors(prev => ({ ...prev, email: errorMsg }));
+        toast.error(errorMsg);
+        return false;
+      }
+      
+      // Email NOT found (exists = false) - this is GOOD, allow proceeding
+      console.log('Email is available (not found), allowing proceeding');
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.email;
+        return newErrors;
+      });
+      return true;
+    } catch (err: any) {
+      // Handle 404 - endpoint might not be available (backend not updated)
+      if (err?.response?.status === 404) {
+        console.warn('Validation endpoint not available, skipping email validation');
+        return true; // Allow proceeding if endpoint doesn't exist
+      }
+      console.error('Error checking email:', err);
+      return true; // Allow proceeding if validation fails (network error)
+    }
+  };
+
+  const validateSchoolName = async (name: string): Promise<boolean> => {
+    try {
+      const response = await schoolsAPI.checkName(name);
+      const exists = response.data?.data?.exists || false;
+      if (exists) {
+        const errorMsg = 'A school with this name already exists';
+        setFieldErrors(prev => ({ ...prev, schoolName: errorMsg }));
+        toast.error(errorMsg);
+        return false;
+      }
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.schoolName;
+        return newErrors;
+      });
+      return true;
+    } catch (err: any) {
+      // Handle 404 - endpoint might not be available (backend not updated)
+      if (err?.response?.status === 404) {
+        console.warn('Validation endpoint not available, skipping school name validation');
+        return true; // Allow proceeding if endpoint doesn't exist
+      }
+      console.error('Error checking school name:', err);
+      return true; // Allow proceeding if validation fails (network error)
+    }
+  };
+
+  const validateSchoolPhone = async (phone: string): Promise<boolean> => {
+    try {
+      // Backend handles normalization - just check the phone as-is
+      const response = await schoolsAPI.checkPhone(phone);
+      const exists = response.data?.data?.exists || false;
+      
+      if (exists) {
+        // School phone exists - show error
+        const errorMsg = 'A school with this phone number already exists';
+        setFieldErrors(prev => ({ ...prev, phone: errorMsg }));
+        toast.error(errorMsg);
+        return false;
+      }
+
+      // Phone NOT found (exists = false) - this is GOOD, allow proceeding
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.phone;
+        return newErrors;
+      });
+      return true; // Phone is available, allow proceeding
+    } catch (err: any) {
+      // Handle 404 - endpoint might not be available (backend not updated)
+      if (err?.response?.status === 404) {
+        console.warn('Validation endpoint not available, skipping school phone validation');
+        // Clear error and allow proceeding
+        setFieldErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors.phone;
+          return newErrors;
+        });
+        return true;
+      }
+      // For other errors, log but allow proceeding
+      console.error('Error checking school phone:', err);
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.phone;
+        return newErrors;
+      });
+      return true; // Allow proceeding if validation fails (network error)
+    }
+  };
+
+  const handleNext = async () => {
     const currentIndex = getCurrentStepIndex();
+    if (!canProceedToNext()) {
+      return;
+    }
+
+    setError('');
+
+    // Validate before proceeding to next step
+    if (currentStep === 'contact') {
+      setValidating(true);
+      
+      // Validate phone and email in parallel
+      const [phoneValid, emailValid] = await Promise.all([
+        validateUserPhone(formData.phone),
+        validateUserEmail(formData.email)
+      ]);
+      
+      console.log('Validation results:', { phoneValid, emailValid, phone: formData.phone, email: formData.email });
+      
+      setValidating(false);
+
+      // Only block if validation explicitly fails (phone/email exists)
+      // If phone/email is NOT found (exists = false), validation returns true and we proceed
+      if (!phoneValid || !emailValid) {
+        console.log('Validation failed, blocking progression:', { phoneValid, emailValid, fieldErrors });
+        // Don't proceed - validation errors are already set in fieldErrors
+        return;
+      }
+      
+      // Both validations passed (phone and email are available)
+      console.log('Validation passed, proceeding to next step');
+      // Clear any previous errors and proceed
+      setFieldErrors({});
+      setError('');
+    }
+
+    if (currentStep === 'password') {
+      // Before going to school step, validate school name if it's filled
+      if (formData.schoolName) {
+        setValidating(true);
+        let schoolNameValid = true;
+
+        if (formData.schoolName) {
+          schoolNameValid = await validateSchoolName(formData.schoolName);
+        }
+        setValidating(false);
+
+        if (!schoolNameValid) {
+          return; // Don't proceed if validation fails
+        }
+      }
+    }
+
     if (currentIndex < steps.length - 1) {
       setCurrentStep(steps[currentIndex + 1].id);
     }
@@ -92,16 +320,52 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setFieldErrors({});
     setLoading(true);
 
     // Validate password confirmation
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match. Please try again.');
+      const errorMsg = 'Passwords do not match. Please try again.';
+      setError(errorMsg);
+      toast.error(errorMsg);
       setLoading(false);
       return;
     }
 
     try {
+      // Validate all fields before proceeding
+      setValidating(true);
+      
+      // Validate user phone and email
+      const phoneValid = await validateUserPhone(formData.phone);
+      const emailValid = await validateUserEmail(formData.email);
+      
+      if (!phoneValid || !emailValid) {
+        const errorMsg = 'Please fix the validation errors above before submitting.';
+        setError(errorMsg);
+        toast.error(errorMsg);
+        setValidating(false);
+        setLoading(false);
+        return;
+      }
+
+      // Validate school name and phone if creating school
+      if (formData.role === 'school_admin' && formData.schoolName && formData.phone) {
+        const schoolNameValid = await validateSchoolName(formData.schoolName);
+        const schoolPhoneValid = await validateSchoolPhone(formData.phone);
+        
+        if (!schoolNameValid || !schoolPhoneValid) {
+          const errorMsg = 'Please fix the school validation errors above before submitting.';
+          setError(errorMsg);
+          toast.error(errorMsg);
+          setValidating(false);
+          setLoading(false);
+          return;
+        }
+      }
+      
+      setValidating(false);
+
       // Step 1: Register the user
       const registerData: { 
         email: string; 
@@ -119,32 +383,39 @@ export default function RegisterPage() {
       await register(registerData);
 
       // Step 2: Create school for school_admin using the register endpoint
-      if (formData.role === 'school_admin' && formData.schoolName && formData.schoolPhone && formData.schoolEmail) {
+      // Use the same phone number for both user and school
+      if (formData.role === 'school_admin' && formData.schoolName && formData.phone && formData.schoolEmail) {
         try {
           await schoolsAPI.register({
             name: formData.schoolName,
             abbreviation: formData.schoolAbbreviation || undefined,
             address: formData.schoolAddress || undefined,
-            phone: formData.schoolPhone,
+            phone: formData.phone, // Use same phone as user
             email: formData.schoolEmail,
+            owner_first_name: formData.firstName,
+            owner_last_name: formData.lastName,
           });
           // School is created and user is automatically linked via the backend
         } catch (schoolErr: unknown) {
-          // Log error but don't fail registration - school can be created later
+          // If school creation fails, user is already registered - this is a problem
+          // We should ideally rollback user registration, but for now show error
           console.error('Failed to create school during registration:', schoolErr);
           const axiosError = schoolErr as { response?: { data?: { error?: string } }; message?: string };
-          setError(`Registration successful, but school creation failed: ${axiosError.response?.data?.error || axiosError.message || 'Unknown error'}. You can create the school later from the dashboard.`);
-          setTimeout(() => {
-            router.push('/dashboard');
-          }, 3000);
-          return;
+          const errorMsg = `Registration successful, but school creation failed: ${axiosError.response?.data?.error || axiosError.message || 'Unknown error'}. Please contact support.`;
+          setError(errorMsg);
+          toast.error(errorMsg);
+          setLoading(false);
+          return; // Don't redirect to dashboard
         }
       }
 
       router.push('/dashboard');
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: string } }; message?: string };
-      setError(axiosError.response?.data?.error || axiosError.message || 'Registration failed. Please try again.');
+      const errorMsg = axiosError.response?.data?.error || axiosError.message || 'Registration failed. Please try again.';
+      setError(errorMsg);
+      toast.error(errorMsg);
+      setValidating(false);
     } finally {
       setLoading(false);
     }
@@ -201,7 +472,7 @@ export default function RegisterPage() {
 
           {/* Form Card */}
           <Card className="border-0 shadow-xl shadow-primary/5">
-            <CardHeader className="space-y-1 pb-4">
+            <CardHeader className="space-y-1 pb-4 px-0">
               <CardTitle className="text-2xl">{steps.find(s => s.id === currentStep)?.title}</CardTitle>
               <CardDescription>
                 {currentStep === 'personal' && 'Tell us about yourself'}
@@ -210,7 +481,7 @@ export default function RegisterPage() {
                 {currentStep === 'school' && 'Enter your school information'}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="px-0">
               <form onSubmit={handleSubmit} className="space-y-5">
                 {error && (
                   <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive animate-in fade-in slide-in-from-top-2">
@@ -221,31 +492,29 @@ export default function RegisterPage() {
                 {/* Step 1: Personal Information */}
                 {currentStep === 'personal' && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="firstName" className="text-sm font-medium">First Name <span className="text-red-500">*</span></Label>
-                        <Input
-                          id="firstName"
-                          type="text"
-                          value={formData.firstName}
-                          onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                          placeholder="John"
-                          required
-                          className="h-10 border-2"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="lastName" className="text-sm font-medium">Last Name <span className="text-red-500">*</span></Label>
-                        <Input
-                          id="lastName"
-                          type="text"
-                          value={formData.lastName}
-                          onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                          placeholder="Doe"
-                          required
-                          className="h-10 border-2"
-                        />
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName" className="text-sm font-medium">First Name <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="firstName"
+                        type="text"
+                        value={formData.firstName}
+                        onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                        placeholder="John"
+                        required
+                        className="h-10 border-2 w-full"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName" className="text-sm font-medium">Last Name <span className="text-red-500">*</span></Label>
+                      <Input
+                        id="lastName"
+                        type="text"
+                        value={formData.lastName}
+                        onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                        placeholder="Doe"
+                        required
+                        className="h-10 border-2 w-full"
+                      />
                     </div>
                   </div>
                 )}
@@ -261,28 +530,63 @@ export default function RegisterPage() {
                           id="email"
                           type="email"
                           value={formData.email}
-                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          onChange={(e) => {
+                            setFormData({ ...formData, email: e.target.value });
+                            if (fieldErrors.email) {
+                              setFieldErrors(prev => {
+                                const newErrors = { ...prev };
+                                delete newErrors.email;
+                                return newErrors;
+                              });
+                            }
+                          }}
                           placeholder="admin@school.com"
                           required
-                          className="pl-10 h-10 border-2 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          className={`pl-10 h-10 border-2 transition-all focus:ring-2 focus:ring-primary/20 ${
+                            fieldErrors.email ? 'border-destructive focus:border-destructive' : 'focus:border-primary'
+                          }`}
                         />
                       </div>
+                      {fieldErrors.email && (
+                        <p className="text-xs text-destructive">{fieldErrors.email}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="phone" className="text-sm font-medium">Phone <span className="text-red-500">*</span></Label>
+                      <Label htmlFor="phone" className="text-sm font-medium">Phone Number <span className="text-red-500">*</span></Label>
                       <div className="relative group">
                         <Phone className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground transition-colors group-focus-within:text-primary" />
                         <Input
                           id="phone"
                           type="tel"
                           value={formData.phone}
-                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          onChange={(e) => {
+                            let value = e.target.value;
+                            // Allow user to type freely, but ensure it starts with +
+                            if (value && !value.startsWith('+')) {
+                              // If user types without +, add it
+                              value = '+' + value;
+                            }
+                            setFormData({ ...formData, phone: value });
+                            if (fieldErrors.phone) {
+                              setFieldErrors(prev => {
+                                const newErrors = { ...prev };
+                                delete newErrors.phone;
+                                return newErrors;
+                              });
+                            }
+                          }}
                           placeholder="+256700000000"
                           required
-                          className="pl-10 h-10 border-2 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          className={`pl-10 h-10 border-2 transition-all focus:ring-2 focus:ring-primary/20 ${
+                            fieldErrors.phone ? 'border-destructive focus:border-destructive' : 'focus:border-primary'
+                          }`}
                         />
                       </div>
+                      {fieldErrors.phone && (
+                        <p className="text-xs text-destructive">{fieldErrors.phone}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground">This phone number will be used for both your account and school registration</p>
                     </div>
                   </div>
                 )}
@@ -364,38 +668,57 @@ export default function RegisterPage() {
                         id="schoolName"
                         type="text"
                         value={formData.schoolName}
-                        onChange={(e) => setFormData({ ...formData, schoolName: e.target.value })}
+                        onChange={async (e) => {
+                          const value = e.target.value;
+                          setFormData({ ...formData, schoolName: value });
+                          if (fieldErrors.schoolName) {
+                            setFieldErrors(prev => {
+                              const newErrors = { ...prev };
+                              delete newErrors.schoolName;
+                              return newErrors;
+                            });
+                          }
+                          // Validate on blur or after typing stops
+                          if (value && value.length > 3) {
+                            setTimeout(async () => {
+                              await validateSchoolName(value);
+                            }, 500);
+                          }
+                        }}
                         placeholder="e.g., St. Mary's Primary School"
                         required
-                        className="h-10 border-2"
+                        className={`h-10 border-2 ${
+                          fieldErrors.schoolName ? 'border-destructive focus:border-destructive' : ''
+                        }`}
                       />
+                      {fieldErrors.schoolName && (
+                        <p className="text-xs text-destructive">{fieldErrors.schoolName}</p>
+                      )}
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="schoolAbbreviation" className="text-sm font-medium">Abbreviation</Label>
-                        <Input
-                          id="schoolAbbreviation"
-                          type="text"
-                          value={formData.schoolAbbreviation}
-                          onChange={(e) => setFormData({ ...formData, schoolAbbreviation: e.target.value.toUpperCase() })}
-                          placeholder="STMP"
-                          maxLength={6}
-                          className="h-10 border-2"
-                        />
-                        <p className="text-xs text-muted-foreground">Optional - used for code generation</p>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="schoolPhone" className="text-sm font-medium">School Phone <span className="text-red-500">*</span></Label>
-                        <Input
-                          id="schoolPhone"
-                          type="tel"
-                          value={formData.schoolPhone}
-                          onChange={(e) => setFormData({ ...formData, schoolPhone: e.target.value })}
-                          placeholder="+256700123456"
-                          required
-                          className="h-10 border-2"
-                        />
+                    <div className="space-y-2">
+                      <Label htmlFor="schoolAbbreviation" className="text-sm font-medium">Abbreviation</Label>
+                      <Input
+                        id="schoolAbbreviation"
+                        type="text"
+                        value={formData.schoolAbbreviation}
+                        onChange={(e) => setFormData({ ...formData, schoolAbbreviation: e.target.value.toUpperCase() })}
+                        placeholder="STMP"
+                        maxLength={6}
+                        className="h-10 border-2 w-full"
+                      />
+                      <p className="text-xs text-muted-foreground">Optional - used for code generation</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="schoolPhone" className="text-sm font-medium">School Phone <span className="text-red-500">*</span></Label>
+                      <div className="p-3 bg-muted rounded-md border-2 border-dashed w-full">
+                        <div className="flex items-center gap-2">
+                          <Phone className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">{formData.phone}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Using the same phone number from your contact information
+                        </p>
                       </div>
                     </div>
 
@@ -445,11 +768,20 @@ export default function RegisterPage() {
                     <Button
                       type="button"
                       onClick={handleNext}
-                      disabled={!canProceedToNext() || loading}
+                      disabled={!canProceedToNext() || loading || validating}
                       className="flex-1 bg-[#08163d] hover:bg-[#0a1f4f] text-white"
                     >
-                      Next
-                      <ChevronRight className="ml-2 h-4 w-4" />
+                      {validating ? (
+                        <span className="flex items-center gap-2">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          Validating...
+                        </span>
+                      ) : (
+                        <>
+                          Next
+                          <ChevronRight className="ml-2 h-4 w-4" />
+                        </>
+                      )}
                     </Button>
                   ) : (
                     <>
@@ -467,13 +799,44 @@ export default function RegisterPage() {
                       )}
                       <Button
                         type="submit"
-                        disabled={loading || !formData.email || !formData.phone || !formData.password || !formData.confirmPassword || formData.password !== formData.confirmPassword || !formData.firstName || !formData.lastName || !formData.schoolName || !formData.schoolPhone || !formData.schoolEmail}
-                        className="flex-1 bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+                        disabled={(() => {
+                          // Check only required fields - don't block on fieldErrors as validation happens on submit
+                          const isDisabled = 
+                            loading || 
+                            validating || 
+                            !formData.email || 
+                            !formData.phone || 
+                            !formData.password || 
+                            !formData.confirmPassword || 
+                            formData.password !== formData.confirmPassword || 
+                            !formData.firstName || 
+                            !formData.lastName || 
+                            !formData.schoolName || 
+                            !formData.schoolEmail;
+                          
+                          // Log what's blocking the button (only in development)
+                          if (isDisabled && process.env.NODE_ENV === 'development' && !loading && !validating) {
+                            const missingFields = [];
+                            if (!formData.email) missingFields.push('email');
+                            if (!formData.phone) missingFields.push('phone');
+                            if (!formData.password) missingFields.push('password');
+                            if (!formData.confirmPassword) missingFields.push('confirmPassword');
+                            if (formData.password !== formData.confirmPassword) missingFields.push('passwordsMatch');
+                            if (!formData.firstName) missingFields.push('firstName');
+                            if (!formData.lastName) missingFields.push('lastName');
+                            if (!formData.schoolName) missingFields.push('schoolName');
+                            if (!formData.schoolEmail) missingFields.push('schoolEmail');
+                            console.log('Sign up button disabled - missing fields:', missingFields);
+                          }
+                          
+                          return isDisabled;
+                        })()}
+                        className="flex-1 bg-[#08163d] hover:bg-[#0a1f4f] text-white disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {loading ? (
+                        {loading || validating ? (
                           <span className="flex items-center gap-2">
                             <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                            Creating account...
+                            {validating ? 'Validating...' : 'Creating account...'}
                           </span>
                         ) : (
                           'Sign up'
