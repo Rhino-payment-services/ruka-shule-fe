@@ -16,6 +16,7 @@ interface SchoolData {
   name: string;
   code: string;
   merchant_code?: string;
+  merchant_status?: string;
   business_wallet_id?: string;
   wallet?: {
     id: string;

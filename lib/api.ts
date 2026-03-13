@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosRequestConfig, InternalAxiosRequestConfig, AxiosRequestHeaders } from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
@@ -39,7 +39,7 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     if (token && token.trim() !== '') {
       // Ensure headers object exists
       if (!config.headers) {
-        config.headers = {};
+        config.headers = {} as AxiosRequestHeaders;
       }
       
       // Set Authorization header - axios should handle this correctly

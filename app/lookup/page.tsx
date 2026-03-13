@@ -25,6 +25,7 @@ interface Student {
   last_name: string;
   phone: string;
   class: string;
+  stream?: string | null;
   school_name: string;
   school_code: string;
 }
@@ -46,6 +47,8 @@ interface Fee {
   class?: string;
   academic_year: string;
   term: string;
+   // Optional: when set, fee applies only to a specific stream (Arts, Sciences, etc.)
+  stream?: string | null;
   due_date?: string;
 }
 
@@ -241,6 +244,25 @@ export default function LookupPage() {
 
   const calculateTotalFees = () => {
     return fees.reduce((total, fee) => total + fee.amount, 0);
+  };
+
+  // Calculate total fees for a specific student stream.
+  // - If the fee has no stream, it applies to all streams.
+  // - If the fee has a stream, it only applies when it matches the student's stream.
+  // - If student has no stream, we exclude stream-specific fees to avoid double-counting.
+  const calculateTotalFeesForStream = (stream?: string | null) => {
+    return fees.reduce((total, fee) => {
+      if (fee.stream) {
+        if (!stream) {
+          // Student stream unknown – skip stream-specific tuition
+          return total;
+        }
+        if (fee.stream !== stream) {
+          return total;
+        }
+      }
+      return total + fee.amount;
+    }, 0);
   };
 
   return (
@@ -537,6 +559,12 @@ export default function LookupPage() {
                                   <School className="h-4 w-4 text-muted-foreground" />
                                   <span><strong>Class:</strong> {student.class}</span>
                               </div>
+                              {student.stream && (
+                                <div className="flex items-center gap-2">
+                                  <School className="h-4 w-4 text-muted-foreground" />
+                                  <span><strong>Stream:</strong> {student.stream}</span>
+                                </div>
+                              )}
                               <div className="flex items-center gap-2">
                                   <School className="h-4 w-4 text-muted-foreground" />
                                   <span><strong>School:</strong> {student.school_name}</span>
@@ -545,7 +573,7 @@ export default function LookupPage() {
                               <div className="pt-4 border-t">
                                 <p className="text-sm font-medium mb-2">Total Fees for {student.class}:</p>
                                 <p className="text-2xl font-bold text-primary">
-                                  UGX {calculateTotalFees().toLocaleString()}
+                                  UGX {calculateTotalFeesForStream(student.stream).toLocaleString()}
                                 </p>
                               </div>
                         </div>
