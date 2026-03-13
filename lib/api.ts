@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
+import axios, { AxiosRequestConfig, InternalAxiosRequestConfig, AxiosRequestHeaders } from 'axios';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
@@ -9,8 +9,29 @@ export const api = axios.create({
   },
 });
 
+// Public endpoints that don't require authentication
+const publicEndpoints = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/check-phone',
+  '/auth/check-email',
+  '/schools/lookup',
+  '/schools/check-name',
+  '/schools/check-phone',
+];
+
+const isPublicEndpoint = (url: string | undefined): boolean => {
+  if (!url) return false;
+  return publicEndpoints.some(endpoint => url.includes(endpoint));
+};
+
 // Add token to requests
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  // Skip adding auth headers for public endpoints
+  if (isPublicEndpoint(config.url)) {
+    return config;
+  }
+
   if (typeof window !== 'undefined') {
     // Always read fresh token from localStorage
     const token = localStorage.getItem('token');
@@ -18,7 +39,7 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     if (token && token.trim() !== '') {
       // Ensure headers object exists
       if (!config.headers) {
-        config.headers = {};
+        config.headers = {} as AxiosRequestHeaders;
       }
       
       // Set Authorization header - axios should handle this correctly
@@ -58,10 +79,10 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    // Don't redirect on 401 for login/register endpoints - let them handle their own errors
-    const isAuthEndpoint = error.config?.url?.includes('/auth/login') || error.config?.url?.includes('/auth/register');
+    // Don't redirect on 401 for public endpoints - let them handle their own errors
+    const isPublic = isPublicEndpoint(error.config?.url);
     
-    if (error.response?.status === 401 && !isAuthEndpoint) {
+    if (error.response?.status === 401 && !isPublic) {
       if (typeof window !== 'undefined') {
         const token = localStorage.getItem('token');
         const now = Date.now();
@@ -117,6 +138,10 @@ export const authAPI = {
     api.post('/auth/register', data),
   login: (data: { email: string; password: string }) =>
     api.post('/auth/login', data),
+  checkPhone: (phone: string) =>
+    api.get(`/auth/check-phone?phone=${encodeURIComponent(phone)}`),
+  checkEmail: (email: string) =>
+    api.get(`/auth/check-email?email=${encodeURIComponent(email)}`),
 };
 
 // Schools API
@@ -124,12 +149,19 @@ export const schoolsAPI = {
   list: (page = 1, pageSize = 10) =>
     api.get(`/schools?page=${page}&page_size=${pageSize}`),
   get: (id: string) => api.get(`/schools/${id}`),
+  getMySchool: () => api.get('/schools/me'), // For school_admin to get their own school
+  lookup: (identifier: string) => api.get(`/schools/lookup?identifier=${identifier}`), // Public lookup by code or merchant ID
   create: (data: Record<string, unknown>) => api.post('/schools', data),
+  register: (data: Record<string, unknown>) => api.post('/schools/register', data), // For school_admin self-registration
+  checkName: (name: string) =>
+    api.get(`/schools/check-name?name=${encodeURIComponent(name)}`),
+  checkPhone: (phone: string) =>
+    api.get(`/schools/check-phone?phone=${encodeURIComponent(phone)}`),
 };
 
 // Students API
 export const studentsAPI = {
-  lookup: (params: { student_id?: string; school_code?: string; phone?: string }) =>
+  lookup: (params: { registration_id?: string; school_code?: string; phone?: string }) =>
     api.get('/students/lookup', { params }),
   list: (page = 1, pageSize = 10) =>
     api.get(`/students?page=${page}&page_size=${pageSize}`),
@@ -146,16 +178,27 @@ export const paymentsAPI = {
     api.get(`/payments?page=${page}&page_size=${pageSize}`),
   getSummary: (studentId: string) =>
     api.get(`/payments/student/${studentId}/summary`),
+  listByStudent: (studentId: string) =>
+    api.get(`/payments/student/${studentId}`),
+  getTermStatus: (studentId: string, academicYear: string, term: string) =>
+    api.get(`/payments/student/${studentId}/term`, {
+      params: { academic_year: academicYear, term },
+    }),
 };
 
 // Fees API
 export const feesAPI = {
   list: (page = 1, pageSize = 10) =>
     api.get(`/fees?page=${page}&page_size=${pageSize}`),
+  get: (id: string) => api.get(`/fees/${id}`),
   listByClass: (className: string, page = 1, pageSize = 10) =>
     api.get(`/fees/class/${className}?page=${page}&page_size=${pageSize}`),
+  getBySchoolAndClass: (schoolId: string, className: string, page = 1, pageSize = 10) =>
+    api.get(`/fees/public?school_id=${schoolId}&class=${className}&page=${page}&page_size=${pageSize}`), // Public endpoint
   create: (data: Record<string, unknown>) => api.post('/fees', data),
   createClassFee: (data: Record<string, unknown>) => api.post('/fees/class', data),
+  update: (id: string, data: Record<string, unknown>) => api.put(`/fees/${id}`, data),
+  delete: (id: string) => api.delete(`/fees/${id}`),
 };
 
 // Receipts API
