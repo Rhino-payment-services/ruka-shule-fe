@@ -83,7 +83,7 @@ export default function DashboardPage() {
     } catch (error: unknown) {
       console.error('Failed to load stats:', error);
       const axiosError = error as { response?: { status?: number; data?: { error?: string } }; message?: string };
-      if (error.response?.status === 401) {
+      if (axiosError.response?.status === 401) {
         console.error('Authentication error loading stats');
       }
     } finally {
