@@ -18,6 +18,10 @@ const publicEndpoints = [
   '/schools/lookup',
   '/schools/check-name',
   '/schools/check-phone',
+  '/payments/lookup-student',
+  '/payments/process',
+  '/payments/initiate',
+  '/payments/status',
 ];
 
 const isPublicEndpoint = (url: string | undefined): boolean => {
@@ -174,6 +178,23 @@ export const studentsAPI = {
 export const paymentsAPI = {
   initiate: (data: Record<string, unknown>) => api.post('/payments/initiate', data),
   getStatus: (reference: string) => api.get(`/payments/status/${reference}`),
+  lookupStudentForPayment: (registrationId: string, schoolCode: string) =>
+    api.post('/payments/lookup-student', {
+      registration_id: registrationId,
+      school_code: schoolCode,
+    }),
+  processPayment: (data: {
+    registration_id: string;
+    school_code: string;
+    fee_id: string;
+    class: string;
+    amount: number;
+    currency: string;
+    payment_method: 'MOBILE_MONEY' | 'WALLET';
+    phone_number: string;
+    mno_provider?: string;
+    description?: string;
+  }) => api.post('/payments/process', data),
   list: (page = 1, pageSize = 10) =>
     api.get(`/payments?page=${page}&page_size=${pageSize}`),
   getSummary: (studentId: string) =>

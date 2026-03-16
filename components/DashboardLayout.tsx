@@ -13,14 +13,10 @@ import {
   LogOut,
   Menu,
   X,
-  Bell,
-  Search,
-  MessageSquare,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { RukapayLogo } from '@/components/RukapayLogo';
 
@@ -89,7 +85,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       >
         <div className="flex h-full flex-col">
           {/* Logo */}
-          <div className="flex h-20 items-center justify-between border-b px-6 bg-primary/5">
+          <div className="flex h-20 items-center justify-between px-6 bg-primary/5">
             <RukapayLogo size="md" showText={true} />
             <Button
               variant="ghost"
@@ -108,7 +104,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </div>
             {menuItems.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.href;
+              const normalizedPath = pathname?.replace(/\/$/, '') || '';
+              const normalizedHref = item.href.replace(/\/$/, '');
+              const isActive =
+                normalizedPath === normalizedHref ||
+                (normalizedHref !== '/dashboard' && normalizedPath.startsWith(normalizedHref + '/'));
               return (
                 <Link
                   key={item.href}
@@ -116,30 +116,19 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   className={cn(
                     'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200',
                     isActive
-                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/20'
+                      ? 'bg-[#08163d] text-white shadow-lg'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                   )}
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-5 w-5 shrink-0" />
                   <span>{item.name}</span>
                 </Link>
               );
             })}
           </nav>
 
-          {/* User Info & Logout */}
-          <div className="border-t bg-gray-50 p-4 space-y-3">
-            <div className="flex items-center gap-3 px-2">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-lg">
-                {user?.email?.charAt(0).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium truncate">
-                  {user?.email?.split('@')[0] || 'User'}
-                </div>
-                <div className="text-xs text-muted-foreground truncate">{user?.email}</div>
-              </div>
-            </div>
+          {/* Logout */}
+          <div className="border-t bg-gray-50 p-4">
             <Button
               variant="ghost"
               onClick={handleLogout}
@@ -165,41 +154,18 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <Menu className="h-5 w-5" />
           </Button>
 
-          {/* Search */}
-          <div className="hidden flex-1 max-w-md items-center gap-2 md:flex">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search..."
-                className="pl-10 border-2 focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
-            <kbd className="hidden rounded border bg-muted px-2 py-1 text-xs text-muted-foreground md:inline">
-              ⌘F
-            </kbd>
-          </div>
+          <div className="flex flex-1" />
 
           {/* Right side */}
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="relative">
-              <MessageSquare className="h-5 w-5" />
-              <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary"></span>
-            </Button>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-primary"></span>
-            </Button>
-            <div className="flex items-center gap-3 pl-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-md">
-                {user?.email?.charAt(0).toUpperCase()}
+          <div className="flex items-center gap-3 pl-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-md">
+              {user?.email?.charAt(0).toUpperCase()}
+            </div>
+            <div className="hidden md:block">
+              <div className="text-sm font-medium">
+                {user?.email?.split('@')[0] || 'User'}
               </div>
-              <div className="hidden md:block">
-                <div className="text-sm font-medium">
-                  {user?.email?.split('@')[0] || 'User'}
-                </div>
-                <div className="text-xs text-muted-foreground">{user?.email}</div>
-              </div>
+              <div className="text-xs text-muted-foreground">{user?.email}</div>
             </div>
           </div>
         </header>
