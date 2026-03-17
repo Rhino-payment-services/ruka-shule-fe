@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CreditCard, Search, CheckCircle, XCircle, Clock, Loader2, Wallet, Smartphone } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { paymentsAPI, studentsAPI, schoolsAPI } from '@/lib/api';
+import { paymentsAPI, studentsAPI, schoolsAPI, API_BASE_URL } from '@/lib/api';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -60,6 +60,8 @@ interface Payment {
   registration_id: string;
   student_name?: string;
   fee_name?: string;
+  school_name?: string;
+  school_code?: string;
   paid_at?: string;
   created_at: string;
 }
@@ -119,14 +121,11 @@ export default function PaymentsPage() {
     try {
       setLoading(true);
       const response = await paymentsAPI.list(page, pageSize);
-      const paymentsData = response.data.data?.data || response.data.data || [];
+      // Backend returns PaginatedResponse: { data, page, page_size, total, total_pages }
+      const paymentsData = response.data.data || [];
+      const total = response.data.total;
       setPayments(paymentsData);
-      // Try to get total count if available
-      if (response.data.data?.total !== undefined) {
-        setTotalPayments(response.data.data.total);
-      } else {
-        setTotalPayments(paymentsData.length);
-      }
+      setTotalPayments(total !== undefined ? total : paymentsData.length);
     } catch (error) {
       console.error('Failed to load payments:', error);
     } finally {
@@ -188,9 +187,16 @@ export default function PaymentsPage() {
       const res = await paymentsAPI.lookupStudentForPayment(lookupRegistrationId.trim(), schoolCode);
       const data = res.data.data;
       setStudentLookupData(data);
-      setSelectedFee(null);
-      setPaymentAmount('');
       setPaymentPhone(data?.student?.phone || '');
+      // Auto-select first outstanding fee so admin can pay immediately
+      const payableFees = (data?.available_fees || []).filter((f: FeeForPayment) => !f.is_paid && f.outstanding > 0);
+      if (payableFees.length > 0) {
+        setSelectedFee(payableFees[0]);
+        setPaymentAmount(payableFees[0].outstanding.toString());
+      } else {
+        setSelectedFee(null);
+        setPaymentAmount('');
+      }
       toast.success('Student found');
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } }; message?: string };
@@ -240,6 +246,8 @@ export default function PaymentsPage() {
       const payment = res.data.data;
       setPaymentReference(payment.reference);
       toast.success('Payment initiated. Check your phone to complete.');
+      // Refresh list immediately so new payment appears without manual refresh
+      loadPayments();
       // Poll for status
       let pollCount = 0;
       const maxPolls = 40; // 2 minutes
@@ -322,6 +330,23 @@ export default function PaymentsPage() {
           <div>
             <h1 className="text-3xl font-bold">Payments</h1>
             <p className="mt-2 text-muted-foreground">View and manage payment transactions</p>
+            {payments.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-4 text-sm">
+                <span className="text-muted-foreground">
+                  <span className="font-semibold text-foreground">{totalPayments || payments.length}</span> total payment(s)
+                </span>
+                <span className="text-muted-foreground">
+                  <span className="font-semibold text-foreground">
+                    {payments.filter((p) => p.status === 'pending' || p.status === 'processing').length}
+                  </span> pending
+                </span>
+                <span className="text-muted-foreground">
+                  <span className="font-semibold text-green-600">
+                    {payments.filter((p) => p.status === 'completed' || p.status === 'paid').length}
+                  </span> completed
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Collect Payment Card */}
@@ -347,7 +372,12 @@ export default function PaymentsPage() {
                     onKeyDown={(e) => e.key === 'Enter' && handlePaymentLookup()}
                   />
                 </div>
-                {schoolCode && (
+                {schoolCode && studentLookupData?.school?.name && (
+                  <div className="text-sm text-muted-foreground">
+                    School: {studentLookupData.school.name} ({schoolCode})
+                  </div>
+                )}
+                {schoolCode && !studentLookupData && (
                   <div className="text-sm text-muted-foreground">School: {schoolCode}</div>
                 )}
                 <Button
@@ -368,11 +398,16 @@ export default function PaymentsPage() {
 
               {/* Step 2: Fees & Payment */}
               {studentLookupData && (
-                <div className="mt-4 space-y-4 rounded-lg border border-emerald-200 bg-white p-4">
+                  <div className="mt-4 space-y-4 rounded-lg border border-emerald-200 bg-white p-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">
-                      {studentLookupData.student.full_name} — {studentLookupData.student.class}
-                    </h3>
+                    <div>
+                      <h3 className="font-semibold">
+                        {studentLookupData.student.full_name} — {studentLookupData.student.class}
+                      </h3>
+                      {studentLookupData.school?.name && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{studentLookupData.school.name}</p>
+                      )}
+                    </div>
                     <Button variant="ghost" size="sm" onClick={resetPaymentFlow}>
                       Change student
                     </Button>
@@ -603,11 +638,24 @@ export default function PaymentsPage() {
           {/* Payments List Card */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5" />
-                Payment Transactions
-              </CardTitle>
-              <CardDescription>All payment transactions for your school</CardDescription>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <CreditCard className="h-5 w-5" />
+                    Payment Transactions
+                  </CardTitle>
+                  <CardDescription>All payment transactions for your school</CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => loadPayments()}
+                  disabled={loading}
+                >
+                  <Loader2 className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -637,18 +685,33 @@ export default function PaymentsPage() {
                       <TableBody>
                         {payments.map((payment) => (
                           <TableRow key={payment.id}>
-                            <TableCell className="font-mono text-sm">{payment.reference}</TableCell>
+                            <TableCell className="font-mono text-sm">
+                              <a
+                                href={`${API_BASE_URL}/receipts/${payment.reference}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:underline"
+                                title="View receipt"
+                              >
+                                {payment.reference}
+                              </a>
+                            </TableCell>
                             <TableCell>
                               <div>
                                 <p className="font-medium">{payment.student_name || 'N/A'}</p>
                                 <p className="text-xs text-muted-foreground">ID: {payment.registration_id}</p>
+                                {payment.school_name && (
+                                  <p className="text-xs text-muted-foreground">{payment.school_name}</p>
+                                )}
                               </div>
                             </TableCell>
                             <TableCell>{payment.fee_name || 'N/A'}</TableCell>
                             <TableCell className="font-semibold">
                               {payment.currency} {payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </TableCell>
-                            <TableCell>{payment.payment_method || 'N/A'}</TableCell>
+                            <TableCell>
+                              {payment.payment_method === 'MOBILE_MONEY' ? 'Mobile Money' : payment.payment_method || 'N/A'}
+                            </TableCell>
                             <TableCell>{getStatusBadge(payment.status)}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {formatDate(payment.paid_at || payment.created_at)}

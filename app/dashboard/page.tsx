@@ -3,9 +3,9 @@
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
-import { School, Users, CreditCard, TrendingUp, Wallet, Building2 } from 'lucide-react';
+import { School, Users, CreditCard, TrendingUp, Wallet, Building2, CheckCircle, Clock, XCircle, ArrowRight, UserPlus, Receipt } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { schoolsAPI, studentsAPI, paymentsAPI } from '@/lib/api';
+import { schoolsAPI, studentsAPI, paymentsAPI, feesAPI, adminAPI, API_BASE_URL } from '@/lib/api';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,8 +35,12 @@ export default function DashboardPage() {
     totalStudents: 0,
     totalPayments: 0,
     totalRevenue: 0,
+    totalActiveFees: 0,
   });
   const [schoolData, setSchoolData] = useState<SchoolData | null>(null);
+  const [recentPayments, setRecentPayments] = useState<Array<{ reference: string; amount: number; currency: string; status: string; student_name?: string; created_at: string }>>([]);
+  const [recentSchools, setRecentSchools] = useState<Array<{ id: string; name: string; code: string; created_at?: string }>>([]);
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -74,13 +78,37 @@ export default function DashboardPage() {
 
   const loadAdminStats = async () => {
     try {
-      const schoolsRes = await schoolsAPI.list(1, 1);
+      const [schoolsRes, statsRes] = await Promise.all([
+        schoolsAPI.list(1, 500),
+        adminAPI.getStats().catch(() => ({ data: { data: null } })),
+      ]);
+      const schools = schoolsRes.data.data || [];
+      const platformStats = statsRes.data?.data;
+      const totalSchools = Array.isArray(schools) ? schools.length : 0;
+      const pendingApprovals = Array.isArray(schools)
+        ? schools.filter(
+            (s: { merchant_status?: string }) =>
+              s.merchant_status === 'pending_onboarding' || s.merchant_status === 'kyc_submitted'
+          ).length
+        : 0;
       setStats({
-        totalSchools: schoolsRes.data.data?.length || schoolsRes.data.data?.data?.length || 0,
-        totalStudents: 0,
-        totalPayments: 0,
-        totalRevenue: 0,
+        totalSchools: platformStats?.total_schools ?? totalSchools,
+        totalStudents: platformStats?.total_students ?? 0,
+        totalPayments: platformStats?.total_payments ?? 0,
+        totalRevenue: platformStats?.total_revenue ?? 0,
+        totalActiveFees: 0,
       });
+      setRecentSchools(
+        Array.isArray(schools)
+          ? [...schools]
+              .sort(
+                (a: { created_at?: string }, b: { created_at?: string }) =>
+                  new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+              )
+              .slice(0, 5)
+          : []
+      );
+      setPendingApprovalsCount(pendingApprovals);
     } catch (error: unknown) {
       console.error('Failed to load stats:', error);
       const axiosError = error as { response?: { status?: number; data?: { error?: string } }; message?: string };
@@ -142,9 +170,10 @@ export default function DashboardPage() {
         setSchoolData(school);
       }
       
-      const [studentsRes, paymentsRes] = await Promise.all([
+      const [studentsRes, paymentsRes, feesRes] = await Promise.all([
         studentsAPI.list(1, 1), // Only need 1 for the list, but we'll use total count
-        paymentsAPI.list(1, 1),
+        paymentsAPI.list(1, 5), // Get 5 most recent for Recent Payments card
+        feesAPI.list(1, 200),   // Fetch fees to count active ones
       ]);
       
       // Extract total counts from paginated responses
@@ -166,11 +195,11 @@ export default function DashboardPage() {
         totalPayments = paymentsRes.data.data?.length || paymentsRes.data.data?.data?.length || 0;
       }
       
-      // Calculate total revenue from payments
+      // Calculate total revenue from payments (PaginatedResponse: data.data = array)
       let revenue = 0;
       try {
         const allPaymentsRes = await paymentsAPI.list(1, 100);
-        const payments = allPaymentsRes.data.data?.data || allPaymentsRes.data.data || [];
+        const payments = allPaymentsRes.data.data || [];
         revenue = payments.reduce((sum: number, p: { amount: number; status: string }) => {
           if (p.status === 'completed' || p.status === 'paid') {
             return sum + (p.amount || 0);
@@ -180,13 +209,22 @@ export default function DashboardPage() {
       } catch (err) {
         console.error('Failed to calculate revenue:', err);
       }
+
+      // Count active fees
+      const fees = feesRes.data.data || [];
+      const totalActiveFees = fees.filter((f: { status?: string }) => f.status === 'active').length;
       
       setStats({
         totalSchools: 0,
         totalStudents: totalStudents,
         totalPayments: totalPayments,
         totalRevenue: revenue,
+        totalActiveFees: totalActiveFees,
       });
+
+      // Set recent payments for the dashboard card (payments are ordered newest first)
+      const recent = paymentsRes.data.data || [];
+      setRecentPayments(recent);
     } catch (error: unknown) {
       console.error('Failed to load stats:', error);
       const axiosError = error as { response?: { status?: number; data?: { error?: string }; headers?: unknown }; config?: { url?: string; headers?: { Authorization?: string } }; message?: string };
@@ -205,7 +243,7 @@ export default function DashboardPage() {
     return (
       <ProtectedRoute allowedRoles={['admin']}>
         <DashboardLayout>
-          <AdminDashboard stats={stats} loading={loading} router={router} />
+          <AdminDashboard stats={stats} loading={loading} router={router} recentSchools={recentSchools} pendingApprovalsCount={pendingApprovalsCount} />
         </DashboardLayout>
       </ProtectedRoute>
     );
@@ -214,7 +252,7 @@ export default function DashboardPage() {
   return (
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
-        <SchoolAdminDashboard stats={stats} loading={loading} router={router} schoolData={schoolData} />
+        <SchoolAdminDashboard stats={stats} loading={loading} router={router} schoolData={schoolData} recentPayments={recentPayments} />
       </DashboardLayout>
     </ProtectedRoute>
   );
@@ -224,10 +262,14 @@ function AdminDashboard({
   stats,
   loading,
   router,
+  recentSchools = [],
+  pendingApprovalsCount = 0,
 }: {
-  stats: { totalSchools: number; totalStudents: number; totalPayments: number; totalRevenue: number };
+  stats: { totalSchools: number; totalStudents: number; totalPayments: number; totalRevenue: number; totalActiveFees?: number };
   loading: boolean;
   router: { push: (path: string) => void };
+  recentSchools?: Array<{ id: string; name: string; code: string; created_at?: string }>;
+  pendingApprovalsCount?: number;
 }) {
   return (
     <div className="space-y-6">
@@ -242,53 +284,143 @@ function AdminDashboard({
           title="Total Schools"
           value={stats.totalSchools}
           icon={School}
-          description="Active schools"
+          description="Registered schools"
           color="blue"
         />
         <StatCard
-          title="Pending Approvals"
-          value={0}
+          title="Total Students"
+          value={stats.totalStudents}
+          icon={Users}
+          description="Across all schools"
+          color="green"
+        />
+        <StatCard
+          title="Total Payments"
+          value={stats.totalPayments}
+          icon={CreditCard}
+          description="Platform transactions"
+          color="purple"
+        />
+        <StatCard
+          title="Revenue"
+          value={`UGX ${stats.totalRevenue.toLocaleString()}`}
           icon={TrendingUp}
-          description="Schools awaiting approval"
+          description="Total collected"
+          color="emerald"
+        />
+        <StatCard
+          title="Pending Approvals"
+          value={pendingApprovalsCount}
+          icon={Clock}
+          description="Schools awaiting merchant approval"
           color="orange"
         />
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-2 border-primary/20 bg-gradient-to-br from-white to-primary/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-primary"></div>
+      {/* Quick Actions & Recently Onboarded - stacked like school admin */}
+      <div className="space-y-6">
+        <Card className="border border-primary/20 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                <School className="h-4 w-4 text-primary" />
+              </div>
               Quick Actions
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <Button
-              onClick={() => router.push('/dashboard/schools')}
-              className="w-full bg-[#08163d] hover:bg-[#0a1f4f] text-white"
-            >
-              + Onboard New School
-            </Button>
-            <Button
-              onClick={() => router.push('/dashboard/schools')}
-              variant="outline"
-              className="w-full border-primary/30 hover:bg-primary/10 hover:border-primary"
-            >
-              View All Schools
-            </Button>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                onClick={() => router.push('/dashboard/schools/onboard')}
+                className="h-auto flex-col gap-1.5 py-3 bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+              >
+                <School className="h-4 w-4" />
+                <span className="text-xs font-medium">Onboard School</span>
+              </Button>
+              <Button
+                onClick={() => router.push('/dashboard/schools')}
+                variant="outline"
+                className="h-auto flex-col gap-1.5 py-3 border-primary/30 hover:bg-primary/5 hover:border-primary"
+              >
+                <Building2 className="h-4 w-4" />
+                <span className="text-xs font-medium">View Schools</span>
+              </Button>
+              <Button
+                onClick={() => router.push('/dashboard/platform-payments')}
+                variant="outline"
+                className="h-auto flex-col gap-1.5 py-3 border-primary/30 hover:bg-primary/5 hover:border-primary"
+              >
+                <CreditCard className="h-4 w-4" />
+                <span className="text-xs font-medium">Platform Payments</span>
+              </Button>
+              <Button
+                onClick={() => router.push('/dashboard/users')}
+                variant="outline"
+                className="h-auto flex-col gap-1.5 py-3 border-primary/30 hover:bg-primary/5 hover:border-primary"
+              >
+                <Users className="h-4 w-4" />
+                <span className="text-xs font-medium">Users</span>
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="border-2 border-blue-200 bg-gradient-to-br from-white to-blue-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-blue-500"></div>
-              Recent Activity
+        <Card className="border border-blue-200/80 bg-white shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100">
+                <School className="h-4 w-4 text-blue-600" />
+              </div>
+              Recently Onboarded
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">No recent activity</p>
+            {recentSchools.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No schools yet</p>
+            ) : (
+              <div className="space-y-2">
+                {recentSchools.map((s) => (
+                  <div
+                    key={s.id}
+                    className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2.5 transition-colors hover:border-blue-200 hover:bg-blue-50/30"
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+                      <School className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-sm text-gray-900">{s.name}</p>
+                      <p className="truncate font-mono text-xs text-muted-foreground">{s.code}</p>
+                      {s.created_at && (
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {new Date(s.created_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </p>
+                      )}
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => router.push(`/dashboard/schools/${s.id}`)}
+                      className="shrink-0 text-blue-600 hover:text-blue-700"
+                    >
+                      View
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2 w-full text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                  onClick={() => router.push('/dashboard/schools')}
+                >
+                  View all schools
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -301,11 +433,13 @@ function SchoolAdminDashboard({
   loading,
   router,
   schoolData,
+  recentPayments = [],
 }: {
-  stats: { totalSchools: number; totalStudents: number; totalPayments: number; totalRevenue: number };
+  stats: { totalSchools: number; totalStudents: number; totalPayments: number; totalRevenue: number; totalActiveFees: number };
   loading: boolean;
   router: { push: (path: string) => void };
   schoolData: SchoolData | null;
+  recentPayments?: Array<{ reference: string; amount: number; currency: string; status: string; student_name?: string; created_at: string }>;
 }) {
   return (
     <div className="space-y-6">
@@ -410,6 +544,13 @@ function SchoolAdminDashboard({
           color="green"
         />
         <StatCard
+          title="Active Fees"
+          value={stats.totalActiveFees}
+          icon={Receipt}
+          description="Fee structures configured"
+          color="blue"
+        />
+        <StatCard
           title="Total Payments"
           value={stats.totalPayments}
           icon={CreditCard}
@@ -426,40 +567,143 @@ function SchoolAdminDashboard({
       </div>
 
       {/* Quick Actions */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-2 border-primary/20 bg-gradient-to-br from-white to-primary/5">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-primary"></div>
+      <div className="space-y-6">
+        <Card className="border border-primary/20 bg-white shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
+                <Receipt className="h-4 w-4 text-primary" />
+              </div>
               Quick Actions
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <Button
-              onClick={() => router.push('/dashboard/students')}
-              className="w-full bg-[#08163d] hover:bg-[#0a1f4f] text-white"
-            >
-              + Add Student
-            </Button>
-            <Button
-              onClick={() => router.push('/dashboard/fees')}
-              variant="outline"
-              className="w-full border-primary/30 hover:bg-primary/10 hover:border-primary"
-            >
-              Set School Fees
-            </Button>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                onClick={() => router.push('/dashboard/students/add')}
+                className="h-auto flex-col gap-1.5 py-3 bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+              >
+                <UserPlus className="h-4 w-4" />
+                <span className="text-xs font-medium">Add Student</span>
+              </Button>
+              <Button
+                onClick={() => router.push('/dashboard/fees')}
+                variant="outline"
+                className="h-auto flex-col gap-1.5 py-3 border-primary/30 hover:bg-primary/5 hover:border-primary"
+              >
+                <Receipt className="h-4 w-4" />
+                <span className="text-xs font-medium">Set Fees</span>
+              </Button>
+              <Button
+                onClick={() => router.push('/dashboard/payments')}
+                variant="outline"
+                className="h-auto flex-col gap-1.5 py-3 border-emerald-200 hover:bg-emerald-50 hover:border-emerald-300"
+              >
+                <Wallet className="h-4 w-4" />
+                <span className="text-xs font-medium">Collect Payment</span>
+              </Button>
+              <Button
+                onClick={() => router.push('/dashboard/students')}
+                variant="outline"
+                className="h-auto flex-col gap-1.5 py-3 border-primary/30 hover:bg-primary/5 hover:border-primary"
+              >
+                <Users className="h-4 w-4" />
+                <span className="text-xs font-medium">View Students</span>
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="border-2 border-emerald-200 bg-gradient-to-br from-white to-emerald-50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-emerald-500"></div>
+        <Card className="border border-emerald-200/80 bg-white shadow-sm">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base font-semibold">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-100">
+                <CreditCard className="h-4 w-4 text-emerald-600" />
+              </div>
               Recent Payments
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-muted-foreground">No recent payments</p>
+            {recentPayments.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted-foreground">No recent payments</p>
+            ) : (
+              <div className="space-y-2">
+                {recentPayments.map((p) => {
+                  const isCompleted = p.status === 'completed' || p.status === 'paid';
+                  const isFailed = p.status === 'failed';
+                  const StatusIcon = isCompleted ? CheckCircle : isFailed ? XCircle : Clock;
+                  const receiptUrl = `${API_BASE_URL}/receipts/${p.reference}`;
+                  return (
+                    <div
+                      key={p.reference}
+                      className="flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2.5 transition-colors hover:border-emerald-200 hover:bg-emerald-50/30"
+                    >
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white shadow-sm">
+                        <StatusIcon
+                          className={`h-4 w-4 ${
+                            isCompleted ? 'text-green-500' : isFailed ? 'text-red-500' : 'text-amber-500'
+                          }`}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-medium text-sm text-gray-900">{p.student_name || '—'}</p>
+                        <p className="truncate font-mono text-xs text-muted-foreground">
+                          {p.reference.length > 16 ? `${p.reference.slice(0, 12)}…` : p.reference}
+                        </p>
+                        {p.created_at && (
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {new Date(p.created_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <p className="font-semibold text-emerald-700">
+                          {p.currency} {p.amount?.toLocaleString()}
+                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <Badge
+                            variant="secondary"
+                            className={`text-xs font-medium ${
+                              isCompleted
+                                ? 'bg-green-100 text-green-700 hover:bg-green-100'
+                                : isFailed
+                                ? 'bg-red-100 text-red-700 hover:bg-red-100'
+                                : 'bg-amber-100 text-amber-700 hover:bg-amber-100'
+                            }`}
+                          >
+                            {p.status}
+                          </Badge>
+                          {isCompleted && (
+                            <a
+                              href={receiptUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-emerald-600 hover:text-emerald-700 hover:underline"
+                            >
+                              Receipt
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2 w-full text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                  onClick={() => router.push('/dashboard/payments')}
+                >
+                  View all payments
+                  <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

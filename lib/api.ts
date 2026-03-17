@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig, InternalAxiosRequestConfig, AxiosRequestHeaders } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -233,5 +233,14 @@ export const smsAPI = {
     api.post('/sms/send', data),
   getLogs: (page = 1, pageSize = 10) =>
     api.get(`/sms/logs?page=${page}&page_size=${pageSize}`),
+};
+
+// Admin API (admin role only)
+export const adminAPI = {
+  getStats: () => api.get('/admin/stats'),
+  listPayments: (page = 1, pageSize = 20) =>
+    api.get(`/admin/payments?page=${page}&page_size=${pageSize}`),
+  listUsers: (page = 1, pageSize = 20) =>
+    api.get(`/admin/users?page=${page}&page_size=${pageSize}`),
 };
 

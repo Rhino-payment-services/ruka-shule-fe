@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, School, User, GraduationCap, ArrowRight, ArrowLeft, DollarSign, CheckCircle2 } from 'lucide-react';
-import { studentsAPI, schoolsAPI, feesAPI } from '@/lib/api';
+import { Search, School, User, GraduationCap, ArrowRight, ArrowLeft, DollarSign, CheckCircle2, Wallet, Smartphone, Loader2 } from 'lucide-react';
+import { studentsAPI, schoolsAPI, feesAPI, paymentsAPI } from '@/lib/api';
+import { toast } from 'sonner';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,9 +48,25 @@ interface Fee {
   class?: string;
   academic_year: string;
   term: string;
-   // Optional: when set, fee applies only to a specific stream (Arts, Sciences, etc.)
   stream?: string | null;
   due_date?: string;
+}
+
+interface FeeForPayment {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  total_paid: number;
+  outstanding: number;
+  is_paid: boolean;
+}
+
+interface StudentLookupData {
+  student: { id: string; registration_id: string; full_name: string; class: string; phone: string };
+  school: { code: string; name: string };
+  available_fees: FeeForPayment[];
+  payment_summary: { total_fees: number; total_paid: number; total_outstanding: number; payment_status: string };
 }
 
 // All valid class values
@@ -87,11 +104,21 @@ export default function LookupPage() {
   
   const [school, setSchool] = useState<School | null>(null);
   const [fees, setFees] = useState<Fee[]>([]);
-  const [allFees, setAllFees] = useState<Fee[]>([]); // Store all fees for filtering
+  const [allFees, setAllFees] = useState<Fee[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // Payment flow (visitor can pay after lookup)
+  const [studentLookupData, setStudentLookupData] = useState<StudentLookupData | null>(null);
+  const [lookupPaymentLoading, setLookupPaymentLoading] = useState(false);
+  const [selectedFee, setSelectedFee] = useState<FeeForPayment | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentPhone, setPaymentPhone] = useState('');
+  const [paymentMnoProvider, setPaymentMnoProvider] = useState<string>('MTN');
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [paymentReference, setPaymentReference] = useState<string | null>(null);
 
   // Prevent scroll restoration on page reload
   useEffect(() => {
@@ -195,6 +222,11 @@ export default function LookupPage() {
     setError('');
     setLoading(true);
     setStudents([]);
+    // Clear previous payment flow so user can pay for newly searched student
+    setStudentLookupData(null);
+    setSelectedFee(null);
+    setPaymentAmount('');
+    setPaymentReference(null);
 
     try {
       if (!studentId.trim()) {
@@ -238,8 +270,121 @@ export default function LookupPage() {
     if (step === 'student') {
       setStep('school');
       setStudents([]);
+      setStudentLookupData(null);
+      setSelectedFee(null);
+      setPaymentReference(null);
       setError('');
     }
+  };
+
+  const handlePayFees = async (student: Student) => {
+    if (!school) return;
+    try {
+      setLookupPaymentLoading(true);
+      setError('');
+      const res = await paymentsAPI.lookupStudentForPayment(student.registration_id, school.code);
+      const data = res.data.data;
+      setStudentLookupData(data);
+      setPaymentPhone(data?.student?.phone || student.phone || '');
+      // Auto-select first outstanding fee so user can pay immediately without extra click
+      const payableFees = (data?.available_fees || []).filter((f: FeeForPayment) => !f.is_paid && f.outstanding > 0);
+      if (payableFees.length > 0) {
+        setSelectedFee(payableFees[0]);
+        setPaymentAmount(payableFees[0].outstanding.toString());
+      } else {
+        setSelectedFee(null);
+        setPaymentAmount('');
+      }
+      toast.success('Ready to pay');
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      toast.error(axiosErr.response?.data?.error || 'Failed to load payment details');
+      setStudentLookupData(null);
+    } finally {
+      setLookupPaymentLoading(false);
+    }
+  };
+
+  const handleProcessPayment = async () => {
+    if (!studentLookupData || !selectedFee || !paymentAmount || !paymentPhone) {
+      toast.error('Fill all required fields');
+      return;
+    }
+    const amount = parseFloat(paymentAmount);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
+    if (amount > selectedFee.outstanding) {
+      toast.error(`Amount cannot exceed UGX ${selectedFee.outstanding.toLocaleString()}`);
+      return;
+    }
+    const phone = paymentPhone.replace(/\D/g, '');
+    if (phone.length < 9) {
+      toast.error('Enter a valid phone number');
+      return;
+    }
+    const formattedPhone = phone.startsWith('256') ? `+${phone}` : `+256${phone}`;
+
+    try {
+      setProcessingPayment(true);
+      setPaymentReference(null);
+      const res = await paymentsAPI.processPayment({
+        registration_id: studentLookupData.student.registration_id,
+        school_code: studentLookupData.school.code,
+        fee_id: selectedFee.id,
+        class: studentLookupData.student.class,
+        amount,
+        currency: 'UGX',
+        payment_method: 'MOBILE_MONEY',
+        phone_number: formattedPhone,
+        mno_provider: paymentMnoProvider,
+        description: `School fees: ${selectedFee.name}`,
+      });
+      const payment = res.data.data;
+      setPaymentReference(payment.reference);
+      toast.success('Payment initiated. Check your phone to complete.');
+      const maxPolls = 40;
+      let pollCount = 0;
+      const pollInterval = setInterval(async () => {
+        pollCount++;
+        if (pollCount > maxPolls) {
+          clearInterval(pollInterval);
+          setProcessingPayment(false);
+          return;
+        }
+        try {
+          const statusRes = await paymentsAPI.getStatus(payment.reference);
+          const status = statusRes.data.data?.status;
+          if (status === 'completed') {
+            clearInterval(pollInterval);
+            toast.success('Payment completed!');
+            setProcessingPayment(false);
+            setStudentLookupData(null);
+            setSelectedFee(null);
+            setPaymentReference(null);
+          } else if (status === 'failed' || status === 'cancelled') {
+            clearInterval(pollInterval);
+            toast.error(`Payment ${status}`);
+            setProcessingPayment(false);
+          }
+        } catch {
+          // Ignore poll errors
+        }
+      }, 3000);
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { error?: string } } };
+      toast.error(axiosErr.response?.data?.error || 'Payment failed');
+    } finally {
+      setProcessingPayment(false);
+    }
+  };
+
+  const resetPaymentFlow = () => {
+    setStudentLookupData(null);
+    setSelectedFee(null);
+    setPaymentAmount('');
+    setPaymentReference(null);
   };
 
   const calculateTotalFees = () => {
@@ -536,28 +681,156 @@ export default function LookupPage() {
                 </Button>
               </form>
 
-                  {/* Student Results */}
-              {students.length > 0 && (
-                <div className="mt-6 space-y-4">
-                      <h3 className="text-lg font-semibold">Student Found</h3>
-                  {students.map((student) => (
-                        <Card key={student.id} className="border-2 border-primary/20 shadow-lg">
-                      <CardContent className="pt-6">
-                            <div className="space-y-4">
+                  {/* Payment form (when visitor proceeds to pay) */}
+              {studentLookupData ? (
+                <div className="mt-6 space-y-4 rounded-lg border-2 border-emerald-200 bg-emerald-50/50 p-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-lg">
+                      {studentLookupData.student.full_name} — {studentLookupData.student.class}
+                    </h3>
+                    <Button variant="ghost" size="sm" onClick={resetPaymentFlow}>
+                      Change student
+                    </Button>
+                  </div>
+                  <div className="grid gap-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Total outstanding</span>
+                      <span className="font-semibold text-red-600">
+                        UGX {studentLookupData.payment_summary.total_outstanding.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Select fee to pay</label>
+                    <div className="grid gap-2">
+                      {studentLookupData.available_fees
+                        .filter((f) => !f.is_paid && f.outstanding > 0)
+                        .map((fee) => (
+                          <button
+                            key={fee.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedFee(fee);
+                              setPaymentAmount(fee.outstanding.toString());
+                            }}
+                            className={`flex items-center justify-between rounded-lg border-2 p-3 text-left transition-colors ${
+                              selectedFee?.id === fee.id
+                                ? 'border-emerald-500 bg-emerald-50'
+                                : 'border-gray-200 hover:border-emerald-300 bg-white'
+                            }`}
+                          >
+                            <div>
+                              <p className="font-medium">{fee.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Outstanding: UGX {fee.outstanding.toLocaleString()}
+                              </p>
+                            </div>
+                            {selectedFee?.id === fee.id && (
+                              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                            )}
+                          </button>
+                        ))}
+                    </div>
+                    {studentLookupData.available_fees.filter((f) => !f.is_paid && f.outstanding > 0).length === 0 && (
+                      <p className="text-sm text-muted-foreground">All fees are paid.</p>
+                    )}
+                  </div>
+
+                  {selectedFee && (
+                    <div className="space-y-3 border-t pt-4">
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Amount (UGX)</label>
+                          <Input
+                            type="number"
+                            placeholder="Amount"
+                            value={paymentAmount}
+                            onChange={(e) => setPaymentAmount(e.target.value)}
+                            min={1}
+                            max={selectedFee.outstanding}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Max: UGX {selectedFee.outstanding.toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Phone (Mobile Money)</label>
+                          <Input
+                            placeholder="256700123456"
+                            value={paymentPhone}
+                            onChange={(e) => setPaymentPhone(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2 items-end">
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium block">MNO Provider</label>
+                          <Select value={paymentMnoProvider} onValueChange={setPaymentMnoProvider}>
+                            <SelectTrigger className="w-[140px]">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="MTN">
+                                <span className="flex items-center gap-2">
+                                  <Smartphone className="h-4 w-4" /> MTN
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="AIRTEL">AIRTEL</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <Button
+                          onClick={handleProcessPayment}
+                          disabled={processingPayment}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        >
+                          {processingPayment ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Processing...
+                            </>
+                          ) : (
+                            <>
+                              <Wallet className="h-4 w-4 mr-2" />
+                              Pay {paymentAmount && !isNaN(parseFloat(paymentAmount)) ? `UGX ${parseFloat(paymentAmount).toLocaleString()}` : 'Now'}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      {paymentReference && (
+                        <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm">
+                          <p className="font-medium text-blue-900">Payment initiated</p>
+                          <p className="text-blue-700 font-mono">Ref: {paymentReference}</p>
+                          <p className="text-blue-600 mt-1">Check the payer&apos;s phone to complete.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Student Results */
+                students.length > 0 && (
+                  <div className="mt-6 space-y-4">
+                    <h3 className="text-lg font-semibold">Student Found</h3>
+                    {students.map((student) => (
+                      <Card key={student.id} className="border-2 border-primary/20 shadow-lg">
+                        <CardContent className="pt-6">
+                          <div className="space-y-4">
                             <div className="flex items-center gap-2">
                               <User className="h-5 w-5 text-primary" />
-                                <h4 className="text-lg font-semibold">
+                              <h4 className="text-lg font-semibold">
                                 {student.first_name} {student.last_name}
                               </h4>
                             </div>
-                              <div className="space-y-2 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <GraduationCap className="h-4 w-4 text-muted-foreground" />
-                                  <span><strong>Registration ID:</strong> {student.registration_id}</span>
-                                </div>
+                            <div className="space-y-2 text-sm">
                               <div className="flex items-center gap-2">
-                                  <School className="h-4 w-4 text-muted-foreground" />
-                                  <span><strong>Class:</strong> {student.class}</span>
+                                <GraduationCap className="h-4 w-4 text-muted-foreground" />
+                                <span><strong>Registration ID:</strong> {student.registration_id}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <School className="h-4 w-4 text-muted-foreground" />
+                                <span><strong>Class:</strong> {student.class}</span>
                               </div>
                               {student.stream && (
                                 <div className="flex items-center gap-2">
@@ -566,22 +839,35 @@ export default function LookupPage() {
                                 </div>
                               )}
                               <div className="flex items-center gap-2">
-                                  <School className="h-4 w-4 text-muted-foreground" />
-                                  <span><strong>School:</strong> {student.school_name}</span>
-                                </div>
+                                <School className="h-4 w-4 text-muted-foreground" />
+                                <span><strong>School:</strong> {student.school_name}</span>
                               </div>
-                              <div className="pt-4 border-t">
-                                <p className="text-sm font-medium mb-2">Total Fees for {student.class}:</p>
-                                <p className="text-2xl font-bold text-primary">
-                                  UGX {calculateTotalFeesForStream(student.stream).toLocaleString()}
-                                </p>
-                              </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                    </div>
-                  )}
+                            </div>
+                            <div className="pt-4 border-t">
+                              <p className="text-sm font-medium mb-2">Total Fees for {student.class}:</p>
+                              <p className="text-2xl font-bold text-primary">
+                                UGX {calculateTotalFeesForStream(student.stream).toLocaleString()}
+                              </p>
+                            </div>
+                            <Button
+                              onClick={() => handlePayFees(student)}
+                              disabled={lookupPaymentLoading}
+                              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                              {lookupPaymentLoading ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                              ) : (
+                                <Wallet className="h-4 w-4 mr-2" />
+                              )}
+                              Pay Fees
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )
+              )}
                 </>
               )}
 

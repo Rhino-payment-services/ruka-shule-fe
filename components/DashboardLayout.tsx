@@ -13,6 +13,7 @@ import {
   LogOut,
   Menu,
   X,
+  Clock,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -46,6 +47,24 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       name: 'Schools',
       icon: School,
       href: '/dashboard/schools',
+      roles: ['admin'],
+    },
+    {
+      name: 'Pending Approvals',
+      icon: Clock,
+      href: '/dashboard/pending-approvals',
+      roles: ['admin'],
+    },
+    {
+      name: 'Platform Payments',
+      icon: CreditCard,
+      href: '/dashboard/platform-payments',
+      roles: ['admin'],
+    },
+    {
+      name: 'Users',
+      icon: Users,
+      href: '/dashboard/users',
       roles: ['admin'],
     },
     {
