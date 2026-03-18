@@ -28,8 +28,15 @@ interface SchoolData {
 }
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user && typeof window !== 'undefined') {
+      window.location.replace('/login');
+    }
+  }, [user, authLoading]);
   const [stats, setStats] = useState({
     totalSchools: 0,
     totalStudents: 0,
@@ -75,6 +82,14 @@ export default function DashboardPage() {
       return () => clearTimeout(timer);
     }
   }, [user]);
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-white">
+        <div className="text-lg font-medium text-gray-900">Loading...</div>
+      </div>
+    );
+  }
 
   const loadAdminStats = async () => {
     try {

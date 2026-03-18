@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -10,21 +9,16 @@ import { Sparkles, ArrowRight } from 'lucide-react';
 
 export default function Home() {
   const { user, loading } = useAuth();
-  const router = useRouter();
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.history.scrollRestoration = 'manual';
       window.scrollTo(0, 0);
     }
-    
-    if (!loading) {
-      if (user) {
-        router.push('/dashboard');
-      }
-    }
-  }, [user, loading, router]);
+  }, []);
 
+  // Don't redirect logged-in users - that caused infinite loop with dashboard.
+  // Logged-in users can click Sign In to reach dashboard via /login.
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#08163d]">
@@ -62,8 +56,8 @@ export default function Home() {
             size="lg"
             className="bg-white text-[#08163d] hover:bg-gray-100 shadow-2xl shadow-white/20 hover:shadow-white/30 transition-all duration-200 text-base px-6 py-3 h-auto"
           >
-            <Link href="/login" className="flex items-center gap-2">
-              Sign In
+            <Link href={user ? '/dashboard' : '/login'} className="flex items-center gap-2">
+              {user ? 'Go to Dashboard' : 'Sign In'}
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>
