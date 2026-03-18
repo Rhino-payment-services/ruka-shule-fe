@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, School, User, GraduationCap, ArrowRight, ArrowLeft, DollarSign, CheckCircle2, Wallet, Smartphone, Loader2 } from 'lucide-react';
+import { Search, School, User, GraduationCap, ArrowRight, ArrowLeft, DollarSign, CheckCircle2, Wallet, Loader2 } from 'lucide-react';
 import { studentsAPI, schoolsAPI, feesAPI, paymentsAPI } from '@/lib/api';
 import { toast } from 'sonner';
 import Link from 'next/link';
@@ -116,7 +116,6 @@ export default function LookupPage() {
   const [selectedFee, setSelectedFee] = useState<FeeForPayment | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentPhone, setPaymentPhone] = useState('');
-  const [paymentMnoProvider, setPaymentMnoProvider] = useState<string>('MTN');
   const [processingPayment, setProcessingPayment] = useState(false);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
 
@@ -338,7 +337,6 @@ export default function LookupPage() {
         currency: 'UGX',
         payment_method: 'MOBILE_MONEY',
         phone_number: formattedPhone,
-        mno_provider: paymentMnoProvider,
         description: `School fees: ${selectedFee.name}`,
       });
       const payment = res.data.data;
@@ -355,8 +353,8 @@ export default function LookupPage() {
         }
         try {
           const statusRes = await paymentsAPI.getStatus(payment.reference);
-          const status = statusRes.data.data?.status;
-          if (status === 'completed') {
+          const status = (statusRes.data.data?.status || '').toLowerCase();
+          if (status === 'completed' || status === 'paid') {
             clearInterval(pollInterval);
             toast.success('Payment completed!');
             setProcessingPayment(false);
@@ -764,22 +762,6 @@ export default function LookupPage() {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2 items-end">
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium block">MNO Provider</label>
-                          <Select value={paymentMnoProvider} onValueChange={setPaymentMnoProvider}>
-                            <SelectTrigger className="w-[140px]">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="MTN">
-                                <span className="flex items-center gap-2">
-                                  <Smartphone className="h-4 w-4" /> MTN
-                                </span>
-                              </SelectItem>
-                              <SelectItem value="AIRTEL">AIRTEL</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
                         <Button
                           onClick={handleProcessPayment}
                           disabled={processingPayment}

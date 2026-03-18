@@ -5,7 +5,7 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { CreditCard, Search, CheckCircle, XCircle, Clock, Loader2, Wallet, Smartphone } from 'lucide-react';
+import { CreditCard, Search, CheckCircle, XCircle, Clock, Loader2, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { paymentsAPI, studentsAPI, schoolsAPI, API_BASE_URL } from '@/lib/api';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -96,7 +96,6 @@ export default function PaymentsPage() {
   const [selectedFee, setSelectedFee] = useState<FeeForPayment | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentPhone, setPaymentPhone] = useState('');
-  const [paymentMnoProvider, setPaymentMnoProvider] = useState<string>('MTN');
   const [processingPayment, setProcessingPayment] = useState(false);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
 
@@ -240,7 +239,6 @@ export default function PaymentsPage() {
         currency: 'UGX',
         payment_method: 'MOBILE_MONEY',
         phone_number: formattedPhone,
-        mno_provider: paymentMnoProvider,
         description: `School fees: ${selectedFee.name}`,
       });
       const payment = res.data.data;
@@ -260,8 +258,8 @@ export default function PaymentsPage() {
         }
         try {
           const statusRes = await paymentsAPI.getStatus(payment.reference);
-          const status = statusRes.data.data?.status;
-          if (status === 'completed') {
+          const status = (statusRes.data.data?.status || '').toLowerCase();
+          if (status === 'completed' || status === 'paid') {
             clearInterval(pollInterval);
             toast.success('Payment completed!');
             setProcessingPayment(false);
@@ -484,20 +482,6 @@ export default function PaymentsPage() {
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <label className="text-sm font-medium w-full">MNO Provider</label>
-                        <Select value={paymentMnoProvider} onValueChange={setPaymentMnoProvider}>
-                          <SelectTrigger className="w-[140px]">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="MTN">
-                              <span className="flex items-center gap-2">
-                                <Smartphone className="h-4 w-4" /> MTN
-                              </span>
-                            </SelectItem>
-                            <SelectItem value="AIRTEL">AIRTEL</SelectItem>
-                          </SelectContent>
-                        </Select>
                         <Button
                           onClick={handleProcessPayment}
                           disabled={processingPayment}
