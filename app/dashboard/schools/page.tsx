@@ -157,7 +157,12 @@ export default function SchoolsPage() {
                             </code>
                           </TableCell>
                           <TableCell className="text-right">
-                            <Button variant="ghost" size="sm" className="text-primary hover:text-primary hover:bg-primary/10">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-primary hover:text-primary hover:bg-primary/10"
+                              onClick={() => router.push(`/dashboard/schools/${school.id}`)}
+                            >
                               View
                             </Button>
                           </TableCell>

@@ -1,6 +1,6 @@
 import axios, { AxiosRequestConfig, InternalAxiosRequestConfig, AxiosRequestHeaders } from 'axios';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -18,6 +18,10 @@ const publicEndpoints = [
   '/schools/lookup',
   '/schools/check-name',
   '/schools/check-phone',
+  '/payments/lookup-student',
+  '/payments/process',
+  '/payments/initiate',
+  '/payments/status',
 ];
 
 const isPublicEndpoint = (url: string | undefined): boolean => {
@@ -120,7 +124,7 @@ api.interceptors.response.use(
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           // Only redirect if not already on login page
-          if (window.location.pathname !== '/login') {
+          if (!window.location.pathname.startsWith('/login')) {
             window.location.href = '/login';
           }
         } else {
@@ -174,6 +178,23 @@ export const studentsAPI = {
 export const paymentsAPI = {
   initiate: (data: Record<string, unknown>) => api.post('/payments/initiate', data),
   getStatus: (reference: string) => api.get(`/payments/status/${reference}`),
+  lookupStudentForPayment: (registrationId: string, schoolCode: string) =>
+    api.post('/payments/lookup-student', {
+      registration_id: registrationId,
+      school_code: schoolCode,
+    }),
+  processPayment: (data: {
+    registration_id: string;
+    school_code: string;
+    fee_id: string;
+    class: string;
+    amount: number;
+    currency: string;
+    payment_method: 'MOBILE_MONEY' | 'WALLET';
+    phone_number: string;
+    mno_provider?: string;
+    description?: string;
+  }) => api.post('/payments/process', data),
   list: (page = 1, pageSize = 10) =>
     api.get(`/payments?page=${page}&page_size=${pageSize}`),
   getSummary: (studentId: string) =>
@@ -212,5 +233,14 @@ export const smsAPI = {
     api.post('/sms/send', data),
   getLogs: (page = 1, pageSize = 10) =>
     api.get(`/sms/logs?page=${page}&page_size=${pageSize}`),
+};
+
+// Admin API (admin role only)
+export const adminAPI = {
+  getStats: () => api.get('/admin/stats'),
+  listPayments: (page = 1, pageSize = 20) =>
+    api.get(`/admin/payments?page=${page}&page_size=${pageSize}`),
+  listUsers: (page = 1, pageSize = 20) =>
+    api.get(`/admin/users?page=${page}&page_size=${pageSize}`),
 };
 
