@@ -64,6 +64,5 @@ export function ProtectedRoute({
       </div>
     );
   }
-
   return <>{children}</>;
 }
