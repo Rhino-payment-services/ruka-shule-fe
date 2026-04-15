@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CreditCard, Search, CheckCircle, XCircle, Clock, Loader2, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { paymentsAPI, studentsAPI, schoolsAPI, API_BASE_URL } from '@/lib/api';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -46,6 +47,7 @@ interface StudentLookupData {
     total_fees: number;
     total_paid: number;
     total_outstanding: number;
+    carry_forward_balance?: number;
     payment_status: string;
   };
 }
@@ -295,12 +297,13 @@ export default function PaymentsPage() {
       case 'paid':
       case 'success':
         return <Badge className="bg-green-500 hover:bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />Paid</Badge>;
+      case 'processing':
+        return <Badge className="bg-blue-500 hover:bg-blue-600"><Loader2 className="h-3 w-3 mr-1 animate-spin" />Processing</Badge>;
       case 'failed':
       case 'error':
         return <Badge className="bg-red-500 hover:bg-red-600"><XCircle className="h-3 w-3 mr-1" />Failed</Badge>;
       case 'pending':
-      case 'processing':
-        return <Badge className="bg-yellow-500 hover:bg-yellow-600"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
+        return <Badge className="bg-yellow-500 hover:bg-yellow-600"><Clock className="h-3 w-3 mr-1" />Initiated</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -345,6 +348,11 @@ export default function PaymentsPage() {
                 </span>
               </div>
             )}
+          </div>
+          <div className="flex justify-end">
+            <Button asChild variant="outline" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+              <Link href="/dashboard/settlements">Go to Settlements</Link>
+            </Button>
           </div>
 
           {/* Collect Payment Card */}
@@ -411,6 +419,12 @@ export default function PaymentsPage() {
                     </Button>
                   </div>
                   <div className="grid gap-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Carry-forward</span>
+                      <span className="font-semibold text-amber-700">
+                        UGX {(studentLookupData.payment_summary.carry_forward_balance || 0).toLocaleString()}
+                      </span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total outstanding</span>
                       <span className="font-semibold text-red-600">

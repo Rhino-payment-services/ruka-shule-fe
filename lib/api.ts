@@ -154,6 +154,7 @@ export const schoolsAPI = {
     api.get(`/schools?page=${page}&page_size=${pageSize}`),
   get: (id: string) => api.get(`/schools/${id}`),
   getMySchool: () => api.get('/schools/me'), // For school_admin to get their own school
+  updateMySchool: (data: Record<string, unknown>) => api.put('/schools/me', data),
   lookup: (identifier: string) => api.get(`/schools/lookup?identifier=${identifier}`), // Public lookup by code or merchant ID
   create: (data: Record<string, unknown>) => api.post('/schools', data),
   register: (data: Record<string, unknown>) => api.post('/schools/register', data), // For school_admin self-registration
@@ -178,10 +179,12 @@ export const studentsAPI = {
 export const paymentsAPI = {
   initiate: (data: Record<string, unknown>) => api.post('/payments/initiate', data),
   getStatus: (reference: string) => api.get(`/payments/status/${reference}`),
-  lookupStudentForPayment: (registrationId: string, schoolCode: string) =>
+  lookupStudentForPayment: (registrationId: string, schoolCode: string, academicYear?: string, term?: string) =>
     api.post('/payments/lookup-student', {
       registration_id: registrationId,
       school_code: schoolCode,
+      academic_year: academicYear || undefined,
+      term: term || undefined,
     }),
   processPayment: (data: {
     registration_id: string;
@@ -205,6 +208,18 @@ export const paymentsAPI = {
     api.get(`/payments/student/${studentId}/term`, {
       params: { academic_year: academicYear, term },
     }),
+  getOverview: (params: {
+    academic_year?: string;
+    term?: string;
+    class?: string;
+    status?: 'all' | 'paid' | 'partial' | 'unpaid';
+  }) => api.get('/payments/overview', { params }),
+  listSettlements: (page = 1, pageSize = 20) =>
+    api.get(`/payments/settlements?page=${page}&page_size=${pageSize}`),
+  runSettlement: (amount?: number) =>
+    api.post('/payments/settlements/run', amount && amount > 0 ? { amount } : {}),
+  retrySettlement: (settlementId: string) =>
+    api.post(`/payments/settlements/${settlementId}/retry`, {}),
 };
 
 // Fees API
