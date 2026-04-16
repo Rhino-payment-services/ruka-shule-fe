@@ -44,6 +44,7 @@ interface FormData {
   
   // Financial Information (Optional)
   bankName: string;
+  bankCode: string;
   accountNumber: string;
   accountName: string;
   branch: string;
@@ -76,6 +77,7 @@ export default function OnboardSchoolPage() {
     businessRegistrationDate: '',
     businessCity: '',
     bankName: '',
+    bankCode: '',
     accountNumber: '',
     accountName: '',
     branch: '',
@@ -145,6 +147,7 @@ export default function OnboardSchoolPage() {
         business_registration_date: formData.businessRegistrationDate || undefined,
         business_city: formData.businessCity || undefined,
         bank_name: formData.bankName || undefined,
+        bank_code: formData.bankCode || undefined,
         account_number: formData.accountNumber || undefined,
         account_name: formData.accountName || undefined,
         branch: formData.branch || undefined,
@@ -581,6 +584,20 @@ export default function OnboardSchoolPage() {
                         value={formData.bankName}
                         onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
                         placeholder="e.g., Bank of Uganda"
+                        className="h-11"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="bankCode" className="text-sm font-medium">
+                        Bank Code / Sort Code
+                      </Label>
+                      <Input
+                        id="bankCode"
+                        type="text"
+                        value={formData.bankCode}
+                        onChange={(e) => setFormData({ ...formData, bankCode: e.target.value })}
+                        placeholder="e.g., 040147"
                         className="h-11"
                       />
                     </div>

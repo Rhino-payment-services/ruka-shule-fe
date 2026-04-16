@@ -2,6 +2,32 @@ import axios, { AxiosRequestConfig, InternalAxiosRequestConfig, AxiosRequestHead
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
+export interface ApiSuccessResponse<T> {
+  data: T;
+}
+
+export interface PublicSchoolLookupResponse {
+  id: string;
+  name: string;
+  code: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  merchant_id?: string;
+  merchant_code?: string;
+  business_wallet_id?: string;
+  merchant_status?: string;
+  status?: string;
+  created_at?: string;
+  wallet?: {
+    id: string;
+    currency: string;
+    balance: number;
+    wallet_type: string;
+    is_active: boolean;
+  };
+}
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -154,7 +180,9 @@ export const schoolsAPI = {
     api.get(`/schools?page=${page}&page_size=${pageSize}`),
   get: (id: string) => api.get(`/schools/${id}`),
   getMySchool: () => api.get('/schools/me'), // For school_admin to get their own school
-  lookup: (identifier: string) => api.get(`/schools/lookup?identifier=${identifier}`), // Public lookup by code or merchant ID
+  updateMySchool: (data: Record<string, unknown>) => api.put('/schools/me', data),
+  lookup: (identifier: string) =>
+    api.get<ApiSuccessResponse<PublicSchoolLookupResponse>>(`/schools/lookup?identifier=${identifier}`), // Public lookup by code or merchant ID
   create: (data: Record<string, unknown>) => api.post('/schools', data),
   register: (data: Record<string, unknown>) => api.post('/schools/register', data), // For school_admin self-registration
   checkName: (name: string) =>
@@ -178,10 +206,12 @@ export const studentsAPI = {
 export const paymentsAPI = {
   initiate: (data: Record<string, unknown>) => api.post('/payments/initiate', data),
   getStatus: (reference: string) => api.get(`/payments/status/${reference}`),
-  lookupStudentForPayment: (registrationId: string, schoolCode: string) =>
+  lookupStudentForPayment: (registrationId: string, schoolCode: string, academicYear?: string, term?: string) =>
     api.post('/payments/lookup-student', {
       registration_id: registrationId,
       school_code: schoolCode,
+      academic_year: academicYear || undefined,
+      term: term || undefined,
     }),
   processPayment: (data: {
     registration_id: string;
@@ -205,6 +235,20 @@ export const paymentsAPI = {
     api.get(`/payments/student/${studentId}/term`, {
       params: { academic_year: academicYear, term },
     }),
+  getOverview: (params: {
+    academic_year?: string;
+    term?: string;
+    class?: string;
+    status?: 'all' | 'paid' | 'partial' | 'unpaid';
+    page?: number;
+    page_size?: number;
+  }) => api.get('/payments/overview', { params }),
+  listSettlements: (page = 1, pageSize = 20) =>
+    api.get(`/payments/settlements?page=${page}&page_size=${pageSize}`),
+  runSettlement: (amount?: number) =>
+    api.post('/payments/settlements/run', amount && amount > 0 ? { amount } : {}),
+  retrySettlement: (settlementId: string) =>
+    api.post(`/payments/settlements/${settlementId}/retry`, {}),
 };
 
 // Fees API

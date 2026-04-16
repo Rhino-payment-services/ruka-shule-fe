@@ -9,6 +9,7 @@ import {
   Users,
   CreditCard,
   Receipt,
+  Wallet,
   Settings,
   LogOut,
   Menu,
@@ -83,6 +84,18 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       name: 'Fees',
       icon: Receipt,
       href: '/dashboard/fees',
+      roles: ['school_admin'],
+    },
+    {
+      name: 'Fees Overview',
+      icon: Receipt,
+      href: '/dashboard/fees-overview',
+      roles: ['school_admin'],
+    },
+    {
+      name: 'Settlements',
+      icon: Wallet,
+      href: '/dashboard/settlements',
       roles: ['school_admin'],
     },
     {
