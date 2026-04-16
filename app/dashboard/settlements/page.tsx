@@ -28,6 +28,7 @@ interface SettlementSummary {
 
 interface SettlementRow {
   id: string;
+  parent_settlement_id?: string;
   reference: string;
   transaction_id?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
@@ -40,6 +41,7 @@ interface SettlementRow {
 }
 
 export default function SettlementsPage() {
+  const defaultPageSize = 20;
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
@@ -47,20 +49,24 @@ export default function SettlementsPage() {
   const [summary, setSummary] = useState<SettlementSummary | null>(null);
   const [settlements, setSettlements] = useState<SettlementRow[]>([]);
   const [school, setSchool] = useState<SchoolProfile | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
 
   const hasBankProfile = !!(school?.bank_name && school?.bank_account_name && school?.bank_account_number);
 
-  const loadData = async () => {
+  const loadData = async (nextPage = page) => {
     try {
       setLoading(true);
       const [settlementsRes, schoolRes] = await Promise.all([
-        paymentsAPI.listSettlements(1, 50),
+        paymentsAPI.listSettlements(nextPage, defaultPageSize),
         schoolsAPI.getMySchool(),
       ]);
 
       const data = settlementsRes.data?.data || {};
       setSettlements(data.settlements || []);
       setSummary(data.summary || null);
+      setPage(data.page || nextPage);
+      setTotalPages(data.total_pages || 1);
       setSchool(schoolRes.data?.data || null);
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Failed to load settlements');
@@ -183,7 +189,7 @@ export default function SettlementsPage() {
               <Button onClick={runSettlement} disabled={running || loading || !hasBankProfile}>
                 {running ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Run Settlement'}
               </Button>
-              <Button variant="outline" onClick={loadData} disabled={loading}>
+              <Button variant="outline" onClick={() => loadData()} disabled={loading}>
                 <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
@@ -216,7 +222,16 @@ export default function SettlementsPage() {
                   ) : (
                     settlements.map((row) => (
                       <TableRow key={row.id}>
-                        <TableCell className="font-mono text-xs">{row.reference}</TableCell>
+                        <TableCell className="font-mono text-xs">
+                          <div className="space-y-1">
+                            <div>{row.reference}</div>
+                            {row.parent_settlement_id && (
+                              <Badge variant="outline" className="text-[10px]">
+                                Retry Attempt
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
                         <TableCell>{formatCurrency(row.amount, row.currency)}</TableCell>
                         <TableCell>{statusBadge(row.status)}</TableCell>
                         <TableCell>{row.retry_count}</TableCell>
@@ -241,6 +256,27 @@ export default function SettlementsPage() {
                   )}
                 </TableBody>
               </Table>
+              <div className="mt-4 flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                <p>Page {page} of {totalPages}</p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={loading || page <= 1}
+                    onClick={() => loadData(page - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={loading || page >= totalPages}
+                    onClick={() => loadData(page + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

@@ -2,6 +2,32 @@ import axios, { AxiosRequestConfig, InternalAxiosRequestConfig, AxiosRequestHead
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
+export interface ApiSuccessResponse<T> {
+  data: T;
+}
+
+export interface PublicSchoolLookupResponse {
+  id: string;
+  name: string;
+  code: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  merchant_id?: string;
+  merchant_code?: string;
+  business_wallet_id?: string;
+  merchant_status?: string;
+  status?: string;
+  created_at?: string;
+  wallet?: {
+    id: string;
+    currency: string;
+    balance: number;
+    wallet_type: string;
+    is_active: boolean;
+  };
+}
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -155,7 +181,8 @@ export const schoolsAPI = {
   get: (id: string) => api.get(`/schools/${id}`),
   getMySchool: () => api.get('/schools/me'), // For school_admin to get their own school
   updateMySchool: (data: Record<string, unknown>) => api.put('/schools/me', data),
-  lookup: (identifier: string) => api.get(`/schools/lookup?identifier=${identifier}`), // Public lookup by code or merchant ID
+  lookup: (identifier: string) =>
+    api.get<ApiSuccessResponse<PublicSchoolLookupResponse>>(`/schools/lookup?identifier=${identifier}`), // Public lookup by code or merchant ID
   create: (data: Record<string, unknown>) => api.post('/schools', data),
   register: (data: Record<string, unknown>) => api.post('/schools/register', data), // For school_admin self-registration
   checkName: (name: string) =>
@@ -213,6 +240,8 @@ export const paymentsAPI = {
     term?: string;
     class?: string;
     status?: 'all' | 'paid' | 'partial' | 'unpaid';
+    page?: number;
+    page_size?: number;
   }) => api.get('/payments/overview', { params }),
   listSettlements: (page = 1, pageSize = 20) =>
     api.get(`/payments/settlements?page=${page}&page_size=${pageSize}`),

@@ -36,18 +36,23 @@ interface OverviewResponse {
   total_expected: number;
   total_collected: number;
   total_outstanding: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
   students: OverviewStudentRow[];
 }
 
 export default function FeesOverviewPage() {
+  const defaultPageSize = 100;
   const [loading, setLoading] = useState(true);
   const [academicYear, setAcademicYear] = useState(new Date().getFullYear().toString());
   const [term, setTerm] = useState<string>('all');
   const [className, setClassName] = useState<string>('');
   const [status, setStatus] = useState<OverviewStatus>('all');
+  const [page, setPage] = useState(1);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
 
-  const loadOverview = async () => {
+  const loadOverview = async (nextPage = page) => {
     try {
       setLoading(true);
       const res = await paymentsAPI.getOverview({
@@ -55,8 +60,11 @@ export default function FeesOverviewPage() {
         term: term === 'all' ? undefined : term,
         class: className || undefined,
         status,
+        page: nextPage,
+        page_size: defaultPageSize,
       });
       setOverview(res.data.data);
+      setPage(nextPage);
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Failed to load fees overview');
     } finally {
@@ -123,6 +131,10 @@ export default function FeesOverviewPage() {
     return Array.from(new Set(overview.students.map((s) => s.class))).sort();
   }, [overview]);
 
+  const applyFilters = async () => {
+    await loadOverview(1);
+  };
+
   return (
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
@@ -172,7 +184,7 @@ export default function FeesOverviewPage() {
                   <SelectItem value="unpaid">Unpaid</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={loadOverview} disabled={loading}>
+              <Button onClick={applyFilters} disabled={loading}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
               </Button>
             </CardContent>
@@ -222,6 +234,29 @@ export default function FeesOverviewPage() {
                   ))}
                 </TableBody>
               </Table>
+              <div className="mt-4 flex items-center justify-between gap-3 text-sm text-muted-foreground">
+                <p>
+                  Page {overview?.page || page} of {overview?.total_pages || 1}
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={loading || (overview?.page || page) <= 1}
+                    onClick={() => loadOverview((overview?.page || page) - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={loading || !overview || overview.page >= overview.total_pages}
+                    onClick={() => loadOverview((overview?.page || page) + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>

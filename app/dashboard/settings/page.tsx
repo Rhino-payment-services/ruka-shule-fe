@@ -87,6 +87,24 @@ export default function SettingsPage() {
 
   const handleSave = async () => {
     try {
+      const thresholdValue =
+        formData.settlement_min_threshold.trim() === ''
+          ? undefined
+          : Number(formData.settlement_min_threshold);
+
+      if (!['manual', 'daily', 'weekly'].includes(formData.settlement_frequency)) {
+        toast.error('Settlement frequency must be manual, daily, or weekly');
+        return;
+      }
+
+      if (
+        thresholdValue !== undefined &&
+        (!Number.isFinite(thresholdValue) || thresholdValue < 0)
+      ) {
+        toast.error('Settlement minimum threshold must be zero or greater');
+        return;
+      }
+
       setSaving(true);
       const payload: Record<string, unknown> = {
         address: formData.address || null,
@@ -100,8 +118,8 @@ export default function SettingsPage() {
         settlement_frequency: formData.settlement_frequency || 'manual',
         auto_settlement_enabled: formData.auto_settlement_enabled,
       };
-      if (formData.settlement_min_threshold.trim() !== '') {
-        payload.settlement_min_threshold = Number(formData.settlement_min_threshold);
+      if (thresholdValue !== undefined) {
+        payload.settlement_min_threshold = thresholdValue;
       }
 
       await schoolsAPI.updateMySchool(payload);

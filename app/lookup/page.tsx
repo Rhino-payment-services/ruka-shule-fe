@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Search, School, User, GraduationCap, ArrowRight, ArrowLeft, DollarSign, CheckCircle2, Wallet, Loader2 } from 'lucide-react';
 import { studentsAPI, schoolsAPI, feesAPI, paymentsAPI } from '@/lib/api';
+import type { PublicSchoolLookupResponse } from '@/lib/api';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -29,14 +30,6 @@ interface Student {
   stream?: string | null;
   school_name: string;
   school_code: string;
-}
-
-interface School {
-  id: string;
-  name: string;
-  code: string;
-  merchant_code?: string;
-  merchant_id?: string;
 }
 
 interface Fee {
@@ -102,7 +95,7 @@ export default function LookupPage() {
   const [selectedTerm, setSelectedTerm] = useState('');
   const [studentId, setStudentId] = useState('');
   
-  const [school, setSchool] = useState<School | null>(null);
+  const [school, setSchool] = useState<PublicSchoolLookupResponse | null>(null);
   const [fees, setFees] = useState<Fee[]>([]);
   const [allFees, setAllFees] = useState<Fee[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
