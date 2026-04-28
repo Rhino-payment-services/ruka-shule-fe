@@ -25,6 +25,7 @@ interface FeeForPayment {
   name: string;
   amount: number;
   currency: string;
+  fee_type?: string;
   total_paid: number;
   outstanding: number;
   is_paid: boolean;
@@ -37,6 +38,7 @@ interface StudentLookupData {
     full_name: string;
     class: string;
     phone: string;
+    school_fees_amount?: number;
   };
   school: {
     code: string;
@@ -44,6 +46,7 @@ interface StudentLookupData {
   };
   available_fees: FeeForPayment[];
   payment_summary: {
+    school_fees_amount?: number;
     total_fees: number;
     total_paid: number;
     total_outstanding: number;
@@ -74,10 +77,20 @@ interface StudentPaymentSummary {
   class: string;
   total_paid: number;
   total_fees: number;
+  school_fees_amount?: number;
   outstanding: number;
   payment_status: string;
   payment_count: number;
   last_payment_at?: string;
+  fees?: Array<{
+    fee_id?: string;
+    fee_name: string;
+    fee_type?: string;
+    amount: number;
+    paid: number;
+    outstanding: number;
+    is_paid: boolean;
+  }>;
 }
 
 export default function PaymentsPage() {
@@ -356,14 +369,14 @@ export default function PaymentsPage() {
           </div>
 
           {/* Collect Payment Card */}
-          <Card className="border-2 border-emerald-200 bg-gradient-to-br from-white to-emerald-50">
+          <Card className="border-2 border-emerald-200 bg-linear-to-br from-white to-emerald-50">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Wallet className="h-5 w-5 text-emerald-600" />
                 Collect Payment
               </CardTitle>
               <CardDescription>
-                Look up a student and collect school fees via Mobile Money
+                Look up a student and collect fees via Mobile Money
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -419,6 +432,14 @@ export default function PaymentsPage() {
                     </Button>
                   </div>
                   <div className="grid gap-2 text-sm">
+                    {studentLookupData.payment_summary.school_fees_amount !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">School Fees</span>
+                        <span className="font-semibold text-emerald-700">
+                          UGX {studentLookupData.payment_summary.school_fees_amount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Carry-forward</span>
                       <span className="font-semibold text-amber-700">
@@ -457,6 +478,11 @@ export default function PaymentsPage() {
                               <p className="text-xs text-muted-foreground">
                                 Outstanding: UGX {fee.outstanding.toLocaleString()}
                               </p>
+                              {fee.fee_type === 'school_fees' && (
+                                <Badge variant="outline" className="mt-1 text-[11px] uppercase tracking-wide">
+                                  School Fees
+                                </Badge>
+                              )}
                             </div>
                             {selectedFee?.id === fee.id && (
                               <CheckCircle className="h-5 w-5 text-emerald-600" />
@@ -583,6 +609,11 @@ export default function PaymentsPage() {
                       <p className="font-semibold">{searchResults.student_name}</p>
                       <p className="text-xs text-muted-foreground">ID: {searchResults.registration_id}</p>
                       <p className="text-xs text-muted-foreground">Class: {searchResults.class}</p>
+                      {searchResults.school_fees_amount !== undefined && (
+                        <p className="text-xs text-muted-foreground">
+                          School Fees: UGX {searchResults.school_fees_amount.toLocaleString()}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Total Fees</p>
@@ -615,6 +646,31 @@ export default function PaymentsPage() {
                       </Badge>
                     </div>
                   </div>
+                  {Array.isArray(searchResults.fees) && searchResults.fees.length > 0 && (
+                    <div className="mt-4 rounded-lg border border-blue-200 bg-white p-4">
+                      <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                        Fee Breakdown
+                      </h4>
+                      <div className="space-y-2">
+                        {searchResults.fees.map((fee) => (
+                          <div key={`${fee.fee_id || fee.fee_name}-${fee.fee_type || 'fee'}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                            <div>
+                              <p className="font-medium">
+                                {fee.fee_name}
+                                {fee.fee_type === 'school_fees' ? ' (School Fees)' : fee.fee_type ? ' (Other Fee)' : ''}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Paid: UGX {(fee.paid || 0).toLocaleString()} · Outstanding: UGX {(fee.outstanding || 0).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="text-right font-semibold">
+                              UGX {(fee.amount || 0).toLocaleString()}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {searchResults.last_payment_at && (
                     <div className="mt-3 pt-3 border-t border-blue-200">
                       <p className="text-sm text-muted-foreground">

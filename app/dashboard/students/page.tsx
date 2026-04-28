@@ -49,6 +49,7 @@ interface Student {
   first_name: string;
   last_name: string;
   phone: string;
+  school_fees_amount?: number;
   class: string;
   stream?: string;  // Arts, Sciences, General, etc.
   scholarship_type?: string;  // Full, Partial, Merit, etc.
@@ -362,6 +363,7 @@ export default function StudentsPage() {
                           <TableHead>Registration ID</TableHead>
                           <TableHead>Name</TableHead>
                           <TableHead>Phone</TableHead>
+                          <TableHead>School Fees</TableHead>
                           <TableHead>Class</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
@@ -377,6 +379,15 @@ export default function StudentsPage() {
                               {student.first_name} {student.last_name}
                             </TableCell>
                             <TableCell>{student.phone}</TableCell>
+                            <TableCell>
+                              {student.school_fees_amount !== undefined && student.school_fees_amount !== null ? (
+                                <span className="font-medium">
+                                  UGX {student.school_fees_amount.toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <Badge variant="outline">{student.class}</Badge>
                             </TableCell>
@@ -492,6 +503,14 @@ export default function StudentsPage() {
                       <p className="text-sm font-medium">{selectedStudent.phone}</p>
                     </div>
                     <div>
+                      <label className="text-sm font-medium text-muted-foreground">School Fees</label>
+                      <p className="text-sm font-medium">
+                        {selectedStudent.school_fees_amount !== undefined && selectedStudent.school_fees_amount !== null
+                          ? `UGX ${selectedStudent.school_fees_amount.toLocaleString()}`
+                          : '-'}
+                      </p>
+                    </div>
+                    <div>
                       <label className="text-sm font-medium text-muted-foreground">Class</label>
                       <div className="mt-1">
                         <Badge variant="outline">{selectedStudent.class}</Badge>
@@ -593,6 +612,15 @@ export default function StudentsPage() {
                   ) : paymentSummary ? (
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <label className="text-xs font-medium text-muted-foreground">
+                            School Fees
+                          </label>
+                          <p className="text-lg font-semibold mt-1">
+                            {paymentSummary.currency || 'UGX'}{' '}
+                            {(paymentSummary.school_fees_amount || 0).toLocaleString()}
+                          </p>
+                        </div>
                         <div className="bg-muted/50 rounded-lg p-4">
                           <label className="text-xs font-medium text-muted-foreground">
                             Total Fees
@@ -652,6 +680,31 @@ export default function StudentsPage() {
                       {paymentSummary.last_payment_at && (
                         <div className="text-sm text-muted-foreground">
                           Last payment: {new Date(paymentSummary.last_payment_at).toLocaleString()}
+                        </div>
+                      )}
+                      {Array.isArray(paymentSummary.fees) && paymentSummary.fees.length > 0 && (
+                        <div className="rounded-lg border bg-white p-4">
+                          <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                            Fee Breakdown
+                          </h4>
+                          <div className="space-y-2">
+                            {paymentSummary.fees.map((fee: any) => (
+                              <div key={`${fee.fee_id || fee.fee_name}-${fee.fee_type || 'fee'}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                                <div>
+                                  <p className="font-medium">
+                                    {fee.fee_name}
+                                    {fee.fee_type === 'school_fees' ? ' (School Fees)' : fee.fee_type ? ' (Other Fee)' : ''}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Paid: UGX {(fee.paid || 0).toLocaleString()} · Outstanding: UGX {(fee.outstanding || 0).toLocaleString()}
+                                  </p>
+                                </div>
+                                <div className="text-right font-semibold">
+                                  UGX {(fee.amount || 0).toLocaleString()}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

@@ -26,6 +26,7 @@ interface Student {
   first_name: string;
   last_name: string;
   phone: string;
+  school_fees_amount?: number;
   class: string;
   stream?: string | null;
   school_name: string;
@@ -50,16 +51,17 @@ interface FeeForPayment {
   name: string;
   amount: number;
   currency: string;
+  fee_type?: string;
   total_paid: number;
   outstanding: number;
   is_paid: boolean;
 }
 
 interface StudentLookupData {
-  student: { id: string; registration_id: string; full_name: string; class: string; phone: string };
+  student: { id: string; registration_id: string; full_name: string; class: string; phone: string; school_fees_amount?: number };
   school: { code: string; name: string };
   available_fees: FeeForPayment[];
-  payment_summary: { total_fees: number; total_paid: number; total_outstanding: number; payment_status: string };
+  payment_summary: { total_fees: number; total_paid: number; total_outstanding: number; school_fees_amount?: number; payment_status: string };
 }
 
 // All valid class values
@@ -382,25 +384,6 @@ export default function LookupPage() {
     return fees.reduce((total, fee) => total + fee.amount, 0);
   };
 
-  // Calculate total fees for a specific student stream.
-  // - If the fee has no stream, it applies to all streams.
-  // - If the fee has a stream, it only applies when it matches the student's stream.
-  // - If student has no stream, we exclude stream-specific fees to avoid double-counting.
-  const calculateTotalFeesForStream = (stream?: string | null) => {
-    return fees.reduce((total, fee) => {
-      if (fee.stream) {
-        if (!stream) {
-          // Student stream unknown – skip stream-specific tuition
-          return total;
-        }
-        if (fee.stream !== stream) {
-          return total;
-        }
-      }
-      return total + fee.amount;
-    }, 0);
-  };
-
   return (
     <div className="min-h-screen bg-[#08163d]">
       <div className="container mx-auto px-4 py-8">
@@ -513,7 +496,7 @@ export default function LookupPage() {
                             <SelectTrigger id="class" className="w-full">
                               <SelectValue placeholder="Select a class" />
                             </SelectTrigger>
-                            <SelectContent className="max-h-[300px]">
+                            <SelectContent className="max-h-75">
                               {VALID_CLASSES.map((className) => (
                                 <SelectItem key={className} value={className}>
                                   {className}
@@ -684,6 +667,14 @@ export default function LookupPage() {
                     </Button>
                   </div>
                   <div className="grid gap-2 text-sm">
+                    {studentLookupData.student.school_fees_amount !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">School Fees</span>
+                        <span className="font-semibold text-emerald-700">
+                          UGX {studentLookupData.student.school_fees_amount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total outstanding</span>
                       <span className="font-semibold text-red-600">
@@ -691,6 +682,32 @@ export default function LookupPage() {
                       </span>
                     </div>
                   </div>
+
+                  {Array.isArray(studentLookupData.available_fees) && studentLookupData.available_fees.length > 0 && (
+                    <div className="rounded-lg border border-emerald-200 bg-white p-4">
+                      <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                        Fee Breakdown
+                      </h4>
+                      <div className="space-y-2">
+                        {studentLookupData.available_fees.map((fee) => (
+                          <div key={`summary-${fee.id}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                            <div>
+                              <p className="font-medium">
+                                {fee.name}
+                                {fee.fee_type === 'school_fees' ? ' (School Fees)' : ' (Other Fee)'}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Paid: UGX {(fee.total_paid || 0).toLocaleString()} · Outstanding: UGX {(fee.outstanding || 0).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="text-right font-semibold">
+                              UGX {(fee.amount || 0).toLocaleString()}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-2">
                     <label className="text-sm font-medium">Select fee to pay</label>
@@ -716,6 +733,16 @@ export default function LookupPage() {
                               <p className="text-xs text-muted-foreground">
                                 Outstanding: UGX {fee.outstanding.toLocaleString()}
                               </p>
+                              {fee.fee_type === 'school_fees' && (
+                                <Badge variant="outline" className="mt-1 text-[11px] uppercase tracking-wide">
+                                  School Fees
+                                </Badge>
+                              )}
+                              {fee.fee_type !== 'school_fees' && (
+                                <Badge variant="outline" className="mt-1 text-[11px] uppercase tracking-wide">
+                                  Other Fees
+                                </Badge>
+                              )}
                             </div>
                             {selectedFee?.id === fee.id && (
                               <CheckCircle2 className="h-5 w-5 text-emerald-600" />
@@ -817,11 +844,17 @@ export default function LookupPage() {
                                 <School className="h-4 w-4 text-muted-foreground" />
                                 <span><strong>School:</strong> {student.school_name}</span>
                               </div>
+                              {student.school_fees_amount !== undefined && (
+                                <div className="flex items-center gap-2">
+                                  <DollarSign className="h-4 w-4 text-muted-foreground" />
+                                  <span><strong>School Fees:</strong> UGX {student.school_fees_amount.toLocaleString()}</span>
+                                </div>
+                              )}
                             </div>
                             <div className="pt-4 border-t">
                               <p className="text-sm font-medium mb-2">Total Fees for {student.class}:</p>
                               <p className="text-2xl font-bold text-primary">
-                                UGX {calculateTotalFeesForStream(student.stream).toLocaleString()}
+                                UGX —
                               </p>
                             </div>
                             <Button
