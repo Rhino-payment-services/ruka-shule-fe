@@ -25,7 +25,7 @@ import {
 } from '@/components/ui/select';
 import { Receipt, Plus, Edit, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { feesAPI } from '@/lib/api';
+import { schoolsAPI, feesAPI } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface Fee {
@@ -51,6 +51,8 @@ const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 export default function FeesPage() {
   const [fees, setFees] = useState<Fee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
+  const [schoolChecked, setSchoolChecked] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingFee, setEditingFee] = useState<Fee | null>(null);
@@ -67,10 +69,30 @@ export default function FeesPage() {
   });
 
   useEffect(() => {
-    loadFees();
+    const checkSchool = async () => {
+      try {
+        await schoolsAPI.getMySchool();
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          setSchoolSetupRequired(true);
+        }
+      } finally {
+        setSchoolChecked(true);
+      }
+    };
+    checkSchool();
   }, []);
 
+  useEffect(() => {
+    if (!schoolChecked || schoolSetupRequired) {
+      setLoading(false);
+      return;
+    }
+    loadFees();
+  }, [schoolChecked, schoolSetupRequired]);
+
   const loadFees = async () => {
+    if (schoolSetupRequired) return;
     setLoading(true);
     try {
       const res = await feesAPI.list(1, 100);
@@ -217,6 +239,25 @@ export default function FeesPage() {
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
         <div className="space-y-6">
+          {schoolSetupRequired && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-amber-900">School setup required</CardTitle>
+                <CardDescription className="text-amber-800">
+                  This account is active, but no school is linked yet. Complete school onboarding before managing fees.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button onClick={() => window.location.assign('/dashboard/schools/onboard')} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  Onboard School
+                </Button>
+                <Button variant="outline" onClick={() => window.location.assign('/dashboard/settings')}>
+                  Open Settings
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold">Fees Management</h1>

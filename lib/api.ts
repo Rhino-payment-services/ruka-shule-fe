@@ -189,6 +189,8 @@ export const schoolsAPI = {
     api.get(`/schools/check-name?name=${encodeURIComponent(name)}`),
   checkPhone: (phone: string) =>
     api.get(`/schools/check-phone?phone=${encodeURIComponent(phone)}`),
+  checkCode: (code: string) =>
+    api.get(`/schools/check-code?code=${encodeURIComponent(code)}`),
 };
 
 // Students API

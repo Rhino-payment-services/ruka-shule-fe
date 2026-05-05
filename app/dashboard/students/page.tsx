@@ -4,7 +4,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { studentsAPI } from '@/lib/api';
+import { schoolsAPI, studentsAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -65,6 +65,8 @@ export default function StudentsPage() {
   const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
+  const [schoolChecked, setSchoolChecked] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
@@ -80,10 +82,30 @@ export default function StudentsPage() {
   const [selectedTerm, setSelectedTerm] = useState<string>('');
 
   useEffect(() => {
+    const checkSchool = async () => {
+      try {
+        await schoolsAPI.getMySchool();
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          setSchoolSetupRequired(true);
+        }
+      } finally {
+        setSchoolChecked(true);
+      }
+    };
+    checkSchool();
+  }, []);
+
+  useEffect(() => {
+    if (!schoolChecked || schoolSetupRequired) {
+      setLoading(false);
+      return;
+    }
     fetchStudents();
-  }, [currentPage]);
+  }, [currentPage, schoolChecked, schoolSetupRequired]);
 
   const fetchStudents = async () => {
+    if (schoolSetupRequired) return;
     try {
       setLoading(true);
       const response = await studentsAPI.list(currentPage, pageSize);
@@ -134,7 +156,6 @@ export default function StudentsPage() {
   const downloadExampleExcel = () => {
     const exampleData = [
       {
-        'Registration ID': 'REG2024001',
         'First Name': 'John',
         'Last Name': 'Doe',
         'Phone': '+256700123456',
@@ -147,7 +168,6 @@ export default function StudentsPage() {
         'Parent Phone': '+256700123457',
       },
       {
-        'Registration ID': 'REG2024002',
         'First Name': 'Mary',
         'Last Name': 'Smith',
         'Phone': '+256700123458',
@@ -160,7 +180,6 @@ export default function StudentsPage() {
         'Parent Phone': '+256700123459',
       },
       {
-        'Registration ID': 'REG2024003',
         'First Name': 'Peter',
         'Last Name': 'Johnson',
         'Phone': '+256700123460',
@@ -177,7 +196,6 @@ export default function StudentsPage() {
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(exampleData);
     const columnWidths = [
-      { wch: 15 }, // Registration ID
       { wch: 12 }, // First Name
       { wch: 12 }, // Last Name
       { wch: 15 }, // Phone
@@ -275,6 +293,25 @@ export default function StudentsPage() {
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
         <div className="space-y-6">
+          {schoolSetupRequired && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-amber-900">School setup required</CardTitle>
+                <CardDescription className="text-amber-800">
+                  This account is active, but no school is linked yet. Complete school onboarding before managing students.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button onClick={() => router.push('/dashboard/schools/onboard')} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  Onboard School
+                </Button>
+                <Button variant="outline" onClick={() => router.push('/dashboard/settings')}>
+                  Open Settings
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold">Students</h1>

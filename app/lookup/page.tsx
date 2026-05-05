@@ -304,15 +304,7 @@ export default function LookupPage() {
       toast.error('Fill all required fields');
       return;
     }
-    const amount = parseFloat(paymentAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast.error('Enter a valid amount');
-      return;
-    }
-    if (amount > selectedFee.outstanding) {
-      toast.error(`Amount cannot exceed UGX ${selectedFee.outstanding.toLocaleString()}`);
-      return;
-    }
+    const amount = selectedFee.outstanding;
     const phone = paymentPhone.replace(/\D/g, '');
     if (phone.length < 9) {
       toast.error('Enter a valid phone number');
@@ -762,14 +754,12 @@ export default function LookupPage() {
                           <label className="text-sm font-medium">Amount (UGX)</label>
                           <Input
                             type="number"
-                            placeholder="Amount"
-                            value={paymentAmount}
-                            onChange={(e) => setPaymentAmount(e.target.value)}
-                            min={1}
-                            max={selectedFee.outstanding}
+                            value={selectedFee.outstanding}
+                            readOnly
+                            disabled
                           />
                           <p className="text-xs text-muted-foreground">
-                            Max: UGX {selectedFee.outstanding.toLocaleString()}
+                            Fixed amount for the selected fee: UGX {selectedFee.outstanding.toLocaleString()}
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -795,7 +785,7 @@ export default function LookupPage() {
                           ) : (
                             <>
                               <Wallet className="h-4 w-4 mr-2" />
-                              Pay {paymentAmount && !isNaN(parseFloat(paymentAmount)) ? `UGX ${parseFloat(paymentAmount).toLocaleString()}` : 'Now'}
+                              Pay UGX {selectedFee.outstanding.toLocaleString()}
                             </>
                           )}
                         </Button>
@@ -850,12 +840,6 @@ export default function LookupPage() {
                                   <span><strong>School Fees:</strong> UGX {student.school_fees_amount.toLocaleString()}</span>
                                 </div>
                               )}
-                            </div>
-                            <div className="pt-4 border-t">
-                              <p className="text-sm font-medium mb-2">Total Fees for {student.class}:</p>
-                              <p className="text-2xl font-bold text-primary">
-                                UGX —
-                              </p>
                             </div>
                             <Button
                               onClick={() => handlePayFees(student)}

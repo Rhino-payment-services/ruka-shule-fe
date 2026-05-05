@@ -12,7 +12,6 @@ import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 
 interface StudentRow {
-  registration_id: string;
   first_name: string;
   last_name: string;
   phone: string;
@@ -66,16 +65,6 @@ export default function ImportStudentsPage() {
         const jsonData = XLSX.utils.sheet_to_json(firstSheet) as any[];
 
         const students: StudentRow[] = jsonData.map((row) => {
-          const registrationId =
-            row['Registration ID'] ||
-            row['registration_id'] ||
-            row['RegistrationID'] ||
-            row['REG_ID'] ||
-            row['Student ID'] ||
-            row['student_id'] ||
-            row['StudentID'] ||
-            row['STUDENT_ID'] ||
-            '';
           const firstName =
             row['First Name'] ||
             row['first_name'] ||
@@ -132,7 +121,6 @@ export default function ImportStudentsPage() {
             undefined;
 
           return {
-            registration_id: String(registrationId).trim(),
             first_name: String(firstName).trim(),
             last_name: String(lastName).trim(),
             phone: String(phone).trim(),
@@ -145,7 +133,7 @@ export default function ImportStudentsPage() {
             parent_phone: parentPhone ? String(parentPhone).trim() : undefined,
           };
         }).filter((student) => {
-          return student.registration_id && student.first_name && student.last_name;
+          return student.first_name && student.last_name && student.phone && student.class;
         });
 
         if (students.length === 0) {
@@ -188,7 +176,6 @@ export default function ImportStudentsPage() {
       const student = preview[i];
       try {
         const payload: any = {
-          registration_id: student.registration_id,
           first_name: student.first_name,
           last_name: student.last_name,
           phone: student.phone,
@@ -360,9 +347,6 @@ export default function ImportStudentsPage() {
                     Your Excel file should have the following columns (case-insensitive):
                   </p>
                   <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                    <li>
-                      Registration ID (required) - School&apos;s internal student identifier
-                    </li>
                     <li>First Name (required)</li>
                     <li>Last Name (required)</li>
                     <li>Phone (required)</li>
@@ -393,19 +377,17 @@ export default function ImportStudentsPage() {
                     <table className="w-full text-sm">
                       <thead className="bg-muted sticky top-0">
                         <tr>
-                          <th className="p-2 text-left">Registration ID</th>
-                          <th className="p-2 text-left">First Name</th>
-                          <th className="p-2 text-left">Last Name</th>
-                          <th className="p-2 text-left">Phone</th>
-                          <th className="p-2 text-left">Class</th>
-                          <th className="p-2 text-left">Stream</th>
-                          <th className="p-2 text-left">Scholarship</th>
+                      <th className="p-2 text-left">First Name</th>
+                      <th className="p-2 text-left">Last Name</th>
+                      <th className="p-2 text-left">Phone</th>
+                      <th className="p-2 text-left">Class</th>
+                      <th className="p-2 text-left">Stream</th>
+                      <th className="p-2 text-left">Scholarship</th>
                         </tr>
                       </thead>
                       <tbody>
                         {preview.slice(0, 50).map((student, idx) => (
                           <tr key={idx} className="border-t">
-                            <td className="p-2">{student.registration_id}</td>
                             <td className="p-2">{student.first_name}</td>
                             <td className="p-2">{student.last_name}</td>
                             <td className="p-2">{student.phone}</td>

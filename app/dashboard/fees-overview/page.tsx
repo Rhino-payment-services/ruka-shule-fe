@@ -9,9 +9,10 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { paymentsAPI } from '@/lib/api';
+import { paymentsAPI, schoolsAPI } from '@/lib/api';
 import { Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 type OverviewStatus = 'all' | 'paid' | 'partial' | 'unpaid';
 
@@ -43,8 +44,11 @@ interface OverviewResponse {
 }
 
 export default function FeesOverviewPage() {
+  const router = useRouter();
   const defaultPageSize = 100;
   const [loading, setLoading] = useState(true);
+  const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
+  const [schoolChecked, setSchoolChecked] = useState(false);
   const [academicYear, setAcademicYear] = useState(new Date().getFullYear().toString());
   const [term, setTerm] = useState<string>('all');
   const [className, setClassName] = useState<string>('');
@@ -53,6 +57,7 @@ export default function FeesOverviewPage() {
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
 
   const loadOverview = async (nextPage = page) => {
+    if (schoolSetupRequired) return;
     try {
       setLoading(true);
       const res = await paymentsAPI.getOverview({
@@ -73,8 +78,27 @@ export default function FeesOverviewPage() {
   };
 
   useEffect(() => {
-    loadOverview();
+    const checkSchool = async () => {
+      try {
+        await schoolsAPI.getMySchool();
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          setSchoolSetupRequired(true);
+        }
+      } finally {
+        setSchoolChecked(true);
+      }
+    };
+    checkSchool();
   }, []);
+
+  useEffect(() => {
+    if (!schoolChecked || schoolSetupRequired) {
+      setLoading(false);
+      return;
+    }
+    loadOverview();
+  }, [schoolChecked, schoolSetupRequired]);
 
   const formatCurrency = (value: number) => `UGX ${value.toLocaleString()}`;
 
@@ -139,6 +163,25 @@ export default function FeesOverviewPage() {
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
         <div className="space-y-6">
+          {schoolSetupRequired && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-amber-900">School setup required</CardTitle>
+                <CardDescription className="text-amber-800">
+                  This account is active, but no school is linked yet. Complete school onboarding before viewing fees overview.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button onClick={() => router.push('/dashboard/schools/onboard')} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  Onboard School
+                </Button>
+                <Button variant="outline" onClick={() => router.push('/dashboard/settings')}>
+                  Open Settings
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold">Fees Overview</h1>

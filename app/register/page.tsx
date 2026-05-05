@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { Mail, Lock, Phone, Eye, EyeOff, Sparkles, User, School, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Mail, Lock, Phone, Eye, EyeOff, Sparkles, User, School, ChevronRight, ChevronLeft, CreditCard } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -28,9 +28,16 @@ export default function RegisterPage() {
     
     // School Information (for school_admin creating new school)
     schoolName: '',
+    schoolCode: '',
     schoolAbbreviation: '',
     schoolAddress: '',
     schoolEmail: '',
+    // Optional bank info (non-required)
+    bankName: '',
+    bankCode: '',
+    accountNumber: '',
+    accountName: '',
+    branch: '',
   });
 
   const [currentStep, setCurrentStep] = useState<RegistrationStep>('personal');
@@ -380,32 +387,36 @@ export default function RegisterPage() {
         role: formData.role,
       };
 
+      // Step 1: Register the user first so the auth token exists
       await register(registerData);
 
-      // Step 2: Create school for school_admin using the register endpoint
-      // Use the same phone number for both user and school
+      // Step 2: Create school for school_admin using the authenticated endpoint
+      // The school registration route requires a valid token + school_admin role.
       if (formData.role === 'school_admin' && formData.schoolName && formData.phone && formData.schoolEmail) {
         try {
           await schoolsAPI.register({
             name: formData.schoolName,
+            code: formData.schoolCode || undefined,
             abbreviation: formData.schoolAbbreviation || undefined,
             address: formData.schoolAddress || undefined,
-            phone: formData.phone, // Use same phone as user
+            phone: formData.phone,
             email: formData.schoolEmail,
             owner_first_name: formData.firstName,
             owner_last_name: formData.lastName,
+            bank_name: formData.bankName || undefined,
+            bank_code: formData.bankCode || undefined,
+            account_number: formData.accountNumber || undefined,
+            account_name: formData.accountName || undefined,
+            branch: formData.branch || undefined,
           });
-          // School is created and user is automatically linked via the backend
         } catch (schoolErr: unknown) {
-          // If school creation fails, user is already registered - this is a problem
-          // We should ideally rollback user registration, but for now show error
           console.error('Failed to create school during registration:', schoolErr);
           const axiosError = schoolErr as { response?: { data?: { error?: string } }; message?: string };
           const errorMsg = `Registration successful, but school creation failed: ${axiosError.response?.data?.error || axiosError.message || 'Unknown error'}. Please contact support.`;
           setError(errorMsg);
           toast.error(errorMsg);
           setLoading(false);
-          return; // Don't redirect to dashboard
+          return;
         }
       }
 
@@ -659,7 +670,7 @@ export default function RegisterPage() {
                 {currentStep === 'school' && (
                   <div className="space-y-4">
                     <p className="text-sm text-muted-foreground">
-                      Provide your school details. The school code will be automatically generated.
+                      Provide your school details. Enter a unique school code (will be validated for uniqueness).
                     </p>
                     
                     <div className="space-y-2">
@@ -696,19 +707,76 @@ export default function RegisterPage() {
                       )}
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="schoolAbbreviation" className="text-sm font-medium">Abbreviation</Label>
-                      <Input
-                        id="schoolAbbreviation"
-                        type="text"
-                        value={formData.schoolAbbreviation}
-                        onChange={(e) => setFormData({ ...formData, schoolAbbreviation: e.target.value.toUpperCase() })}
-                        placeholder="STMP"
-                        maxLength={6}
-                        className="h-10 border-2 w-full"
-                      />
-                      <p className="text-xs text-muted-foreground">Optional - used for code generation</p>
-                    </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="schoolCode" className="text-sm font-medium">School Code <span className="text-red-500">*</span></Label>
+                        <div className="relative">
+                          <Input
+                            id="schoolCode"
+                            type="text"
+                            value={formData.schoolCode || ''}
+                            onChange={async (e) => {
+                              const value = e.target.value.toUpperCase();
+                              setFormData({ ...formData, schoolCode: value });
+                              
+                              // Auto-generate from abbreviation if empty
+                              if (!value && formData.schoolAbbreviation) {
+                                setFormData(prev => ({ ...prev, schoolCode: formData.schoolAbbreviation }));
+                              }
+                              
+                              // Validate code if length >= 3
+                              if (value.length >= 3) {
+                                try {
+                                  const response = await schoolsAPI.checkCode(value);
+                                  const exists = response.data?.data?.exists;
+                                  if (exists) {
+                                    setFieldErrors(prev => ({ ...prev, schoolCode: `Code "${value}" already taken` }));
+                                  } else {
+                                    setFieldErrors(prev => {
+                                      const newErrors = { ...prev };
+                                      delete newErrors.schoolCode;
+                                      return newErrors;
+                                    });
+                                  }
+                                } catch (err) {
+                                  console.warn('Code check failed:', err);
+                                }
+                              } else {
+                                setFieldErrors(prev => {
+                                  const newErrors = { ...prev };
+                                  delete newErrors.schoolCode;
+                                  return newErrors;
+                                });
+                              }
+                            }}
+                            placeholder="KPS001 or KPS (auto-generates number)"
+                            maxLength={10}
+                            required
+                            className={`h-10 border-2 w-full pr-10 transition-all ${
+                              fieldErrors.schoolCode 
+                                ? 'border-destructive focus:border-destructive ring-1 ring-destructive/30' 
+                                : 'focus:border-primary focus:ring-primary/20'
+                            }`}
+                          />
+                          {formData.schoolCode && (
+                            <button
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, schoolCode: formData.schoolAbbreviation || '' }))}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 text-xs bg-muted px-2 py-1 rounded-md hover:bg-muted/80 transition-colors"
+                            >
+                              Auto
+                            </button>
+                          )}
+                        </div>
+                        {fieldErrors.schoolCode && (
+                          <p className="text-xs text-destructive mt-1">{fieldErrors.schoolCode}</p>
+                        )}
+                        {formData.schoolCode && !fieldErrors.schoolCode && (
+                          <p className="text-xs text-green-600 mt-1">Code available ✅</p>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Enter your desired code or abbreviation - system auto-adds unique number if needed
+                      </div>
                     <div className="space-y-2">
                       <Label htmlFor="schoolPhone" className="text-sm font-medium">School Phone <span className="text-red-500">*</span></Label>
                       <div className="p-3 bg-muted rounded-md border-2 border-dashed w-full">
@@ -745,6 +813,73 @@ export default function RegisterPage() {
                         placeholder="e.g., Kampala, Uganda"
                         className="h-10 border-2"
                       />
+                    </div>
+
+                    {/* Optional Bank Information */}
+                    <div className="space-y-4 pt-4 border-t">
+                      <div className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+                        <CreditCard className="h-4 w-4" />
+                        Bank Information (Optional - can be added later)
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bankName" className="text-sm font-medium">Bank Name</Label>
+                        <Input
+                          id="bankName"
+                          type="text"
+                          value={formData.bankName}
+                          onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
+                          placeholder="e.g., Stanbic Bank"
+                          className="h-10 border-2"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="bankCode" className="text-sm font-medium">Bank Code</Label>
+                          <Input
+                            id="bankCode"
+                            type="text"
+                            value={formData.bankCode}
+                            onChange={(e) => setFormData({ ...formData, bankCode: e.target.value })}
+                            placeholder="e.g., 040147"
+                            className="h-10 border-2"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="accountNumber" className="text-sm font-medium">Account Number</Label>
+                          <Input
+                            id="accountNumber"
+                            type="text"
+                            value={formData.accountNumber}
+                            onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
+                            placeholder="e.g., 1234567890"
+                            className="h-10 border-2"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="accountName" className="text-sm font-medium">Account Name</Label>
+                          <Input
+                            id="accountName"
+                            type="text"
+                            value={formData.accountName}
+                            onChange={(e) => setFormData({ ...formData, accountName: e.target.value })}
+                            placeholder="e.g., School Account"
+                            className="h-10 border-2"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="branch" className="text-sm font-medium">Branch</Label>
+                          <Input
+                            id="branch"
+                            type="text"
+                            value={formData.branch}
+                            onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
+                            placeholder="e.g., Kampala Main"
+                            className="h-10 border-2"
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}

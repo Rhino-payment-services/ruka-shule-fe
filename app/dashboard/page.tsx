@@ -30,6 +30,7 @@ interface SchoolData {
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -177,8 +178,14 @@ export default function DashboardPage() {
           status: err.response?.status,
           config: err.config,
         });
-        // Don't fail the whole dashboard if school fetch fails
-        // The user can still see other stats
+        if (err?.response?.status === 404) {
+          setSchoolSetupRequired(true);
+          setLoading(false);
+          return;
+        }
+
+        // Don't fail the whole dashboard if school fetch fails for another reason.
+        // The user can still see other stats.
       }
       
       if (school) {
@@ -267,7 +274,14 @@ export default function DashboardPage() {
   return (
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
-        <SchoolAdminDashboard stats={stats} loading={loading} router={router} schoolData={schoolData} recentPayments={recentPayments} />
+        <SchoolAdminDashboard
+          stats={stats}
+          loading={loading}
+          router={router}
+          schoolData={schoolData}
+          recentPayments={recentPayments}
+          schoolSetupRequired={schoolSetupRequired}
+        />
       </DashboardLayout>
     </ProtectedRoute>
   );
@@ -449,15 +463,36 @@ function SchoolAdminDashboard({
   router,
   schoolData,
   recentPayments = [],
+  schoolSetupRequired = false,
 }: {
   stats: { totalSchools: number; totalStudents: number; totalPayments: number; totalRevenue: number; totalActiveFees: number };
   loading: boolean;
   router: { push: (path: string) => void };
   schoolData: SchoolData | null;
   recentPayments?: Array<{ reference: string; amount: number; currency: string; status: string; student_name?: string; created_at: string }>;
+  schoolSetupRequired?: boolean;
 }) {
   return (
     <div className="space-y-6">
+      {schoolSetupRequired && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardHeader>
+            <CardTitle className="text-amber-900">School setup required</CardTitle>
+            <CardDescription className="text-amber-800">
+              This account is active, but no school is linked yet. Complete school onboarding before accessing students, payments, and fees.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Button onClick={() => router.push('/dashboard/schools/onboard')} className="bg-amber-600 hover:bg-amber-700 text-white">
+              Onboard School
+            </Button>
+            <Button variant="outline" onClick={() => router.push('/dashboard/settings')}>
+              Open Settings
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <div>
         <h1 className="text-3xl font-bold">Dashboard</h1>
         <p className="mt-2 text-muted-foreground">Manage your school's fees and students</p>
@@ -465,7 +500,7 @@ function SchoolAdminDashboard({
 
       {/* School Details Card */}
       {schoolData && (
-        <Card className="border-2 border-primary/20 bg-gradient-to-br from-white to-primary/5">
+        <Card className="border-2 border-primary/20 bg-linear-to-br from-white to-primary/5">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Building2 className="h-5 w-5 text-primary" />

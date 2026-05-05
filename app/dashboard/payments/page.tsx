@@ -9,6 +9,7 @@ import { CreditCard, Search, CheckCircle, XCircle, Clock, Loader2, Wallet } from
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { paymentsAPI, studentsAPI, schoolsAPI, API_BASE_URL } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -29,6 +30,12 @@ interface FeeForPayment {
   total_paid: number;
   outstanding: number;
   is_paid: boolean;
+}
+
+interface SchoolProfile {
+  code?: string;
+  name?: string;
+  phone?: string;
 }
 
 interface StudentLookupData {
@@ -94,8 +101,11 @@ interface StudentPaymentSummary {
 }
 
 export default function PaymentsPage() {
+  const { user } = useAuth();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
+  const [schoolChecked, setSchoolChecked] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<StudentPaymentSummary | null>(null);
   const [searching, setSearching] = useState(false);
@@ -105,6 +115,7 @@ export default function PaymentsPage() {
 
   // Collect Payment state
   const [schoolCode, setSchoolCode] = useState<string>('');
+  const [schoolPhone, setSchoolPhone] = useState<string>('');
   const [lookupRegistrationId, setLookupRegistrationId] = useState('');
   const [studentLookupData, setStudentLookupData] = useState<StudentLookupData | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
@@ -115,23 +126,39 @@ export default function PaymentsPage() {
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
 
   useEffect(() => {
-    loadPayments();
-  }, [page]);
-
-  useEffect(() => {
-    const fetchSchool = async () => {
+    const checkSchool = async () => {
       try {
         const res = await schoolsAPI.getMySchool();
-        const school = res.data.data;
+        const school = res.data.data as SchoolProfile;
         if (school?.code) setSchoolCode(school.code);
-      } catch {
-        // School admin may not have school in some edge cases
+        if (school?.phone) setSchoolPhone(school.phone);
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          setSchoolSetupRequired(true);
+        }
+      } finally {
+        setSchoolChecked(true);
       }
     };
-    fetchSchool();
+    checkSchool();
   }, []);
 
+  useEffect(() => {
+    if (!schoolChecked || schoolSetupRequired) {
+      setLoading(false);
+      return;
+    }
+    loadPayments();
+  }, [page, schoolChecked, schoolSetupRequired]);
+
+  useEffect(() => {
+    if (!paymentPhone && schoolPhone) {
+      setPaymentPhone(schoolPhone);
+    }
+  }, [paymentPhone, schoolPhone]);
+
   const loadPayments = async () => {
+    if (schoolSetupRequired) return;
     try {
       setLoading(true);
       const response = await paymentsAPI.list(page, pageSize);
@@ -226,15 +253,7 @@ export default function PaymentsPage() {
       toast.error('Fill all required fields');
       return;
     }
-    const amount = parseFloat(paymentAmount);
-    if (isNaN(amount) || amount <= 0) {
-      toast.error('Enter a valid amount');
-      return;
-    }
-    if (amount > selectedFee.outstanding) {
-      toast.error(`Amount cannot exceed UGX ${selectedFee.outstanding.toLocaleString()}`);
-      return;
-    }
+    const amount = selectedFee.outstanding;
     const phone = paymentPhone.replace(/\D/g, '');
     if (phone.length < 9) {
       toast.error('Enter a valid phone number');
@@ -341,6 +360,25 @@ export default function PaymentsPage() {
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
         <div className="space-y-6">
+          {schoolSetupRequired && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-amber-900">School setup required</CardTitle>
+                <CardDescription className="text-amber-800">
+                  This account is active, but no school is linked yet. Complete school onboarding before collecting payments.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button onClick={() => window.location.assign('/dashboard/schools/onboard')} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  Onboard School
+                </Button>
+                <Button variant="outline" onClick={() => window.location.assign('/dashboard/settings')}>
+                  Open Settings
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <div>
             <h1 className="text-3xl font-bold">Payments</h1>
             <p className="mt-2 text-muted-foreground">View and manage payment transactions</p>
@@ -502,14 +540,12 @@ export default function PaymentsPage() {
                           <label className="text-sm font-medium">Amount (UGX)</label>
                           <Input
                             type="number"
-                            placeholder="Amount"
-                            value={paymentAmount}
-                            onChange={(e) => setPaymentAmount(e.target.value)}
-                            min={1}
-                            max={selectedFee.outstanding}
+                            value={selectedFee.outstanding}
+                            readOnly
+                            disabled
                           />
                           <p className="text-xs text-muted-foreground">
-                            Max: UGX {selectedFee.outstanding.toLocaleString()}
+                            Fixed amount for the selected fee: UGX {selectedFee.outstanding.toLocaleString()}
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -517,8 +553,12 @@ export default function PaymentsPage() {
                           <Input
                             placeholder="256700123456"
                             value={paymentPhone}
-                            onChange={(e) => setPaymentPhone(e.target.value)}
+                            readOnly
+                            disabled
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Uses the school payment phone saved in Settings.
+                          </p>
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -535,7 +575,7 @@ export default function PaymentsPage() {
                           ) : (
                             <>
                               <Wallet className="h-4 w-4 mr-2" />
-                              Pay {paymentAmount && !isNaN(parseFloat(paymentAmount)) ? `UGX ${parseFloat(paymentAmount).toLocaleString()}` : 'Now'}
+                              Pay UGX {selectedFee.outstanding.toLocaleString()}
                             </>
                           )}
                         </Button>

@@ -5,6 +5,7 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { schoolsAPI } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { School, ArrowLeft, Loader2, User, Building2, CreditCard, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +23,7 @@ import {
 interface FormData {
   // School Information
   name: string;
-  abbreviation: string;
+  schoolCode: string;
   address: string;
   phone: string;
   email: string;
@@ -54,6 +55,7 @@ type FormSection = 'school' | 'owner' | 'business' | 'financial';
 
 export default function OnboardSchoolPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -61,7 +63,7 @@ export default function OnboardSchoolPage() {
   const [currentSection, setCurrentSection] = useState<FormSection>('school');
   const [formData, setFormData] = useState<FormData>({
     name: '',
-    abbreviation: '',
+    schoolCode: '',
     address: '',
     phone: '',
     email: '',
@@ -129,9 +131,9 @@ export default function OnboardSchoolPage() {
     setLoading(true);
 
     try {
-      const response = await schoolsAPI.create({
+      const payload = {
         name: formData.name,
-        abbreviation: formData.abbreviation || undefined,
+        code: formData.schoolCode.trim().toUpperCase(),
         address: formData.address || undefined,
         phone: formData.phone,
         email: formData.email,
@@ -151,12 +153,16 @@ export default function OnboardSchoolPage() {
         account_number: formData.accountNumber || undefined,
         account_name: formData.accountName || undefined,
         branch: formData.branch || undefined,
-      });
+      };
+
+      const response = user?.role === 'school_admin'
+        ? await schoolsAPI.register(payload)
+        : await schoolsAPI.create(payload);
 
       setSuccess(true);
-      // Redirect to schools list after 2 seconds
+      // Redirect to the appropriate destination after 2 seconds
       setTimeout(() => {
-        router.push('/dashboard/schools');
+        router.push(user?.role === 'school_admin' ? '/dashboard' : '/dashboard/schools');
       }, 2000);
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: string } }; message?: string };
@@ -167,7 +173,7 @@ export default function OnboardSchoolPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'school_admin']}>
       <DashboardLayout>
         <div className="space-y-6 max-w-4xl mx-auto">
           {/* Header */}
@@ -182,7 +188,7 @@ export default function OnboardSchoolPage() {
               Back
             </Button>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-[#08163d] to-[#0a1f4f] bg-clip-text text-transparent">
+              <h1 className="text-3xl font-bold bg-linear-to-r from-[#08163d] to-[#0a1f4f] bg-clip-text text-transparent">
                 Onboard New School
               </h1>
               <p className="mt-2 text-muted-foreground">
@@ -249,7 +255,7 @@ export default function OnboardSchoolPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-blue-100 to-blue-200 border border-blue-300">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-linear-to-br from-blue-100 to-blue-200 border border-blue-300">
                   {quickSignup ? (
                     <School className="h-6 w-6 text-blue-600" />
                   ) : (
@@ -269,8 +275,8 @@ export default function OnboardSchoolPage() {
                   </CardTitle>
                   <CardDescription>
                     {quickSignup 
-                      ? 'Enter the school details below. The school code will be automatically generated. You can complete merchant onboarding later.'
-                      : currentSection === 'school' && 'Enter the school details below. The school code will be automatically generated.'}
+                      ? 'Enter the school details below. The school code is required and must be unique. You can complete merchant onboarding later.'
+                      : currentSection === 'school' && 'Enter the school details below. The school code is required and must be unique.'}
                     {!quickSignup && currentSection === 'owner' && 'Enter the owner or representative information for merchant KYC.'}
                     {!quickSignup && currentSection === 'business' && 'Enter business registration details required for merchant onboarding.'}
                     {!quickSignup && currentSection === 'financial' && 'Enter bank account information (optional). This can be added later.'}
@@ -299,20 +305,21 @@ export default function OnboardSchoolPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="abbreviation" className="text-sm font-medium">
-                        Abbreviation (Optional)
+                      <Label htmlFor="schoolCode" className="text-sm font-medium">
+                        School Code <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="abbreviation"
+                        id="schoolCode"
                         type="text"
-                        value={formData.abbreviation}
-                        onChange={(e) => setFormData({ ...formData, abbreviation: e.target.value.toUpperCase() })}
-                        placeholder="e.g., STMP"
-                        maxLength={6}
+                        value={formData.schoolCode}
+                        onChange={(e) => setFormData({ ...formData, schoolCode: e.target.value.toUpperCase() })}
+                        placeholder="e.g., STMP001"
+                        maxLength={20}
+                        required
                         className="h-11"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Optional abbreviation for code generation. If not provided, it will be extracted from the school name.
+                        This school code must be unique and will be used throughout the system.
                       </p>
                     </div>
 

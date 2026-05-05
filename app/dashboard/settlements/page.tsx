@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { paymentsAPI, schoolsAPI } from '@/lib/api';
 import { Loader2, RefreshCcw, Landmark } from 'lucide-react';
 import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 interface SchoolProfile {
   bank_name?: string;
@@ -41,6 +42,7 @@ interface SettlementRow {
 }
 
 export default function SettlementsPage() {
+  const router = useRouter();
   const defaultPageSize = 20;
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
@@ -49,12 +51,15 @@ export default function SettlementsPage() {
   const [summary, setSummary] = useState<SettlementSummary | null>(null);
   const [settlements, setSettlements] = useState<SettlementRow[]>([]);
   const [school, setSchool] = useState<SchoolProfile | null>(null);
+  const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
+  const [schoolChecked, setSchoolChecked] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
   const hasBankProfile = !!(school?.bank_name && school?.bank_account_name && school?.bank_account_number);
 
   const loadData = async (nextPage = page) => {
+    if (schoolSetupRequired) return;
     try {
       setLoading(true);
       const [settlementsRes, schoolRes] = await Promise.all([
@@ -76,8 +81,27 @@ export default function SettlementsPage() {
   };
 
   useEffect(() => {
-    loadData();
+    const checkSchool = async () => {
+      try {
+        await schoolsAPI.getMySchool();
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          setSchoolSetupRequired(true);
+        }
+      } finally {
+        setSchoolChecked(true);
+      }
+    };
+    checkSchool();
   }, []);
+
+  useEffect(() => {
+    if (!schoolChecked || schoolSetupRequired) {
+      setLoading(false);
+      return;
+    }
+    loadData();
+  }, [schoolChecked, schoolSetupRequired]);
 
   const runSettlement = async () => {
     try {
@@ -130,6 +154,25 @@ export default function SettlementsPage() {
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
         <div className="space-y-6">
+          {schoolSetupRequired && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-amber-900">School setup required</CardTitle>
+                <CardDescription className="text-amber-800">
+                  This account is active, but no school is linked yet. Complete school onboarding before running settlements.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button onClick={() => router.push('/dashboard/schools/onboard')} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  Onboard School
+                </Button>
+                <Button variant="outline" onClick={() => router.push('/dashboard/settings')}>
+                  Open Settings
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <div>
             <h1 className="text-3xl font-bold">Settlements</h1>
             <p className="mt-2 text-muted-foreground">

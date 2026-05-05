@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { schoolsAPI } from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
 
 interface SchoolProfile {
   name: string;
@@ -31,10 +32,12 @@ interface SchoolProfile {
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const router = useRouter();
   const isSchoolAdmin = user?.role === 'school_admin';
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
   const [school, setSchool] = useState<SchoolProfile | null>(null);
   const [formData, setFormData] = useState({
     address: '',
@@ -77,6 +80,10 @@ export default function SettingsPage() {
           auto_settlement_enabled: !!data.auto_settlement_enabled,
         });
       } catch (error: any) {
+        if (error?.response?.status === 404) {
+          setSchoolSetupRequired(true);
+          return;
+        }
         toast.error(error?.response?.data?.error || 'Failed to load school settings');
       } finally {
         setLoading(false);
@@ -86,6 +93,10 @@ export default function SettingsPage() {
   }, [isSchoolAdmin]);
 
   const handleSave = async () => {
+    if (schoolSetupRequired) {
+      toast.error('Complete school onboarding before updating settings');
+      return;
+    }
     try {
       const thresholdValue =
         formData.settlement_min_threshold.trim() === ''
@@ -156,7 +167,26 @@ export default function SettingsPage() {
             </Card>
           )}
 
-          {isSchoolAdmin && (
+          {isSchoolAdmin && schoolSetupRequired && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-amber-900">School setup required</CardTitle>
+                <CardDescription className="text-amber-800">
+                  This account is active, but no school is linked yet. Complete school onboarding before editing settings.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button onClick={() => router.push('/dashboard/schools/onboard')} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  Onboard School
+                </Button>
+                <Button variant="outline" onClick={() => router.push('/dashboard')}>
+                  Go to Dashboard
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
+          {isSchoolAdmin && !schoolSetupRequired && (
             <>
               <Card>
                 <CardHeader>
@@ -185,7 +215,7 @@ export default function SettingsPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Edit School & Settlement Settings</CardTitle>
-                  <CardDescription>Update missing or incorrect payout details.</CardDescription>
+                    <CardDescription>Update the school payment phone, contact details, and settlement configuration.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-4 md:grid-cols-2">
@@ -194,7 +224,7 @@ export default function SettingsPage() {
                       <Input value={formData.address} onChange={(e) => setFormData((s) => ({ ...s, address: e.target.value }))} />
                     </div>
                     <div className="space-y-2">
-                      <Label>Phone</Label>
+                      <Label>Payment Phone</Label>
                       <Input value={formData.phone} onChange={(e) => setFormData((s) => ({ ...s, phone: e.target.value }))} />
                     </div>
                     <div className="space-y-2">
