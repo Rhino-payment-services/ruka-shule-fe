@@ -288,5 +288,7 @@ export const adminAPI = {
     api.get(`/admin/payments?page=${page}&page_size=${pageSize}`),
   listUsers: (page = 1, pageSize = 20) =>
     api.get(`/admin/users?page=${page}&page_size=${pageSize}`),
+  updateMerchantStatus: (schoolId: string, data: { merchant_status: string; reason?: string | null }) =>
+    api.put(`/admin/schools/${encodeURIComponent(schoolId)}/merchant-status`, data),
 };
 

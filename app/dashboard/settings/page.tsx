@@ -3,6 +3,7 @@
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,6 +29,9 @@ interface SchoolProfile {
   settlement_frequency?: string;
   settlement_min_threshold?: number;
   auto_settlement_enabled?: boolean;
+  merchant_status?: string;
+  merchant_rejection_reason?: string;
+  merchant_status_note?: string;
 }
 
 export default function SettingsPage() {
@@ -188,6 +192,18 @@ export default function SettingsPage() {
 
           {isSchoolAdmin && !schoolSetupRequired && (
             <>
+              {school?.merchant_status === 'rejected' && (
+                <Card className="border-red-200 bg-red-50">
+                  <CardHeader>
+                    <CardTitle className="text-red-900">Merchant Onboarding Rejected</CardTitle>
+                    <CardDescription className="text-red-800">Your school's merchant onboarding was rejected. Transactions are disabled until this is resolved.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-red-900 font-medium">Reason:</p>
+                    <p className="text-sm text-red-800">{(school as any).merchant_rejection_reason || 'No reason provided'}</p>
+                  </CardContent>
+                </Card>
+              )}
               <Card>
                 <CardHeader>
                   <CardTitle>Current School Profile</CardTitle>
@@ -202,6 +218,38 @@ export default function SettingsPage() {
                       <p><span className="text-muted-foreground">Phone:</span> {school?.phone || '—'}</p>
                       <p><span className="text-muted-foreground">Email:</span> {school?.email || '—'}</p>
                       <p><span className="text-muted-foreground">Address:</span> {school?.address || '—'}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Merchant Status:</span>
+                        {school?.merchant_status ? (
+                          <>
+                            <Badge
+                              variant="outline"
+                              className={
+                                school.merchant_status === 'approved'
+                                  ? 'bg-green-100 text-green-700 border-green-300'
+                                  : school.merchant_status === 'rejected'
+                                  ? 'bg-red-100 text-red-700 border-red-300'
+                                  : 'bg-amber-100 text-amber-700 border-amber-300'
+                              }
+                            >
+                              {school.merchant_status === 'pending_onboarding'
+                                ? 'Pending Onboarding'
+                                : school.merchant_status === 'kyc_submitted'
+                                ? 'KYC Submitted'
+                                : school.merchant_status === 'approved'
+                                ? 'Approved'
+                                : school.merchant_status === 'rejected'
+                                ? 'Rejected'
+                                : school.merchant_status}
+                            </Badge>
+                            {school.merchant_status_note && (
+                              <p className="text-sm text-muted-foreground">Note: {school.merchant_status_note}</p>
+                            )}
+                          </>
+                        ) : (
+                          <Badge variant="outline">Unknown</Badge>
+                        )}
+                      </div>
                       <p><span className="text-muted-foreground">Bank:</span> {school?.bank_name || '—'}</p>
                       <p><span className="text-muted-foreground">Bank Code:</span> {school?.bank_code || '—'}</p>
                       <p><span className="text-muted-foreground">Account Name:</span> {school?.bank_account_name || '—'}</p>

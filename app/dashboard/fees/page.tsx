@@ -23,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Receipt, Plus, Edit, Trash2 } from 'lucide-react';
+import { Receipt, Plus, Edit, Trash2, Lock, Unlock } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { schoolsAPI, feesAPI } from '@/lib/api';
 import { toast } from 'sonner';
@@ -40,6 +40,7 @@ interface Fee {
   stream?: string | null; // Arts, Sciences, General, etc.
   due_date?: string | null;
   status: 'active' | 'inactive';
+  is_locked: boolean;
   school_id: string;
   created_at: string;
   updated_at?: string;
@@ -146,6 +147,10 @@ export default function FeesPage() {
   };
 
   const handleEdit = (fee: Fee) => {
+    if (fee.is_locked) {
+      toast.error('Unlock the fee before editing it');
+      return;
+    }
     setEditingFee(fee);
     setFormData({
       name: fee.name,
@@ -192,7 +197,23 @@ export default function FeesPage() {
     }
   };
 
+  const handleToggleLock = async (fee: Fee) => {
+    try {
+      await feesAPI.update(fee.id, { is_locked: !fee.is_locked });
+      toast.success(fee.is_locked ? 'Fee unlocked successfully' : 'Fee locked successfully');
+      loadFees();
+    } catch (error: any) {
+      console.error('Failed to update fee lock:', error);
+      toast.error(error.response?.data?.error || 'Failed to update fee lock');
+    }
+  };
+
   const handleDelete = async (id: string) => {
+    const fee = fees.find((item) => item.id === id);
+    if (fee?.is_locked) {
+      toast.error('Unlock the fee before deleting it');
+      return;
+    }
     if (!confirm('Are you sure you want to delete this fee?')) return;
 
     try {
@@ -302,6 +323,7 @@ export default function FeesPage() {
                       <TableHead>Stream</TableHead>
                       <TableHead>Due Date</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Lock</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -322,10 +344,18 @@ export default function FeesPage() {
                         </TableCell>
                         <TableCell>{getStatusBadge(fee.status)}</TableCell>
                         <TableCell>
+                          {fee.is_locked ? (
+                            <Badge className="bg-amber-500 hover:bg-amber-600">Locked</Badge>
+                          ) : (
+                            <Badge variant="outline">Open</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <div className="flex items-center gap-2">
                             <Button
                               variant="ghost"
                               size="sm"
+                              disabled={fee.is_locked}
                               onClick={() => handleEdit(fee)}
                               className="h-8 w-8 p-0"
                             >
@@ -334,6 +364,16 @@ export default function FeesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              onClick={() => handleToggleLock(fee)}
+                              className={`h-8 w-8 p-0 ${fee.is_locked ? 'text-amber-600 hover:text-amber-700' : 'text-slate-600 hover:text-slate-900'}`}
+                              title={fee.is_locked ? 'Unlock fee' : 'Lock fee'}
+                            >
+                              {fee.is_locked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={fee.is_locked}
                               onClick={() => handleDelete(fee.id)}
                               className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                             >

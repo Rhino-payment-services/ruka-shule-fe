@@ -55,6 +55,7 @@ interface FeeForPayment {
   total_paid: number;
   outstanding: number;
   is_paid: boolean;
+  is_locked: boolean;
 }
 
 interface StudentLookupData {
@@ -304,7 +305,11 @@ export default function LookupPage() {
       toast.error('Fill all required fields');
       return;
     }
-    const amount = selectedFee.outstanding;
+    const amount = Number(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
     const phone = paymentPhone.replace(/\D/g, '');
     if (phone.length < 9) {
       toast.error('Enter a valid phone number');
@@ -725,6 +730,9 @@ export default function LookupPage() {
                               <p className="text-xs text-muted-foreground">
                                 Outstanding: UGX {fee.outstanding.toLocaleString()}
                               </p>
+                              {fee.is_locked && (
+                                <Badge className="mt-1 bg-amber-500 hover:bg-amber-600">Locked</Badge>
+                              )}
                               {fee.fee_type === 'school_fees' && (
                                 <Badge variant="outline" className="mt-1 text-[11px] uppercase tracking-wide">
                                   School Fees
@@ -754,12 +762,17 @@ export default function LookupPage() {
                           <label className="text-sm font-medium">Amount (UGX)</label>
                           <Input
                             type="number"
-                            value={selectedFee.outstanding}
-                            readOnly
-                            disabled
+                            min="1"
+                            value={paymentAmount}
+                            onChange={(e) => setPaymentAmount(e.target.value)}
+                            readOnly={!!selectedFee.is_locked}
+                            disabled={!!selectedFee.is_locked}
+                            placeholder={selectedFee.outstanding.toString()}
                           />
                           <p className="text-xs text-muted-foreground">
-                            Fixed amount for the selected fee: UGX {selectedFee.outstanding.toLocaleString()}
+                            {selectedFee.is_locked
+                              ? `Locked fee: full outstanding amount required, UGX ${selectedFee.outstanding.toLocaleString()}`
+                              : `Enter the amount to send. Suggested amount: UGX ${selectedFee.outstanding.toLocaleString()}`}
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -785,7 +798,7 @@ export default function LookupPage() {
                           ) : (
                             <>
                               <Wallet className="h-4 w-4 mr-2" />
-                              Pay UGX {selectedFee.outstanding.toLocaleString()}
+                              Pay UGX {(Number(paymentAmount) || selectedFee.outstanding).toLocaleString()}
                             </>
                           )}
                         </Button>

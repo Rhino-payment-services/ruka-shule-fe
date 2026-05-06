@@ -3,10 +3,19 @@
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
-import { schoolsAPI } from '@/lib/api';
+import { schoolsAPI, adminAPI } from '@/lib/api';
 import { School, Clock, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import {
   Table,
@@ -39,6 +48,12 @@ export default function PendingApprovalsPage() {
   const [schools, setSchools] = useState<SchoolData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectSchoolId, setRejectSchoolId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [approveSchoolId, setApproveSchoolId] = useState<string | null>(null);
+  const [approveReason, setApproveReason] = useState('');
 
   useEffect(() => {
     loadSchools();
@@ -48,10 +63,13 @@ export default function PendingApprovalsPage() {
     try {
       const response = await schoolsAPI.list(1, 500);
       const all = response.data.data || [];
-      const pending = all.filter(
-        (s: SchoolData) =>
-          s.merchant_status && PENDING_STATUSES.includes(s.merchant_status)
-      );
+      const pending = all
+        .filter((s: SchoolData) => s.merchant_status && PENDING_STATUSES.includes(s.merchant_status))
+        .sort((a: SchoolData, b: SchoolData) => {
+          const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return tb - ta; // newest first
+        });
       setSchools(pending);
     } catch (error) {
       console.error('Failed to load schools:', error);
@@ -65,6 +83,49 @@ export default function PendingApprovalsPage() {
       school.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       school.code.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleApprove = (schoolId: string) => {
+    setApproveSchoolId(schoolId);
+    setApproveReason('');
+    setApproveDialogOpen(true);
+  };
+
+  const submitApprove = async () => {
+    if (!approveSchoolId) return;
+    try {
+      await adminAPI.updateMerchantStatus(approveSchoolId, {
+        merchant_status: 'approved',
+        reason: approveReason || null,
+      });
+      setApproveDialogOpen(false);
+      setApproveSchoolId(null);
+      await loadSchools();
+      toast.success('School approved successfully');
+    } catch (err) {
+      console.error('Approve failed', err);
+      toast.error('Failed to approve school. See console for details.');
+    }
+  };
+
+  const openRejectDialog = (schoolId: string) => {
+    setRejectSchoolId(schoolId);
+    setRejectReason('');
+    setRejectDialogOpen(true);
+  };
+
+  const submitReject = async () => {
+    if (!rejectSchoolId) return;
+    try {
+      await adminAPI.updateMerchantStatus(rejectSchoolId, { merchant_status: 'rejected', reason: rejectReason || null });
+      setRejectDialogOpen(false);
+      setRejectSchoolId(null);
+      await loadSchools();
+      toast.success('School rejected');
+    } catch (err) {
+      console.error('Reject failed', err);
+      toast.error('Failed to reject school. See console for details.');
+    }
+  };
 
   const getMerchantStatusBadge = (status?: string) => {
     if (!status) return null;
@@ -113,6 +174,60 @@ export default function PendingApprovalsPage() {
               </div>
             </CardContent>
           </Card>
+          {/* Reject dialog */}
+          <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Reject School Onboarding</DialogTitle>
+                <DialogDescription>
+                  Optionally provide a reason for rejecting this school's merchant onboarding.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-4">
+                <textarea
+                  className="modal-textarea w-full"
+                  value={rejectReason}
+                  onChange={(e) => setRejectReason(e.target.value)}
+                  placeholder="Enter rejection reason (optional)"
+                />
+              </div>
+              <DialogFooter>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
+                  <Button variant="outline" onClick={submitReject} className="bg-red-600 text-white">Reject</Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Approve confirmation dialog */}
+          <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Approve School Onboarding</DialogTitle>
+                <DialogDescription>
+                  Confirm approval for this school's merchant onboarding. Optionally add an approval note.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-4">
+                <p className="text-sm font-medium mb-3">
+                  School: {approveSchoolId ? (schools.find((s) => s.id === approveSchoolId)?.name ?? '—') : '—'}
+                </p>
+                <textarea
+                  className="modal-textarea w-full"
+                  value={approveReason}
+                  onChange={(e) => setApproveReason(e.target.value)}
+                  placeholder="Enter approval note (optional)"
+                />
+              </div>
+              <DialogFooter>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setApproveDialogOpen(false)}>Cancel</Button>
+                  <Button variant="outline" onClick={submitApprove} className="bg-green-600 text-white">Confirm Approve</Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Pending Schools Table */}
           <Card className="border-2 border-orange-200">
@@ -199,7 +314,23 @@ export default function PendingApprovalsPage() {
                         <TableCell>
                           {getMerchantStatusBadge(school.merchant_status)}
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-green-700 border-green-200 hover:bg-green-50"
+                            onClick={() => handleApprove(school.id)}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-700 border-red-200 hover:bg-red-50"
+                            onClick={() => openRejectDialog(school.id)}
+                          >
+                            Reject
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"

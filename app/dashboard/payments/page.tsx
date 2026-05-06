@@ -30,6 +30,7 @@ interface FeeForPayment {
   total_paid: number;
   outstanding: number;
   is_paid: boolean;
+  is_locked: boolean;
 }
 
 interface SchoolProfile {
@@ -122,26 +123,40 @@ export default function PaymentsPage() {
   const [selectedFee, setSelectedFee] = useState<FeeForPayment | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentPhone, setPaymentPhone] = useState('');
+  const [paymentPhoneTouched, setPaymentPhoneTouched] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
 
-  useEffect(() => {
-    const checkSchool = async () => {
-      try {
-        const res = await schoolsAPI.getMySchool();
-        const school = res.data.data as SchoolProfile;
-        if (school?.code) setSchoolCode(school.code);
-        if (school?.phone) setSchoolPhone(school.phone);
-      } catch (error: any) {
-        if (error?.response?.status === 404) {
-          setSchoolSetupRequired(true);
-        }
-      } finally {
-        setSchoolChecked(true);
+  const syncSchoolProfile = async (): Promise<SchoolProfile | null> => {
+    try {
+      const res = await schoolsAPI.getMySchool();
+      const school = res.data.data as SchoolProfile;
+      if (school?.code) setSchoolCode(school.code);
+      if (school?.phone) {
+        setSchoolPhone(school.phone);
+        setPaymentPhone((current) => (paymentPhoneTouched ? current : school.phone || current));
       }
+      return school;
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        setSchoolSetupRequired(true);
+      }
+      return null;
+    } finally {
+      setSchoolChecked(true);
+    }
+  };
+
+  useEffect(() => {
+    syncSchoolProfile();
+
+    const handleFocus = () => {
+      syncSchoolProfile();
     };
-    checkSchool();
-  }, []);
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [paymentPhoneTouched]);
 
   useEffect(() => {
     if (!schoolChecked || schoolSetupRequired) {
@@ -218,17 +233,22 @@ export default function PaymentsPage() {
   };
 
   const handlePaymentLookup = async () => {
-    if (!lookupRegistrationId.trim() || !schoolCode) {
+    const latestSchool = await syncSchoolProfile();
+
+    const latestSchoolCode = latestSchool?.code || schoolCode;
+
+    if (!lookupRegistrationId.trim() || !latestSchoolCode) {
       toast.error(schoolCode ? 'Enter student registration ID' : 'School not loaded');
       return;
     }
     try {
       setLookupLoading(true);
       setStudentLookupData(null);
-      const res = await paymentsAPI.lookupStudentForPayment(lookupRegistrationId.trim(), schoolCode);
+      const res = await paymentsAPI.lookupStudentForPayment(lookupRegistrationId.trim(), latestSchoolCode);
       const data = res.data.data;
       setStudentLookupData(data);
-      setPaymentPhone(data?.student?.phone || '');
+      setPaymentPhone(latestSchool?.phone || data?.student?.phone || '');
+      setPaymentPhoneTouched(false);
       // Auto-select first outstanding fee so admin can pay immediately
       const payableFees = (data?.available_fees || []).filter((f: FeeForPayment) => !f.is_paid && f.outstanding > 0);
       if (payableFees.length > 0) {
@@ -253,7 +273,11 @@ export default function PaymentsPage() {
       toast.error('Fill all required fields');
       return;
     }
-    const amount = selectedFee.outstanding;
+    const amount = Number(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
     const phone = paymentPhone.replace(/\D/g, '');
     if (phone.length < 9) {
       toast.error('Enter a valid phone number');
@@ -516,6 +540,9 @@ export default function PaymentsPage() {
                               <p className="text-xs text-muted-foreground">
                                 Outstanding: UGX {fee.outstanding.toLocaleString()}
                               </p>
+                              {fee.is_locked && (
+                                <Badge className="mt-1 bg-amber-500 hover:bg-amber-600">Locked</Badge>
+                              )}
                               {fee.fee_type === 'school_fees' && (
                                 <Badge variant="outline" className="mt-1 text-[11px] uppercase tracking-wide">
                                   School Fees
@@ -540,12 +567,17 @@ export default function PaymentsPage() {
                           <label className="text-sm font-medium">Amount (UGX)</label>
                           <Input
                             type="number"
-                            value={selectedFee.outstanding}
-                            readOnly
-                            disabled
+                            min="1"
+                            value={paymentAmount}
+                            onChange={(e) => setPaymentAmount(e.target.value)}
+                            readOnly={!!selectedFee.is_locked}
+                            disabled={!!selectedFee.is_locked}
+                            placeholder={selectedFee.outstanding.toString()}
                           />
                           <p className="text-xs text-muted-foreground">
-                            Fixed amount for the selected fee: UGX {selectedFee.outstanding.toLocaleString()}
+                            {selectedFee.is_locked
+                              ? `Locked fee: full outstanding amount required, UGX ${selectedFee.outstanding.toLocaleString()}`
+                              : `Enter the amount to send. Suggested amount: UGX ${selectedFee.outstanding.toLocaleString()}`}
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -575,7 +607,7 @@ export default function PaymentsPage() {
                           ) : (
                             <>
                               <Wallet className="h-4 w-4 mr-2" />
-                              Pay UGX {selectedFee.outstanding.toLocaleString()}
+                              Pay UGX {(Number(paymentAmount) || selectedFee.outstanding).toLocaleString()}
                             </>
                           )}
                         </Button>
