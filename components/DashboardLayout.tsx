@@ -190,7 +190,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
           {/* Right side */}
           <div className="flex items-center gap-3 pl-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-md">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#08163d] text-sm font-semibold text-white shadow-md">
               {user?.email?.charAt(0).toUpperCase()}
             </div>
             <div className="hidden md:block">

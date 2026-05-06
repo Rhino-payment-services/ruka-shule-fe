@@ -310,6 +310,10 @@ export default function LookupPage() {
       toast.error('Enter a valid amount');
       return;
     }
+    if (amount > selectedFee.outstanding) {
+      toast.error(`Amount cannot exceed UGX ${selectedFee.outstanding.toLocaleString()}`);
+      return;
+    }
     const phone = paymentPhone.replace(/\D/g, '');
     if (phone.length < 9) {
       toast.error('Enter a valid phone number');
@@ -369,6 +373,13 @@ export default function LookupPage() {
       setProcessingPayment(false);
     }
   };
+
+  const enteredAmount = Number(paymentAmount);
+  const amountExceeded =
+    !!selectedFee &&
+    paymentAmount !== '' &&
+    Number.isFinite(enteredAmount) &&
+    enteredAmount > selectedFee.outstanding;
 
   const resetPaymentFlow = () => {
     setStudentLookupData(null);
@@ -763,6 +774,7 @@ export default function LookupPage() {
                           <Input
                             type="number"
                             min="1"
+                            max={selectedFee.outstanding}
                             value={paymentAmount}
                             onChange={(e) => setPaymentAmount(e.target.value)}
                             readOnly={!!selectedFee.is_locked}
@@ -787,7 +799,7 @@ export default function LookupPage() {
                       <div className="flex flex-wrap gap-2 items-end">
                         <Button
                           onClick={handleProcessPayment}
-                          disabled={processingPayment}
+                          disabled={processingPayment || amountExceeded || !paymentAmount || !Number.isFinite(enteredAmount) || enteredAmount <= 0}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white"
                         >
                           {processingPayment ? (
