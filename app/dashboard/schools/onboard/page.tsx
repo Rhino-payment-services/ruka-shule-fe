@@ -2,7 +2,7 @@
 
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { schoolsAPI } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -56,6 +56,7 @@ type FormSection = 'school' | 'owner' | 'business' | 'financial';
 export default function OnboardSchoolPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const isSchoolAdmin = user?.role === 'school_admin';
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -85,6 +86,25 @@ export default function OnboardSchoolPage() {
     branch: '',
   });
 
+  useEffect(() => {
+    if (!isSchoolAdmin || !user) {
+      return;
+    }
+
+    const firstName = user.first_name?.trim() || '';
+    const lastName = user.last_name?.trim() || '';
+
+    if (!firstName || !lastName) {
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      ownerFirstName: prev.ownerFirstName || firstName,
+      ownerLastName: prev.ownerLastName || lastName,
+    }));
+  }, [isSchoolAdmin, user]);
+
   const sections: { id: FormSection; title: string; icon: React.ReactNode }[] = [
     { id: 'school', title: 'School Information', icon: <School className="h-4 w-4" /> },
     { id: 'owner', title: 'Owner Information', icon: <User className="h-4 w-4" /> },
@@ -99,11 +119,20 @@ export default function OnboardSchoolPage() {
   const canProceedToNext = () => {
     switch (currentSection) {
       case 'school':
-        return formData.name && formData.phone && formData.email;
+        if (quickSignup && isSchoolAdmin) {
+          return Boolean(
+            formData.name &&
+            formData.phone &&
+            formData.email &&
+            formData.ownerFirstName.trim() &&
+            formData.ownerLastName.trim()
+          );
+        }
+        return Boolean(formData.name && formData.phone && formData.email);
       case 'owner':
-        return formData.ownerFirstName && formData.ownerLastName && formData.ownerDateOfBirth && formData.ownerGender && formData.ownerNationalId;
+        return Boolean(formData.ownerFirstName && formData.ownerLastName && formData.ownerDateOfBirth && formData.ownerGender && formData.ownerNationalId);
       case 'business':
-        return formData.certificateOfIncorporation && formData.taxIdentificationNumber && formData.businessType && formData.businessRegistrationDate && formData.businessCity;
+        return Boolean(formData.certificateOfIncorporation && formData.taxIdentificationNumber && formData.businessType && formData.businessRegistrationDate && formData.businessCity);
       case 'financial':
         return true; // All optional
       default:
@@ -128,6 +157,12 @@ export default function OnboardSchoolPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (quickSignup && isSchoolAdmin && (!formData.ownerFirstName.trim() || !formData.ownerLastName.trim())) {
+      setError('Owner first and last names are missing. Please provide them to continue.');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -366,6 +401,48 @@ export default function OnboardSchoolPage() {
                         className="h-11"
                       />
                     </div>
+
+                    {quickSignup && isSchoolAdmin && (!formData.ownerFirstName.trim() || !formData.ownerLastName.trim()) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="quickOwnerFirstName" className="text-sm font-medium">
+                            Owner First Name <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            id="quickOwnerFirstName"
+                            type="text"
+                            value={formData.ownerFirstName}
+                            onChange={(e) => setFormData({ ...formData, ownerFirstName: e.target.value })}
+                            placeholder="e.g., John"
+                            required
+                            className="h-11"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="quickOwnerLastName" className="text-sm font-medium">
+                            Owner Last Name <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            id="quickOwnerLastName"
+                            type="text"
+                            value={formData.ownerLastName}
+                            onChange={(e) => setFormData({ ...formData, ownerLastName: e.target.value })}
+                            placeholder="e.g., Doe"
+                            required
+                            className="h-11"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {quickSignup && isSchoolAdmin && formData.ownerFirstName.trim() && formData.ownerLastName.trim() && (
+                      <Alert className="bg-blue-50 border-blue-200 text-blue-800">
+                        <AlertDescription>
+                          Using profile owner name: {formData.ownerFirstName.trim()} {formData.ownerLastName.trim()}
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
                 )}
 
@@ -682,7 +759,7 @@ export default function OnboardSchoolPage() {
                       </Button>
                       <Button
                         type="submit"
-                        disabled={loading || !formData.name || !formData.phone || !formData.email}
+                        disabled={loading || !canProceedToNext()}
                         className="flex-1 bg-[#08163d] hover:bg-[#0a1f4f] text-white"
                       >
                         {loading ? (

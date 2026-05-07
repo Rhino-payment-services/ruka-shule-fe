@@ -379,12 +379,16 @@ export default function RegisterPage() {
         phone: string; 
         password: string; 
         role: 'admin' | 'school_admin'; 
+        first_name?: string;
+        last_name?: string;
         school_id?: string;
       } = {
         email: formData.email,
         phone: formData.phone,
         password: formData.password,
         role: formData.role,
+        first_name: formData.firstName,
+        last_name: formData.lastName,
       };
 
       // Step 1: Register the user first so the auth token exists
