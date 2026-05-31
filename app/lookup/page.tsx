@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Search, School, User, GraduationCap, ArrowRight, ArrowLeft, DollarSign, CheckCircle2, Wallet, Loader2 } from 'lucide-react';
 import { studentsAPI, schoolsAPI, feesAPI, paymentsAPI } from '@/lib/api';
 import type { PublicSchoolLookupResponse } from '@/lib/api';
+import { normalizeUgandaPhoneForStorage } from '@/lib/utils';
 import { toast } from 'sonner';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -319,7 +320,7 @@ export default function LookupPage() {
       toast.error('Enter a valid phone number');
       return;
     }
-    const formattedPhone = phone.startsWith('256') ? `+${phone}` : `+256${phone}`;
+    const formattedPhone = normalizeUgandaPhoneForStorage(phone);
 
     try {
       setProcessingPayment(true);

@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { paymentsAPI, studentsAPI, schoolsAPI, API_BASE_URL } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { normalizeUgandaPhoneForStorage } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -287,7 +288,7 @@ export default function PaymentsPage() {
       toast.error('Enter a valid phone number');
       return;
     }
-    const formattedPhone = phone.startsWith('256') ? `+${phone}` : `+256${phone}`;
+    const formattedPhone = normalizeUgandaPhoneForStorage(phone);
 
     try {
       setProcessingPayment(true);
