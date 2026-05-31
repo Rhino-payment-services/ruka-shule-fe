@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { CreditCard, Search, CheckCircle, XCircle, Clock, Loader2, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { paymentsAPI, studentsAPI, schoolsAPI, API_BASE_URL } from '@/lib/api';
+import { normalizeUgandaPhoneForStorage } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -225,7 +226,7 @@ export default function PaymentsPage() {
       toast.error('Enter a valid phone number');
       return;
     }
-    const formattedPhone = phone.startsWith('256') ? `+${phone}` : `+256${phone}`;
+    const formattedPhone = normalizeUgandaPhoneForStorage(phone);
 
     try {
       setProcessingPayment(true);
