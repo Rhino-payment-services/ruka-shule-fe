@@ -1,7 +1,6 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { useRouter } from 'next/navigation';
 import { useEffect, useRef } from 'react';
 
 export function ProtectedRoute({
@@ -12,7 +11,6 @@ export function ProtectedRoute({
   allowedRoles?: ('admin' | 'school_admin' | 'parent')[];
 }) {
   const { user, loading } = useAuth();
-  const router = useRouter();
   const hasRedirected = useRef(false);
 
   useEffect(() => {
@@ -22,23 +20,18 @@ export function ProtectedRoute({
     if (!user) {
       hasRedirected.current = true;
       if (typeof window !== 'undefined') {
-        window.location.replace('/login');
-      } else {
-        router.push('/login');
+        window.location.replace('/');
       }
       return;
     }
-    // Wrong role: redirect to login (NOT /dashboard - that causes infinite loop for parents)
+
     if (allowedRoles && allowedRoles.length > 0 && !allowedRoles.includes(user.role)) {
       hasRedirected.current = true;
       if (typeof window !== 'undefined') {
-        window.location.replace('/login');
-      } else {
-        router.push('/login');
+        window.location.replace('/');
       }
-      return;
     }
-  }, [user, loading, router, allowedRoles?.join(',')]);
+  }, [user, loading, allowedRoles]);
 
   if (loading) {
     return (
@@ -48,7 +41,6 @@ export function ProtectedRoute({
     );
   }
 
-  // Show redirecting message instead of null - null caused blank screen
   if (!user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
@@ -64,5 +56,6 @@ export function ProtectedRoute({
       </div>
     );
   }
+
   return <>{children}</>;
 }

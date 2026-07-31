@@ -953,6 +953,18 @@ select {
   outline: none;
 }
 
+/* Hide number spinners — scrolling over amount fields must not change values */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 input[type="text"]::placeholder,
 input[type="email"]::placeholder,
 input[type="password"]::placeholder,

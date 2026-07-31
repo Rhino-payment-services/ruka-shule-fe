@@ -151,7 +151,6 @@ export default function ImportStudentsPage() {
         toast.error('Failed to parse Excel file', {
           description: 'Please ensure it is a valid Excel file.',
         });
-        console.error('Excel parsing error:', err);
       }
     };
     reader.readAsArrayBuffer(file);

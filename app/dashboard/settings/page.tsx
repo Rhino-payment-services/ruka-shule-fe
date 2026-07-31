@@ -8,9 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Settings, Loader2 } from 'lucide-react';
+import { Settings, Loader2, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { schoolsAPI } from '@/lib/api';
+import { authAPI, schoolsAPI } from '@/lib/api';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -34,6 +34,23 @@ interface SchoolProfile {
   merchant_status_note?: string;
 }
 
+interface AdminProfile {
+  id: string;
+  email: string;
+  phone: string;
+  role: string;
+  first_name?: string;
+  last_name?: string;
+  school_id?: string;
+  created_at?: string;
+}
+
+function roleLabel(role?: string) {
+  if (role === 'school_admin') return 'School Admin';
+  if (role === 'admin') return 'Platform Admin';
+  return role || '—';
+}
+
 export default function SettingsPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -43,6 +60,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
   const [school, setSchool] = useState<SchoolProfile | null>(null);
+  const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
   const [formData, setFormData] = useState({
     address: '',
     phone: '',
@@ -58,11 +76,32 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
-    const loadSchool = async () => {
+    const loadSettings = async () => {
+      try {
+        const meRes = await authAPI.me();
+        setAdminProfile(meRes.data?.data as AdminProfile);
+      } catch (error: any) {
+        // Fall back to JWT user so the account card still renders if /auth/me is unavailable.
+        if (user) {
+          setAdminProfile({
+            id: user.id,
+            email: user.email,
+            phone: user.phone || '',
+            role: user.role,
+            first_name: user.first_name,
+            last_name: user.last_name,
+            school_id: user.school_id,
+          });
+        } else {
+          toast.error(error?.response?.data?.error || 'Failed to load account');
+        }
+      }
+
       if (!isSchoolAdmin) {
         setLoading(false);
         return;
       }
+
       try {
         const res = await schoolsAPI.getMySchool();
         const data = res.data?.data as SchoolProfile;
@@ -86,15 +125,15 @@ export default function SettingsPage() {
       } catch (error: any) {
         if (error?.response?.status === 404) {
           setSchoolSetupRequired(true);
-          return;
+        } else {
+          toast.error(error?.response?.data?.error || 'Failed to load school settings');
         }
-        toast.error(error?.response?.data?.error || 'Failed to load school settings');
       } finally {
         setLoading(false);
       }
     };
-    loadSchool();
-  }, [isSchoolAdmin]);
+    loadSettings();
+  }, [isSchoolAdmin, user]);
 
   const handleSave = async () => {
     if (schoolSetupRequired) {
@@ -155,18 +194,60 @@ export default function SettingsPage() {
         <div className="space-y-6">
           <div>
             <h1 className="text-3xl font-bold">Settings</h1>
-            <p className="mt-2 text-muted-foreground">Manage school profile and settlement configuration</p>
+            <p className="mt-2 text-muted-foreground">
+              {isSchoolAdmin
+                ? 'Manage your account, school profile, and settlement configuration'
+                : 'Manage your platform admin account'}
+            </p>
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserRound className="h-5 w-5 text-primary" />
+                {isSchoolAdmin ? 'School Admin Account' : 'Admin Account'}
+              </CardTitle>
+              <CardDescription>
+                {isSchoolAdmin
+                  ? 'Your login account for managing this school'
+                  : 'Your platform admin login account'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-2 text-sm md:grid-cols-2">
+              {loading && !adminProfile ? (
+                <p className="text-muted-foreground">Loading account...</p>
+              ) : (
+                <>
+                  <p>
+                    <span className="text-muted-foreground">Name:</span>{' '}
+                    {[adminProfile?.first_name, adminProfile?.last_name].filter(Boolean).join(' ') || '—'}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Role:</span>
+                    <Badge variant="outline">{roleLabel(adminProfile?.role || user?.role)}</Badge>
+                  </div>
+                  <p>
+                    <span className="text-muted-foreground">Email:</span> {adminProfile?.email || user?.email || '—'}
+                  </p>
+                  <p>
+                    <span className="text-muted-foreground">Phone:</span> {adminProfile?.phone || user?.phone || '—'}
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
 
           {!isSchoolAdmin && (
             <Card>
               <CardHeader>
-                <CardTitle>Account Settings</CardTitle>
-                <CardDescription>Admin settings panel can be extended here.</CardDescription>
+                <CardTitle>Platform Settings</CardTitle>
+                <CardDescription>School profile editing is only available to school admins.</CardDescription>
               </CardHeader>
-              <CardContent className="flex flex-col items-center justify-center py-12">
+              <CardContent className="flex flex-col items-center justify-center py-8">
                 <Settings className="mb-4 h-12 w-12 text-muted-foreground" />
-                <p className="text-muted-foreground">No editable school profile for admin role.</p>
+                <p className="text-muted-foreground text-center">
+                  Use Schools and Pending Approvals to manage school onboarding.
+                </p>
               </CardContent>
             </Card>
           )}
@@ -206,8 +287,8 @@ export default function SettingsPage() {
               )}
               <Card>
                 <CardHeader>
-                  <CardTitle>Current School Profile</CardTitle>
-                  <CardDescription>Review current values before editing.</CardDescription>
+                  <CardTitle>School Profile</CardTitle>
+                  <CardDescription>School contact details and merchant status.</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-2 text-sm md:grid-cols-2">
                   {loading ? (

@@ -149,15 +149,10 @@ export default function PaymentsPage() {
   };
 
   useEffect(() => {
-    syncSchoolProfile();
-
-    const handleFocus = () => {
-      syncSchoolProfile();
-    };
-
-    window.addEventListener('focus', handleFocus);
-    return () => window.removeEventListener('focus', handleFocus);
-  }, [paymentPhoneTouched]);
+    // Load school once on mount. Do NOT refetch on every window focus —
+    // /schools/me hits rdbs_core login and was burning the IP rate limit.
+    void syncSchoolProfile();
+  }, []);
 
   useEffect(() => {
     if (!schoolChecked || schoolSetupRequired) {
@@ -183,8 +178,8 @@ export default function PaymentsPage() {
       const total = response.data.total;
       setPayments(paymentsData);
       setTotalPayments(total !== undefined ? total : paymentsData.length);
-    } catch (error) {
-      console.error('Failed to load payments:', error);
+    } catch {
+      /* ignore */
     } finally {
       setLoading(false);
     }
@@ -221,48 +216,53 @@ export default function PaymentsPage() {
         } else {
           setSearchResults(null);
         }
-      } catch (err) {
-        console.error('Student lookup failed:', err);
+      } catch {
         setSearchResults(null);
       }
-    } catch (error) {
-      console.error('Search failed:', error);
+    } catch {
       setSearchResults(null);
     } finally {
       setSearching(false);
     }
   };
 
-  const handlePaymentLookup = async () => {
-    const latestSchool = await syncSchoolProfile();
-
-    const latestSchoolCode = latestSchool?.code || schoolCode;
+  const handlePaymentLookup = async (options?: { silent?: boolean }) => {
+    // Avoid blocking lookup on /schools/me + rdbs wallet auth; only sync when code is missing.
+    let latestSchoolCode = schoolCode;
+    let latestSchoolPhone = schoolPhone;
+    if (!latestSchoolCode) {
+      const latestSchool = await syncSchoolProfile();
+      latestSchoolCode = latestSchool?.code || '';
+      latestSchoolPhone = latestSchool?.phone || '';
+    }
 
     if (!lookupRegistrationId.trim() || !latestSchoolCode) {
-      toast.error(schoolCode ? 'Enter student registration ID' : 'School not loaded');
+      if (!options?.silent) {
+        toast.error(schoolCode ? 'Enter student registration ID' : 'School not loaded');
+      }
       return;
     }
     try {
       setLookupLoading(true);
-      setStudentLookupData(null);
+      if (!options?.silent) {
+        setStudentLookupData(null);
+      }
       const res = await paymentsAPI.lookupStudentForPayment(lookupRegistrationId.trim(), latestSchoolCode);
       const data = res.data.data;
       setStudentLookupData(data);
-      setPaymentPhone(latestSchool?.phone || data?.student?.phone || '');
+      setPaymentPhone(latestSchoolPhone || data?.student?.phone || '');
       setPaymentPhoneTouched(false);
-      // Auto-select first outstanding fee so admin can pay immediately
-      const payableFees = (data?.available_fees || []).filter((f: FeeForPayment) => !f.is_paid && f.outstanding > 0);
-      if (payableFees.length > 0) {
-        setSelectedFee(payableFees[0]);
-        setPaymentAmount(payableFees[0].outstanding.toString());
-      } else {
-        setSelectedFee(null);
-        setPaymentAmount('');
+      // Let the user pick a fee and type the amount — do not auto-fill.
+      setSelectedFee(null);
+      setPaymentAmount('');
+      if (!options?.silent) {
+        toast.success('Student found');
       }
-      toast.success('Student found');
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } }; message?: string };
-      toast.error(axiosErr.response?.data?.error || 'Student not found');
+      if (!options?.silent) {
+        toast.error(axiosErr.response?.data?.error || 'Student not found');
+      }
       setStudentLookupData(null);
     } finally {
       setLookupLoading(false);
@@ -272,6 +272,10 @@ export default function PaymentsPage() {
   const handleProcessPayment = async () => {
     if (!studentLookupData || !selectedFee || !paymentAmount || !paymentPhone) {
       toast.error('Fill all required fields');
+      return;
+    }
+    if (!selectedFee.id) {
+      toast.error('Select a fee with a valid fee structure, then try again.');
       return;
     }
     const amount = Number(paymentAmount);
@@ -327,7 +331,7 @@ export default function PaymentsPage() {
             toast.success('Payment completed!');
             setProcessingPayment(false);
             loadPayments();
-            handlePaymentLookup();
+            void handlePaymentLookup({ silent: true });
           } else if (status === 'failed' || status === 'cancelled') {
             clearInterval(pollInterval);
             toast.error(`Payment ${status}`);
@@ -474,7 +478,7 @@ export default function PaymentsPage() {
                   <div className="text-sm text-muted-foreground">School: {schoolCode}</div>
                 )}
                 <Button
-                  onClick={handlePaymentLookup}
+                  onClick={() => void handlePaymentLookup()}
                   disabled={lookupLoading || !schoolCode}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
@@ -532,14 +536,15 @@ export default function PaymentsPage() {
                     <label className="text-sm font-medium">Select fee to pay</label>
                     <div className="grid gap-2">
                       {studentLookupData.available_fees
-                        .filter((f) => !f.is_paid && f.outstanding > 0)
+                        .filter((f) => !!f.id && !f.is_paid && f.outstanding > 0)
                         .map((fee) => (
                           <button
                             key={fee.id}
                             type="button"
                             onClick={() => {
                               setSelectedFee(fee);
-                              setPaymentAmount(fee.outstanding.toString());
+                              // Locked fees require full outstanding; otherwise user types the amount.
+                              setPaymentAmount(fee.is_locked ? fee.outstanding.toString() : '');
                             }}
                             className={`flex items-center justify-between rounded-lg border-2 p-3 text-left transition-colors ${
                               selectedFee?.id === fee.id
@@ -567,8 +572,10 @@ export default function PaymentsPage() {
                           </button>
                         ))}
                     </div>
-                    {studentLookupData.available_fees.filter((f) => !f.is_paid && f.outstanding > 0).length === 0 && (
-                      <p className="text-sm text-muted-foreground">All fees are paid.</p>
+                    {studentLookupData.available_fees.filter((f) => !!f.id && !f.is_paid && f.outstanding > 0).length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        No payable fee structure for this student. Create an active school fees fee for their class, or all fees are paid.
+                      </p>
                     )}
                   </div>
 
@@ -590,7 +597,7 @@ export default function PaymentsPage() {
                           <p className="text-xs text-muted-foreground">
                             {selectedFee.is_locked
                               ? `Locked fee: full outstanding amount required, UGX ${selectedFee.outstanding.toLocaleString()}`
-                              : `Enter the amount to send. Suggested amount: UGX ${selectedFee.outstanding.toLocaleString()}`}
+                              : `Enter the amount to send. Max outstanding: UGX ${selectedFee.outstanding.toLocaleString()}`}
                           </p>
                         </div>
                         <div className="space-y-2">

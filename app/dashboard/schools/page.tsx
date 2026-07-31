@@ -64,8 +64,8 @@ export default function SchoolsPage() {
         return tb - ta; // newest first
       });
       setSchools(data);
-    } catch (error) {
-      console.error('Failed to load schools:', error);
+    } catch {
+      /* ignore */
     } finally {
       setLoading(false);
     }
@@ -96,7 +96,6 @@ export default function SchoolsPage() {
       await loadSchools();
       toast.success('School approved successfully');
     } catch (err) {
-      console.error('Approve failed', err);
       toast.error('Failed to approve school. See console for details.');
     } finally {
       setApproving(false);
