@@ -171,8 +171,7 @@ export default function LookupPage() {
       } else {
         setFees(fetchedFees);
       }
-    } catch (err) {
-      console.error('Failed to fetch fees:', err);
+    } catch {
       setFees([]);
       setAllFees([]);
     }
@@ -282,15 +281,9 @@ export default function LookupPage() {
       const data = res.data.data;
       setStudentLookupData(data);
       setPaymentPhone(data?.student?.phone || student.phone || '');
-      // Auto-select first outstanding fee so user can pay immediately without extra click
-      const payableFees = (data?.available_fees || []).filter((f: FeeForPayment) => !f.is_paid && f.outstanding > 0);
-      if (payableFees.length > 0) {
-        setSelectedFee(payableFees[0]);
-        setPaymentAmount(payableFees[0].outstanding.toString());
-      } else {
-        setSelectedFee(null);
-        setPaymentAmount('');
-      }
+      // Let the user pick a fee and type the amount — do not auto-fill.
+      setSelectedFee(null);
+      setPaymentAmount('');
       toast.success('Ready to pay');
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
@@ -304,6 +297,10 @@ export default function LookupPage() {
   const handleProcessPayment = async () => {
     if (!studentLookupData || !selectedFee || !paymentAmount || !paymentPhone) {
       toast.error('Fill all required fields');
+      return;
+    }
+    if (!selectedFee.id) {
+      toast.error('Select a fee with a valid fee structure, then try again.');
       return;
     }
     const amount = Number(paymentAmount);
@@ -722,14 +719,15 @@ export default function LookupPage() {
                     <label className="text-sm font-medium">Select fee to pay</label>
                     <div className="grid gap-2">
                       {studentLookupData.available_fees
-                        .filter((f) => !f.is_paid && f.outstanding > 0)
+                        .filter((f) => !!f.id && !f.is_paid && f.outstanding > 0)
                         .map((fee) => (
                           <button
                             key={fee.id}
                             type="button"
                             onClick={() => {
                               setSelectedFee(fee);
-                              setPaymentAmount(fee.outstanding.toString());
+                              // Locked fees require full outstanding; otherwise user types the amount.
+                              setPaymentAmount(fee.is_locked ? fee.outstanding.toString() : '');
                             }}
                             className={`flex items-center justify-between rounded-lg border-2 p-3 text-left transition-colors ${
                               selectedFee?.id === fee.id
@@ -762,8 +760,10 @@ export default function LookupPage() {
                           </button>
                         ))}
                     </div>
-                    {studentLookupData.available_fees.filter((f) => !f.is_paid && f.outstanding > 0).length === 0 && (
-                      <p className="text-sm text-muted-foreground">All fees are paid.</p>
+                    {studentLookupData.available_fees.filter((f) => !!f.id && !f.is_paid && f.outstanding > 0).length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        No payable fee structure for this student. Create an active school fees fee for their class, or all fees are paid.
+                      </p>
                     )}
                   </div>
 
@@ -785,7 +785,7 @@ export default function LookupPage() {
                           <p className="text-xs text-muted-foreground">
                             {selectedFee.is_locked
                               ? `Locked fee: full outstanding amount required, UGX ${selectedFee.outstanding.toLocaleString()}`
-                              : `Enter the amount to send. Suggested amount: UGX ${selectedFee.outstanding.toLocaleString()}`}
+                              : `Enter the amount to send. Max outstanding: UGX ${selectedFee.outstanding.toLocaleString()}`}
                           </p>
                         </div>
                         <div className="space-y-2">

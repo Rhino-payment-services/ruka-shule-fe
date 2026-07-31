@@ -22,6 +22,8 @@ export default function RegisterPage() {
     phone: '+256',
     password: '',
     confirmPassword: '',
+    pin: '',
+    confirmPin: '',
     firstName: '',
     lastName: '',
     role: 'school_admin' as 'admin' | 'school_admin',
@@ -70,7 +72,12 @@ export default function RegisterPage() {
         // Don't check fieldErrors here - validation happens on Next click
         return formData.email && formData.phone && formData.phone.startsWith('+') && formData.phone.length >= 10;
       case 'password':
-        return formData.password.length >= 6 && formData.password === formData.confirmPassword;
+        return (
+          formData.password.length >= 6 &&
+          formData.password === formData.confirmPassword &&
+          /^\d{4,6}$/.test(formData.pin) &&
+          formData.pin === formData.confirmPin
+        );
       case 'school':
         // Phone should be valid (starts with + and has at least 10 characters)
         const isPhoneValid = formData.phone && formData.phone.startsWith('+') && formData.phone.length >= 10;
@@ -96,13 +103,6 @@ export default function RegisterPage() {
       const responseData = response.data?.data || response.data || {};
       const exists = responseData.exists === true; // Explicitly check for true
       
-      console.log('Phone validation result:', { 
-        phone, 
-        exists, 
-        responseData,
-        fullResponse: response.data 
-      });
-      
       if (exists === true) {
         // Phone exists - show error and prevent proceeding
         const errorMsg = 'This phone number is already registered';
@@ -112,7 +112,6 @@ export default function RegisterPage() {
       }
 
       // Phone NOT found (exists = false or undefined) - this is GOOD, allow proceeding
-      console.log('Phone is available (not found), allowing proceeding');
       setFieldErrors(prev => {
         const newErrors = { ...prev };
         delete newErrors.phone;
@@ -122,7 +121,6 @@ export default function RegisterPage() {
     } catch (err: any) {
       // Handle 404 - endpoint might not be available (backend not updated)
       if (err?.response?.status === 404) {
-        console.warn('Validation endpoint not available, skipping phone validation');
         // Clear error and allow proceeding if endpoint doesn't exist
         setFieldErrors(prev => {
           const newErrors = { ...prev };
@@ -131,8 +129,7 @@ export default function RegisterPage() {
         });
         return true;
       }
-      // For other errors (500, network errors, etc.), log but allow proceeding
-      console.error('Error checking phone:', err);
+      // For other errors (500, network errors, etc.), allow proceeding
       // Clear any previous errors and allow proceeding
       setFieldErrors(prev => {
         const newErrors = { ...prev };
@@ -151,8 +148,6 @@ export default function RegisterPage() {
       const responseData = response.data?.data || response.data || {};
       const exists = responseData.exists === true; // Explicitly check for true
       
-      console.log('Email validation result:', { email, exists, responseData });
-      
       if (exists === true) {
         const errorMsg = 'This email is already registered';
         setFieldErrors(prev => ({ ...prev, email: errorMsg }));
@@ -161,7 +156,6 @@ export default function RegisterPage() {
       }
       
       // Email NOT found (exists = false) - this is GOOD, allow proceeding
-      console.log('Email is available (not found), allowing proceeding');
       setFieldErrors(prev => {
         const newErrors = { ...prev };
         delete newErrors.email;
@@ -171,10 +165,8 @@ export default function RegisterPage() {
     } catch (err: any) {
       // Handle 404 - endpoint might not be available (backend not updated)
       if (err?.response?.status === 404) {
-        console.warn('Validation endpoint not available, skipping email validation');
         return true; // Allow proceeding if endpoint doesn't exist
       }
-      console.error('Error checking email:', err);
       return true; // Allow proceeding if validation fails (network error)
     }
   };
@@ -198,10 +190,8 @@ export default function RegisterPage() {
     } catch (err: any) {
       // Handle 404 - endpoint might not be available (backend not updated)
       if (err?.response?.status === 404) {
-        console.warn('Validation endpoint not available, skipping school name validation');
         return true; // Allow proceeding if endpoint doesn't exist
       }
-      console.error('Error checking school name:', err);
       return true; // Allow proceeding if validation fails (network error)
     }
   };
@@ -230,7 +220,6 @@ export default function RegisterPage() {
     } catch (err: any) {
       // Handle 404 - endpoint might not be available (backend not updated)
       if (err?.response?.status === 404) {
-        console.warn('Validation endpoint not available, skipping school phone validation');
         // Clear error and allow proceeding
         setFieldErrors(prev => {
           const newErrors = { ...prev };
@@ -239,8 +228,7 @@ export default function RegisterPage() {
         });
         return true;
       }
-      // For other errors, log but allow proceeding
-      console.error('Error checking school phone:', err);
+      // For other errors, allow proceeding
       setFieldErrors(prev => {
         const newErrors = { ...prev };
         delete newErrors.phone;
@@ -268,20 +256,16 @@ export default function RegisterPage() {
         validateUserEmail(formData.email)
       ]);
       
-      console.log('Validation results:', { phoneValid, emailValid, phone: formData.phone, email: formData.email });
-      
       setValidating(false);
 
       // Only block if validation explicitly fails (phone/email exists)
       // If phone/email is NOT found (exists = false), validation returns true and we proceed
       if (!phoneValid || !emailValid) {
-        console.log('Validation failed, blocking progression:', { phoneValid, emailValid, fieldErrors });
         // Don't proceed - validation errors are already set in fieldErrors
         return;
       }
       
       // Both validations passed (phone and email are available)
-      console.log('Validation passed, proceeding to next step');
       // Clear any previous errors and proceed
       setFieldErrors({});
       setError('');
@@ -333,6 +317,22 @@ export default function RegisterPage() {
     // Validate password confirmation
     if (formData.password !== formData.confirmPassword) {
       const errorMsg = 'Passwords do not match. Please try again.';
+      setError(errorMsg);
+      toast.error(errorMsg);
+      setLoading(false);
+      return;
+    }
+
+    if (!/^\d{4,6}$/.test(formData.pin)) {
+      const errorMsg = 'Enter a Rukapay PIN with 4–6 digits.';
+      setError(errorMsg);
+      toast.error(errorMsg);
+      setLoading(false);
+      return;
+    }
+
+    if (formData.pin !== formData.confirmPin) {
+      const errorMsg = 'Rukapay PIN confirmation does not match.';
       setError(errorMsg);
       toast.error(errorMsg);
       setLoading(false);
@@ -407,6 +407,7 @@ export default function RegisterPage() {
             email: formData.schoolEmail,
             owner_first_name: formData.firstName,
             owner_last_name: formData.lastName,
+            owner_pin: formData.pin,
             bank_name: formData.bankName || undefined,
             bank_code: formData.bankCode || undefined,
             account_number: formData.accountNumber || undefined,
@@ -414,7 +415,6 @@ export default function RegisterPage() {
             branch: formData.branch || undefined,
           });
         } catch (schoolErr: unknown) {
-          console.error('Failed to create school during registration:', schoolErr);
           const axiosError = schoolErr as { response?: { data?: { error?: string } }; message?: string };
           const errorMsg = `Registration successful, but school creation failed: ${axiosError.response?.data?.error || axiosError.message || 'Unknown error'}. Please contact support.`;
           setError(errorMsg);
@@ -667,6 +667,64 @@ export default function RegisterPage() {
                         <p className="text-xs text-green-600">Passwords match</p>
                       )}
                     </div>
+
+                    <div className="space-y-2 pt-2 border-t">
+                      <Label htmlFor="pin" className="text-sm font-medium">
+                        Rukapay PIN <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="pin"
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="new-password"
+                        value={formData.pin}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            pin: e.target.value.replace(/\D/g, '').slice(0, 6),
+                          })
+                        }
+                        placeholder="4–6 digits"
+                        required
+                        minLength={4}
+                        maxLength={6}
+                        className="h-10 border-2 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Used for Rukapay wallet/app actions — not for logging into Shule.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="confirmPin" className="text-sm font-medium">
+                        Confirm Rukapay PIN <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="confirmPin"
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="new-password"
+                        value={formData.confirmPin}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            confirmPin: e.target.value.replace(/\D/g, '').slice(0, 6),
+                          })
+                        }
+                        placeholder="Re-enter PIN"
+                        required
+                        minLength={4}
+                        maxLength={6}
+                        className={`h-10 border-2 transition-all focus:ring-2 focus:ring-primary/20 ${
+                          formData.confirmPin && formData.pin !== formData.confirmPin
+                            ? 'border-destructive focus:border-destructive'
+                            : 'focus:border-primary'
+                        }`}
+                      />
+                      {formData.confirmPin && formData.pin !== formData.confirmPin && (
+                        <p className="text-xs text-destructive">PINs do not match</p>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -741,8 +799,8 @@ export default function RegisterPage() {
                                       return newErrors;
                                     });
                                   }
-                                } catch (err) {
-                                  console.warn('Code check failed:', err);
+                                } catch {
+                                  /* ignore */
                                 }
                               } else {
                                 setFieldErrors(prev => {
@@ -952,21 +1010,6 @@ export default function RegisterPage() {
                             !formData.lastName || 
                             !formData.schoolName || 
                             !formData.schoolEmail;
-                          
-                          // Log what's blocking the button (only in development)
-                          if (isDisabled && process.env.NODE_ENV === 'development' && !loading && !validating) {
-                            const missingFields = [];
-                            if (!formData.email) missingFields.push('email');
-                            if (!formData.phone) missingFields.push('phone');
-                            if (!formData.password) missingFields.push('password');
-                            if (!formData.confirmPassword) missingFields.push('confirmPassword');
-                            if (formData.password !== formData.confirmPassword) missingFields.push('passwordsMatch');
-                            if (!formData.firstName) missingFields.push('firstName');
-                            if (!formData.lastName) missingFields.push('lastName');
-                            if (!formData.schoolName) missingFields.push('schoolName');
-                            if (!formData.schoolEmail) missingFields.push('schoolEmail');
-                            console.log('Sign up button disabled - missing fields:', missingFields);
-                          }
                           
                           return isDisabled;
                         })()}

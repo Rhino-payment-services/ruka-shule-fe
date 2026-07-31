@@ -48,8 +48,8 @@ export default function PlatformPaymentsPage() {
       const res = await adminAPI.listPayments(page, pageSize);
       setPayments(res.data.data || []);
       setTotal(res.data.total ?? 0);
-    } catch (error) {
-      console.error('Failed to load payments:', error);
+    } catch {
+      /* ignore */
     } finally {
       setLoading(false);
     }

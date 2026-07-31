@@ -71,8 +71,8 @@ export default function PendingApprovalsPage() {
           return tb - ta; // newest first
         });
       setSchools(pending);
-    } catch (error) {
-      console.error('Failed to load schools:', error);
+    } catch {
+      /* ignore */
     } finally {
       setLoading(false);
     }
@@ -102,7 +102,6 @@ export default function PendingApprovalsPage() {
       await loadSchools();
       toast.success('School approved successfully');
     } catch (err) {
-      console.error('Approve failed', err);
       toast.error('Failed to approve school. See console for details.');
     }
   };
@@ -122,7 +121,6 @@ export default function PendingApprovalsPage() {
       await loadSchools();
       toast.success('School rejected');
     } catch (err) {
-      console.error('Reject failed', err);
       toast.error('Failed to reject school. See console for details.');
     }
   };

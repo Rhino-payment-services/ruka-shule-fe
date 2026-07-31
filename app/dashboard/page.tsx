@@ -27,6 +27,20 @@ interface SchoolData {
   };
 }
 
+/** Business MNO collection fee (school absorbs; parents pay gross). Matches rdbs_core default. */
+const COLLECTION_FEE_PERCENT = 2.5;
+
+function collectionFeeBreakdown(grossCollected: number) {
+  const safeGross = Number.isFinite(grossCollected) && grossCollected > 0 ? grossCollected : 0;
+  const netAfterFees = Math.floor(safeGross * (1 - COLLECTION_FEE_PERCENT / 100));
+  const processingFee = Math.round((safeGross - netAfterFees) * 100) / 100;
+  return {
+    processingFee,
+    netAfterFees,
+    feePercent: COLLECTION_FEE_PERCENT,
+  };
+}
+
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -35,7 +49,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (authLoading) return;
     if (!user && typeof window !== 'undefined') {
-      window.location.replace('/login');
+      window.location.replace('/');
     }
   }, [user, authLoading]);
   const [stats, setStats] = useState({
@@ -52,35 +66,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Wait a bit to ensure token is stored before making API calls
     if (user?.role === 'admin') {
-      const timer = setTimeout(() => {
-        if (typeof window !== 'undefined') {
-          const token = localStorage.getItem('token');
-          if (token) {
-            console.log('Loading admin stats with token');
-            loadAdminStats();
-          } else {
-            console.error('Token not available for API calls');
-            setLoading(false);
-          }
-        }
-      }, 300);
-      return () => clearTimeout(timer);
+      loadAdminStats();
     } else if (user?.role === 'school_admin') {
-      const timer = setTimeout(() => {
-        if (typeof window !== 'undefined') {
-          const token = localStorage.getItem('token');
-          if (token) {
-            console.log('Loading school admin stats with token');
-            loadSchoolAdminStats();
-          } else {
-            console.error('Token not available for API calls');
-            setLoading(false);
-          }
-        }
-      }, 300);
-      return () => clearTimeout(timer);
+      loadSchoolAdminStats();
     }
   }, [user]);
 
@@ -125,12 +114,8 @@ export default function DashboardPage() {
           : []
       );
       setPendingApprovalsCount(pendingApprovals);
-    } catch (error: unknown) {
-      console.error('Failed to load stats:', error);
-      const axiosError = error as { response?: { status?: number; data?: { error?: string } }; message?: string };
-      if (axiosError.response?.status === 401) {
-        console.error('Authentication error loading stats');
-      }
+    } catch {
+      /* ignore */
     } finally {
       setLoading(false);
     }
@@ -138,46 +123,12 @@ export default function DashboardPage() {
 
   const loadSchoolAdminStats = async () => {
     try {
-      if (typeof window === 'undefined') {
-        setLoading(false);
-        return;
-      }
-      
-      const token = localStorage.getItem('token');
-      if (!token) {
-        console.error('No token available for API calls');
-        setLoading(false);
-        return;
-      }
-      
-      console.log('Making API calls with token, length:', token.length);
-      
       // Get school data using /schools/me endpoint (for school_admin)
       let school: SchoolData | null = null;
       try {
-        console.log('Fetching school data from /api/schools/me');
         const schoolRes = await schoolsAPI.getMySchool();
         school = schoolRes.data.data;
-        console.log('School data fetched successfully:', school);
-        console.log('Wallet data:', school?.wallet);
-        console.log('Business Wallet ID:', school?.business_wallet_id);
-        console.log('Merchant Code:', school?.merchant_code);
-        
-        // If wallet is null but we have merchant info, log a warning
-        if (school && !school.wallet && school.merchant_code) {
-          console.warn('School has merchant code but wallet information is not available. This may indicate:');
-          console.warn('  1. Wallet has not been created yet in RDBS Core');
-          console.warn('  2. Merchant onboarding is still in progress');
-          console.warn('  3. Error fetching wallet from RDBS Core (check backend logs)');
-        }
       } catch (err: any) {
-        console.error('Failed to fetch school:', err);
-        console.error('Error details:', {
-          message: err.message,
-          response: err.response?.data,
-          status: err.response?.status,
-          config: err.config,
-        });
         if (err?.response?.status === 404) {
           setSchoolSetupRequired(true);
           setLoading(false);
@@ -228,8 +179,8 @@ export default function DashboardPage() {
           }
           return sum;
         }, 0);
-      } catch (err) {
-        console.error('Failed to calculate revenue:', err);
+      } catch {
+        /* ignore */
       }
 
       // Count active fees
@@ -247,15 +198,8 @@ export default function DashboardPage() {
       // Set recent payments for the dashboard card (payments are ordered newest first)
       const recent = paymentsRes.data.data || [];
       setRecentPayments(recent);
-    } catch (error: unknown) {
-      console.error('Failed to load stats:', error);
-      const axiosError = error as { response?: { status?: number; data?: { error?: string }; headers?: unknown }; config?: { url?: string; headers?: { Authorization?: string } }; message?: string };
-      console.error('Error details:');
-      console.error('  Status:', axiosError.response?.status);
-      console.error('  Message:', axiosError.response?.data?.error || axiosError.message);
-      if (axiosError.response?.status === 401) {
-        console.error('Authentication error loading stats - token may be invalid or expired');
-      }
+    } catch {
+      /* ignore */
     } finally {
       setLoading(false);
     }
@@ -532,20 +476,25 @@ function SchoolAdminDashboard({
                   <div className="flex-1">
                     <p className="text-sm font-medium text-emerald-900 mb-1">Wallet Balance</p>
                     <p className="text-3xl font-bold text-emerald-700 mb-1">
-                      {schoolData.wallet.currency} {schoolData.wallet.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {schoolData.wallet.currency}{' '}
+                      {schoolData.wallet.balance.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </p>
                     <div className="flex items-center gap-2 mt-2">
-                      <Badge className={schoolData.wallet.is_active ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-500'}>
+                      <Badge
+                        className={
+                          schoolData.wallet.is_active
+                            ? 'bg-green-500 hover:bg-green-600'
+                            : 'bg-gray-500'
+                        }
+                      >
                         {schoolData.wallet.is_active ? 'Active' : 'Inactive'}
                       </Badge>
                       <span className="text-xs text-emerald-600">
                         {schoolData.wallet.wallet_type} Wallet
                       </span>
-                      {schoolData.wallet.id && (
-                        <span className="text-xs text-muted-foreground font-mono">
-                          ID: {schoolData.wallet.id.substring(0, 8)}...
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -558,20 +507,10 @@ function SchoolAdminDashboard({
                       <>
                         <p className="text-lg text-yellow-700">Wallet information unavailable</p>
                         <p className="text-xs text-yellow-600 mt-1">
-                          {schoolData.merchant_status === 'pending_onboarding' 
+                          {schoolData.merchant_status === 'pending_onboarding'
                             ? 'Merchant onboarding in progress. Wallet will be available after approval.'
                             : 'Unable to fetch wallet balance from payment system. Please contact support if this persists.'}
                         </p>
-                        {schoolData.business_wallet_id && (
-                          <p className="text-xs text-yellow-600 mt-1">
-                            Wallet ID: {schoolData.business_wallet_id}
-                          </p>
-                        )}
-                        {schoolData.merchant_code && (
-                          <p className="text-xs text-yellow-600 mt-1">
-                            Merchant Code: {schoolData.merchant_code}
-                          </p>
-                        )}
                       </>
                     ) : (
                       <p className="text-lg text-yellow-700">Loading wallet information...</p>
@@ -585,7 +524,7 @@ function SchoolAdminDashboard({
       )}
 
       {/* Stats Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           title="Total Students"
           value={stats.totalStudents}
@@ -611,8 +550,15 @@ function SchoolAdminDashboard({
           title="Revenue"
           value={`UGX ${stats.totalRevenue.toLocaleString()}`}
           icon={TrendingUp}
-          description="Total collected"
+          description="Total collected from parents"
           color="emerald"
+        />
+        <StatCard
+          title="Processing fee"
+          value={`UGX ${collectionFeeBreakdown(stats.totalRevenue).processingFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+          icon={TrendingUp}
+          description={`${COLLECTION_FEE_PERCENT}% deducted before wallet credit`}
+          color="orange"
         />
       </div>
 

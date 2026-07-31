@@ -13,7 +13,7 @@ export default function DashboardLayout({
   useEffect(() => {
     if (loading) return;
     if (!user && typeof window !== 'undefined') {
-      window.location.replace('/login');
+      window.location.replace('/');
     }
   }, [user, loading]);
 

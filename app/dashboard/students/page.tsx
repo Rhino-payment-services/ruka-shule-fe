@@ -133,18 +133,9 @@ export default function StudentsPage() {
         totalPagesCount = Math.ceil(studentsData.length / pageSize) || 1;
       }
       
-      console.log('Fetched students:', {
-        count: studentsData.length,
-        total: totalCount,
-        totalPages: totalPagesCount,
-        currentPage,
-        pageSize,
-      });
-      
       setStudents(studentsData);
       setTotalPages(totalPagesCount);
     } catch (error: any) {
-      console.error('Error fetching students:', error);
       toast.error('Failed to fetch students', {
         description: error.response?.data?.error || error.message || 'Unknown error',
       });
@@ -251,9 +242,8 @@ export default function StudentsPage() {
 
       setPaymentSummary(summaryRes.data.data);
       setPaymentHistory(historyRes.data.data || []);
-    } catch (error: any) {
-      console.error('Error fetching payment data:', error);
-      // Don't show error toast - just log it, as student might not have payments yet
+    } catch {
+      /* ignore */
     } finally {
       setLoadingPayments(false);
     }

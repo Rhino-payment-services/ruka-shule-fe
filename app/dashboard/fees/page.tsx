@@ -99,7 +99,6 @@ export default function FeesPage() {
       const res = await feesAPI.list(1, 100);
       setFees(res.data.data || []);
     } catch (error: any) {
-      console.error('Failed to load fees:', error);
       toast.error(error.response?.data?.error || 'Failed to load fees');
     } finally {
       setLoading(false);
@@ -141,7 +140,6 @@ export default function FeesPage() {
       resetForm();
       loadFees();
     } catch (error: any) {
-      console.error('Failed to create fee:', error);
       toast.error(error.response?.data?.error || 'Failed to create fee');
     }
   };
@@ -192,7 +190,6 @@ export default function FeesPage() {
       resetForm();
       loadFees();
     } catch (error: any) {
-      console.error('Failed to update fee:', error);
       toast.error(error.response?.data?.error || 'Failed to update fee');
     }
   };
@@ -203,7 +200,6 @@ export default function FeesPage() {
       toast.success(fee.is_locked ? 'Fee unlocked successfully' : 'Fee locked successfully');
       loadFees();
     } catch (error: any) {
-      console.error('Failed to update fee lock:', error);
       toast.error(error.response?.data?.error || 'Failed to update fee lock');
     }
   };
@@ -221,7 +217,6 @@ export default function FeesPage() {
       toast.success('Fee deleted successfully');
       loadFees();
     } catch (error: any) {
-      console.error('Failed to delete fee:', error);
       toast.error(error.response?.data?.error || 'Failed to delete fee');
     }
   };

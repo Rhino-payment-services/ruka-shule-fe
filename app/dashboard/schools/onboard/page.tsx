@@ -35,6 +35,8 @@ interface FormData {
   ownerDateOfBirth: string;
   ownerGender: 'MALE' | 'FEMALE' | 'OTHER' | '';
   ownerNationalId: string;
+  ownerPin: string;
+  ownerPinConfirm: string;
   
   // Business Registration Information
   certificateOfIncorporation: string;
@@ -74,6 +76,8 @@ export default function OnboardSchoolPage() {
     ownerDateOfBirth: '',
     ownerGender: '',
     ownerNationalId: '',
+    ownerPin: '',
+    ownerPinConfirm: '',
     certificateOfIncorporation: '',
     taxIdentificationNumber: '',
     businessType: '',
@@ -129,8 +133,19 @@ export default function OnboardSchoolPage() {
           );
         }
         return Boolean(formData.name && formData.phone && formData.email);
-      case 'owner':
-        return Boolean(formData.ownerFirstName && formData.ownerLastName && formData.ownerDateOfBirth && formData.ownerGender && formData.ownerNationalId);
+      case 'owner': {
+        const pinOk =
+          /^\d{4,6}$/.test(formData.ownerPin) &&
+          formData.ownerPin === formData.ownerPinConfirm;
+        return Boolean(
+          formData.ownerFirstName &&
+            formData.ownerLastName &&
+            formData.ownerDateOfBirth &&
+            formData.ownerGender &&
+            formData.ownerNationalId &&
+            pinOk,
+        );
+      }
       case 'business':
         return Boolean(formData.certificateOfIncorporation && formData.taxIdentificationNumber && formData.businessType && formData.businessRegistrationDate && formData.businessCity);
       case 'financial':
@@ -163,6 +178,17 @@ export default function OnboardSchoolPage() {
       return;
     }
 
+    if (!quickSignup) {
+      if (!/^\d{4,6}$/.test(formData.ownerPin)) {
+        setError('Enter a Rukapay PIN with 4–6 digits.');
+        return;
+      }
+      if (formData.ownerPin !== formData.ownerPinConfirm) {
+        setError('Rukapay PIN confirmation does not match.');
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
@@ -178,6 +204,7 @@ export default function OnboardSchoolPage() {
         owner_date_of_birth: formData.ownerDateOfBirth || undefined,
         owner_gender: formData.ownerGender || undefined,
         owner_national_id: formData.ownerNationalId || undefined,
+        owner_pin: !quickSignup && formData.ownerPin ? formData.ownerPin : undefined,
         certificate_of_incorporation: formData.certificateOfIncorporation || undefined,
         tax_identification_number: formData.taxIdentificationNumber || undefined,
         business_type: formData.businessType || undefined,
@@ -443,6 +470,15 @@ export default function OnboardSchoolPage() {
                         </AlertDescription>
                       </Alert>
                     )}
+
+                    {quickSignup && (
+                      <Alert className="bg-amber-50 border-amber-200 text-amber-900">
+                        <AlertDescription>
+                          A default Rukapay wallet PIN will be set automatically. This is not used to log into Shule.
+                          Choose complete merchant onboarding if you want to set the PIN yourself.
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
                 )}
 
@@ -550,6 +586,58 @@ export default function OnboardSchoolPage() {
                         National ID number of the school owner or representative
                       </p>
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="ownerPin" className="text-sm font-medium">
+                          Rukapay PIN <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="ownerPin"
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="new-password"
+                          value={formData.ownerPin}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              ownerPin: e.target.value.replace(/\D/g, '').slice(0, 6),
+                            })
+                          }
+                          placeholder="4–6 digits"
+                          required
+                          minLength={4}
+                          maxLength={6}
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ownerPinConfirm" className="text-sm font-medium">
+                          Confirm PIN <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="ownerPinConfirm"
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="new-password"
+                          value={formData.ownerPinConfirm}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              ownerPinConfirm: e.target.value.replace(/\D/g, '').slice(0, 6),
+                            })
+                          }
+                          placeholder="Re-enter PIN"
+                          required
+                          minLength={4}
+                          maxLength={6}
+                          className="h-11"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Used for Rukapay wallet/app actions — not for logging into Shule.
+                    </p>
                   </div>
                 )}
 

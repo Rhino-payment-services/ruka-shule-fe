@@ -46,8 +46,8 @@ export default function UsersPage() {
       const res = await adminAPI.listUsers(page, pageSize);
       setUsers(res.data.data || []);
       setTotal(res.data.total ?? 0);
-    } catch (error) {
-      console.error('Failed to load users:', error);
+    } catch {
+      /* ignore */
     } finally {
       setLoading(false);
     }
