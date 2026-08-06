@@ -23,9 +23,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Receipt, Plus, Edit, Trash2 } from 'lucide-react';
+import { Receipt, Plus, Edit, Trash2, Lock, Unlock } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { feesAPI } from '@/lib/api';
+import { schoolsAPI, feesAPI } from '@/lib/api';
 import { toast } from 'sonner';
 
 interface Fee {
@@ -40,6 +40,7 @@ interface Fee {
   stream?: string | null; // Arts, Sciences, General, etc.
   due_date?: string | null;
   status: 'active' | 'inactive';
+  is_locked: boolean;
   school_id: string;
   created_at: string;
   updated_at?: string;
@@ -51,6 +52,8 @@ const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 export default function FeesPage() {
   const [fees, setFees] = useState<Fee[]>([]);
   const [loading, setLoading] = useState(true);
+  const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
+  const [schoolChecked, setSchoolChecked] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingFee, setEditingFee] = useState<Fee | null>(null);
@@ -67,16 +70,35 @@ export default function FeesPage() {
   });
 
   useEffect(() => {
-    loadFees();
+    const checkSchool = async () => {
+      try {
+        await schoolsAPI.getMySchool();
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          setSchoolSetupRequired(true);
+        }
+      } finally {
+        setSchoolChecked(true);
+      }
+    };
+    checkSchool();
   }, []);
 
+  useEffect(() => {
+    if (!schoolChecked || schoolSetupRequired) {
+      setLoading(false);
+      return;
+    }
+    loadFees();
+  }, [schoolChecked, schoolSetupRequired]);
+
   const loadFees = async () => {
+    if (schoolSetupRequired) return;
     setLoading(true);
     try {
       const res = await feesAPI.list(1, 100);
       setFees(res.data.data || []);
     } catch (error: any) {
-      console.error('Failed to load fees:', error);
       toast.error(error.response?.data?.error || 'Failed to load fees');
     } finally {
       setLoading(false);
@@ -118,12 +140,15 @@ export default function FeesPage() {
       resetForm();
       loadFees();
     } catch (error: any) {
-      console.error('Failed to create fee:', error);
       toast.error(error.response?.data?.error || 'Failed to create fee');
     }
   };
 
   const handleEdit = (fee: Fee) => {
+    if (fee.is_locked) {
+      toast.error('Unlock the fee before editing it');
+      return;
+    }
     setEditingFee(fee);
     setFormData({
       name: fee.name,
@@ -165,12 +190,26 @@ export default function FeesPage() {
       resetForm();
       loadFees();
     } catch (error: any) {
-      console.error('Failed to update fee:', error);
       toast.error(error.response?.data?.error || 'Failed to update fee');
     }
   };
 
+  const handleToggleLock = async (fee: Fee) => {
+    try {
+      await feesAPI.update(fee.id, { is_locked: !fee.is_locked });
+      toast.success(fee.is_locked ? 'Fee unlocked successfully' : 'Fee locked successfully');
+      loadFees();
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to update fee lock');
+    }
+  };
+
   const handleDelete = async (id: string) => {
+    const fee = fees.find((item) => item.id === id);
+    if (fee?.is_locked) {
+      toast.error('Unlock the fee before deleting it');
+      return;
+    }
     if (!confirm('Are you sure you want to delete this fee?')) return;
 
     try {
@@ -178,7 +217,6 @@ export default function FeesPage() {
       toast.success('Fee deleted successfully');
       loadFees();
     } catch (error: any) {
-      console.error('Failed to delete fee:', error);
       toast.error(error.response?.data?.error || 'Failed to delete fee');
     }
   };
@@ -217,6 +255,25 @@ export default function FeesPage() {
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
         <div className="space-y-6">
+          {schoolSetupRequired && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-amber-900">School setup required</CardTitle>
+                <CardDescription className="text-amber-800">
+                  This account is active, but no school is linked yet. Complete school onboarding before managing fees.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button onClick={() => window.location.assign('/dashboard/schools/onboard')} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  Onboard School
+                </Button>
+                <Button variant="outline" onClick={() => window.location.assign('/dashboard/settings')}>
+                  Open Settings
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold">Fees Management</h1>
@@ -261,6 +318,7 @@ export default function FeesPage() {
                       <TableHead>Stream</TableHead>
                       <TableHead>Due Date</TableHead>
                       <TableHead>Status</TableHead>
+                      <TableHead>Lock</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -281,10 +339,18 @@ export default function FeesPage() {
                         </TableCell>
                         <TableCell>{getStatusBadge(fee.status)}</TableCell>
                         <TableCell>
+                          {fee.is_locked ? (
+                            <Badge className="bg-amber-500 hover:bg-amber-600">Locked</Badge>
+                          ) : (
+                            <Badge variant="outline">Open</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <div className="flex items-center gap-2">
                             <Button
                               variant="ghost"
                               size="sm"
+                              disabled={fee.is_locked}
                               onClick={() => handleEdit(fee)}
                               className="h-8 w-8 p-0"
                             >
@@ -293,6 +359,16 @@ export default function FeesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
+                              onClick={() => handleToggleLock(fee)}
+                              className={`h-8 w-8 p-0 ${fee.is_locked ? 'text-amber-600 hover:text-amber-700' : 'text-slate-600 hover:text-slate-900'}`}
+                              title={fee.is_locked ? 'Unlock fee' : 'Lock fee'}
+                            >
+                              {fee.is_locked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              disabled={fee.is_locked}
                               onClick={() => handleDelete(fee.id)}
                               className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                             >

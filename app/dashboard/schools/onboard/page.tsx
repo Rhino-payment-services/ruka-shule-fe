@@ -2,9 +2,10 @@
 
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { schoolsAPI } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { School, ArrowLeft, Loader2, User, Building2, CreditCard, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +23,7 @@ import {
 interface FormData {
   // School Information
   name: string;
-  abbreviation: string;
+  schoolCode: string;
   address: string;
   phone: string;
   email: string;
@@ -34,6 +35,8 @@ interface FormData {
   ownerDateOfBirth: string;
   ownerGender: 'MALE' | 'FEMALE' | 'OTHER' | '';
   ownerNationalId: string;
+  ownerPin: string;
+  ownerPinConfirm: string;
   
   // Business Registration Information
   certificateOfIncorporation: string;
@@ -44,6 +47,7 @@ interface FormData {
   
   // Financial Information (Optional)
   bankName: string;
+  bankCode: string;
   accountNumber: string;
   accountName: string;
   branch: string;
@@ -53,6 +57,8 @@ type FormSection = 'school' | 'owner' | 'business' | 'financial';
 
 export default function OnboardSchoolPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isSchoolAdmin = user?.role === 'school_admin';
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -60,7 +66,7 @@ export default function OnboardSchoolPage() {
   const [currentSection, setCurrentSection] = useState<FormSection>('school');
   const [formData, setFormData] = useState<FormData>({
     name: '',
-    abbreviation: '',
+    schoolCode: '',
     address: '',
     phone: '',
     email: '',
@@ -70,16 +76,38 @@ export default function OnboardSchoolPage() {
     ownerDateOfBirth: '',
     ownerGender: '',
     ownerNationalId: '',
+    ownerPin: '',
+    ownerPinConfirm: '',
     certificateOfIncorporation: '',
     taxIdentificationNumber: '',
     businessType: '',
     businessRegistrationDate: '',
     businessCity: '',
     bankName: '',
+    bankCode: '',
     accountNumber: '',
     accountName: '',
     branch: '',
   });
+
+  useEffect(() => {
+    if (!isSchoolAdmin || !user) {
+      return;
+    }
+
+    const firstName = user.first_name?.trim() || '';
+    const lastName = user.last_name?.trim() || '';
+
+    if (!firstName || !lastName) {
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      ownerFirstName: prev.ownerFirstName || firstName,
+      ownerLastName: prev.ownerLastName || lastName,
+    }));
+  }, [isSchoolAdmin, user]);
 
   const sections: { id: FormSection; title: string; icon: React.ReactNode }[] = [
     { id: 'school', title: 'School Information', icon: <School className="h-4 w-4" /> },
@@ -95,11 +123,31 @@ export default function OnboardSchoolPage() {
   const canProceedToNext = () => {
     switch (currentSection) {
       case 'school':
-        return formData.name && formData.phone && formData.email;
-      case 'owner':
-        return formData.ownerFirstName && formData.ownerLastName && formData.ownerDateOfBirth && formData.ownerGender && formData.ownerNationalId;
+        if (quickSignup && isSchoolAdmin) {
+          return Boolean(
+            formData.name &&
+            formData.phone &&
+            formData.email &&
+            formData.ownerFirstName.trim() &&
+            formData.ownerLastName.trim()
+          );
+        }
+        return Boolean(formData.name && formData.phone && formData.email);
+      case 'owner': {
+        const pinOk =
+          /^\d{4,6}$/.test(formData.ownerPin) &&
+          formData.ownerPin === formData.ownerPinConfirm;
+        return Boolean(
+          formData.ownerFirstName &&
+            formData.ownerLastName &&
+            formData.ownerDateOfBirth &&
+            formData.ownerGender &&
+            formData.ownerNationalId &&
+            pinOk,
+        );
+      }
       case 'business':
-        return formData.certificateOfIncorporation && formData.taxIdentificationNumber && formData.businessType && formData.businessRegistrationDate && formData.businessCity;
+        return Boolean(formData.certificateOfIncorporation && formData.taxIdentificationNumber && formData.businessType && formData.businessRegistrationDate && formData.businessCity);
       case 'financial':
         return true; // All optional
       default:
@@ -124,12 +172,29 @@ export default function OnboardSchoolPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (quickSignup && isSchoolAdmin && (!formData.ownerFirstName.trim() || !formData.ownerLastName.trim())) {
+      setError('Owner first and last names are missing. Please provide them to continue.');
+      return;
+    }
+
+    if (!quickSignup) {
+      if (!/^\d{4,6}$/.test(formData.ownerPin)) {
+        setError('Enter a Rukapay PIN with 4–6 digits.');
+        return;
+      }
+      if (formData.ownerPin !== formData.ownerPinConfirm) {
+        setError('Rukapay PIN confirmation does not match.');
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
-      const response = await schoolsAPI.create({
+      const payload = {
         name: formData.name,
-        abbreviation: formData.abbreviation || undefined,
+        code: formData.schoolCode.trim().toUpperCase(),
         address: formData.address || undefined,
         phone: formData.phone,
         email: formData.email,
@@ -139,21 +204,27 @@ export default function OnboardSchoolPage() {
         owner_date_of_birth: formData.ownerDateOfBirth || undefined,
         owner_gender: formData.ownerGender || undefined,
         owner_national_id: formData.ownerNationalId || undefined,
+        owner_pin: !quickSignup && formData.ownerPin ? formData.ownerPin : undefined,
         certificate_of_incorporation: formData.certificateOfIncorporation || undefined,
         tax_identification_number: formData.taxIdentificationNumber || undefined,
         business_type: formData.businessType || undefined,
         business_registration_date: formData.businessRegistrationDate || undefined,
         business_city: formData.businessCity || undefined,
         bank_name: formData.bankName || undefined,
+        bank_code: formData.bankCode || undefined,
         account_number: formData.accountNumber || undefined,
         account_name: formData.accountName || undefined,
         branch: formData.branch || undefined,
-      });
+      };
+
+      const response = user?.role === 'school_admin'
+        ? await schoolsAPI.register(payload)
+        : await schoolsAPI.create(payload);
 
       setSuccess(true);
-      // Redirect to schools list after 2 seconds
+      // Redirect to the appropriate destination after 2 seconds
       setTimeout(() => {
-        router.push('/dashboard/schools');
+        router.push(user?.role === 'school_admin' ? '/dashboard' : '/dashboard/schools');
       }, 2000);
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: string } }; message?: string };
@@ -164,7 +235,7 @@ export default function OnboardSchoolPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'school_admin']}>
       <DashboardLayout>
         <div className="space-y-6 max-w-4xl mx-auto">
           {/* Header */}
@@ -179,7 +250,7 @@ export default function OnboardSchoolPage() {
               Back
             </Button>
             <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-[#08163d] to-[#0a1f4f] bg-clip-text text-transparent">
+              <h1 className="text-3xl font-bold bg-linear-to-r from-[#08163d] to-[#0a1f4f] bg-clip-text text-transparent">
                 Onboard New School
               </h1>
               <p className="mt-2 text-muted-foreground">
@@ -246,7 +317,7 @@ export default function OnboardSchoolPage() {
           <Card>
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-blue-100 to-blue-200 border border-blue-300">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-linear-to-br from-blue-100 to-blue-200 border border-blue-300">
                   {quickSignup ? (
                     <School className="h-6 w-6 text-blue-600" />
                   ) : (
@@ -266,8 +337,8 @@ export default function OnboardSchoolPage() {
                   </CardTitle>
                   <CardDescription>
                     {quickSignup 
-                      ? 'Enter the school details below. The school code will be automatically generated. You can complete merchant onboarding later.'
-                      : currentSection === 'school' && 'Enter the school details below. The school code will be automatically generated.'}
+                      ? 'Enter the school details below. The school code is required and must be unique. You can complete merchant onboarding later.'
+                      : currentSection === 'school' && 'Enter the school details below. The school code is required and must be unique.'}
                     {!quickSignup && currentSection === 'owner' && 'Enter the owner or representative information for merchant KYC.'}
                     {!quickSignup && currentSection === 'business' && 'Enter business registration details required for merchant onboarding.'}
                     {!quickSignup && currentSection === 'financial' && 'Enter bank account information (optional). This can be added later.'}
@@ -296,20 +367,21 @@ export default function OnboardSchoolPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="abbreviation" className="text-sm font-medium">
-                        Abbreviation (Optional)
+                      <Label htmlFor="schoolCode" className="text-sm font-medium">
+                        School Code <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="abbreviation"
+                        id="schoolCode"
                         type="text"
-                        value={formData.abbreviation}
-                        onChange={(e) => setFormData({ ...formData, abbreviation: e.target.value.toUpperCase() })}
-                        placeholder="e.g., STMP"
-                        maxLength={6}
+                        value={formData.schoolCode}
+                        onChange={(e) => setFormData({ ...formData, schoolCode: e.target.value.toUpperCase() })}
+                        placeholder="e.g., STMP001"
+                        maxLength={20}
+                        required
                         className="h-11"
                       />
                       <p className="text-xs text-muted-foreground">
-                        Optional abbreviation for code generation. If not provided, it will be extracted from the school name.
+                        This school code must be unique and will be used throughout the system.
                       </p>
                     </div>
 
@@ -356,6 +428,57 @@ export default function OnboardSchoolPage() {
                         className="h-11"
                       />
                     </div>
+
+                    {quickSignup && isSchoolAdmin && (!formData.ownerFirstName.trim() || !formData.ownerLastName.trim()) && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="quickOwnerFirstName" className="text-sm font-medium">
+                            Owner First Name <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            id="quickOwnerFirstName"
+                            type="text"
+                            value={formData.ownerFirstName}
+                            onChange={(e) => setFormData({ ...formData, ownerFirstName: e.target.value })}
+                            placeholder="e.g., John"
+                            required
+                            className="h-11"
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label htmlFor="quickOwnerLastName" className="text-sm font-medium">
+                            Owner Last Name <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            id="quickOwnerLastName"
+                            type="text"
+                            value={formData.ownerLastName}
+                            onChange={(e) => setFormData({ ...formData, ownerLastName: e.target.value })}
+                            placeholder="e.g., Doe"
+                            required
+                            className="h-11"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {quickSignup && isSchoolAdmin && formData.ownerFirstName.trim() && formData.ownerLastName.trim() && (
+                      <Alert className="bg-blue-50 border-blue-200 text-blue-800">
+                        <AlertDescription>
+                          Using profile owner name: {formData.ownerFirstName.trim()} {formData.ownerLastName.trim()}
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {quickSignup && (
+                      <Alert className="bg-amber-50 border-amber-200 text-amber-900">
+                        <AlertDescription>
+                          A default Rukapay wallet PIN will be set automatically. This is not used to log into Shule.
+                          Choose complete merchant onboarding if you want to set the PIN yourself.
+                        </AlertDescription>
+                      </Alert>
+                    )}
                   </div>
                 )}
 
@@ -463,6 +586,58 @@ export default function OnboardSchoolPage() {
                         National ID number of the school owner or representative
                       </p>
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="ownerPin" className="text-sm font-medium">
+                          Rukapay PIN <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="ownerPin"
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="new-password"
+                          value={formData.ownerPin}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              ownerPin: e.target.value.replace(/\D/g, '').slice(0, 6),
+                            })
+                          }
+                          placeholder="4–6 digits"
+                          required
+                          minLength={4}
+                          maxLength={6}
+                          className="h-11"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ownerPinConfirm" className="text-sm font-medium">
+                          Confirm PIN <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="ownerPinConfirm"
+                          type="password"
+                          inputMode="numeric"
+                          autoComplete="new-password"
+                          value={formData.ownerPinConfirm}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              ownerPinConfirm: e.target.value.replace(/\D/g, '').slice(0, 6),
+                            })
+                          }
+                          placeholder="Re-enter PIN"
+                          required
+                          minLength={4}
+                          maxLength={6}
+                          className="h-11"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Used for Rukapay wallet/app actions — not for logging into Shule.
+                    </p>
                   </div>
                 )}
 
@@ -585,6 +760,20 @@ export default function OnboardSchoolPage() {
                       />
                     </div>
 
+                    <div className="space-y-2">
+                      <Label htmlFor="bankCode" className="text-sm font-medium">
+                        Bank Code / Sort Code
+                      </Label>
+                      <Input
+                        id="bankCode"
+                        type="text"
+                        value={formData.bankCode}
+                        onChange={(e) => setFormData({ ...formData, bankCode: e.target.value })}
+                        placeholder="e.g., 040147"
+                        className="h-11"
+                      />
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="accountNumber" className="text-sm font-medium">
@@ -658,7 +847,7 @@ export default function OnboardSchoolPage() {
                       </Button>
                       <Button
                         type="submit"
-                        disabled={loading || !formData.name || !formData.phone || !formData.email}
+                        disabled={loading || !canProceedToNext()}
                         className="flex-1 bg-[#08163d] hover:bg-[#0a1f4f] text-white"
                       >
                         {loading ? (

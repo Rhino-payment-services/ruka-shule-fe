@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { authAPI } from '@/lib/api';
 
 interface User {
@@ -10,6 +10,8 @@ interface User {
   role: 'admin' | 'school_admin' | 'parent';
   school_id?: string;
   school_code?: string;
+  first_name?: string;
+  last_name?: string;
 }
 
 interface AuthContextType {
@@ -17,7 +19,8 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<boolean>;
 }
 
 interface RegisterData {
@@ -26,106 +29,125 @@ interface RegisterData {
   password: string;
   role: 'admin' | 'school_admin';
   school_id?: string;
+  first_name?: string;
+  last_name?: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function mapUser(raw: Record<string, unknown> | null | undefined): User | null {
+  if (!raw || typeof raw.id !== 'string' || typeof raw.email !== 'string') {
+    return null;
+  }
+  const role = raw.role as User['role'];
+  if (!role || !['admin', 'school_admin', 'parent'].includes(role)) {
+    return null;
+  }
+  return {
+    id: raw.id,
+    email: raw.email,
+    phone: (raw.phone as string) || '',
+    role,
+    school_id: (raw.school_id as string) || undefined,
+    first_name: (raw.first_name as string) || undefined,
+    last_name: (raw.last_name as string) || undefined,
+  };
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Check for stored user on mount
-    if (typeof window !== 'undefined') {
-      const storedUser = localStorage.getItem('user');
-      const storedToken = localStorage.getItem('token');
-      if (storedUser && storedToken) {
-        try {
-          setUser(JSON.parse(storedUser));
-        } catch (e) {
-          localStorage.removeItem('user');
-          localStorage.removeItem('token');
+  const refreshUser = useCallback(async (): Promise<boolean> => {
+    try {
+      const meRes = await authAPI.me();
+      const mapped = mapUser(meRes.data?.data);
+      if (mapped) {
+        setUser(mapped);
+        return true;
+      }
+    } catch {
+      // Access may be expired — try refresh cookie once.
+      try {
+        await authAPI.refresh();
+        const meRes = await authAPI.me();
+        const mapped = mapUser(meRes.data?.data);
+        if (mapped) {
+          setUser(mapped);
+          return true;
         }
+      } catch {
+        setUser(null);
+        return false;
       }
     }
-    setLoading(false);
+    setUser(null);
+    return false;
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const boot = async () => {
+      // Clear legacy localStorage tokens (pre-cookie auth).
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+      }
+      if (!cancelled) {
+        await refreshUser();
+        setLoading(false);
+      }
+    };
+
+    boot();
+
+    const onLogout = () => setUser(null);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('shule:auth-logout', onLogout);
+    }
+    return () => {
+      cancelled = true;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('shule:auth-logout', onLogout);
+      }
+    };
+  }, [refreshUser]);
 
   const login = async (email: string, password: string) => {
     const response = await authAPI.login({ email, password });
-    console.log('Login response:', response.data);
-    
-    // Backend returns: { data: { token: "...", user: { ... } } }
-    const authData = response.data.data;
-    
-    if (!authData || !authData.token || !authData.user) {
-      console.error('Invalid response structure:', response.data);
-      throw new Error('Invalid response from server');
+    const authData = response.data?.data;
+    const fromBody = mapUser(authData?.user);
+    if (fromBody) {
+      setUser(fromBody);
+      return;
     }
-    
-    const userData = {
-      id: authData.user.id,
-      email: authData.user.email,
-      phone: authData.user.phone,
-      role: authData.user.role,
-      school_id: authData.user.school_id,
-      school_code: authData.user.school_code,
-    };
-    const token = authData.token;
-
-    // Validate role
-    if (!userData.role || !['admin', 'school_admin', 'parent'].includes(userData.role)) {
-      throw new Error('Invalid user role');
+    const ok = await refreshUser();
+    if (!ok) {
+      throw new Error('Login succeeded but session could not be established');
     }
-
-    // Store token and user data FIRST, before setting state
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      // Verify token was stored
-      const storedToken = localStorage.getItem('token');
-      if (storedToken !== token) {
-        console.error('Token storage failed!');
-        throw new Error('Failed to store authentication token');
-      } else {
-        console.log('Token stored successfully, length:', token.length, 'First 20 chars:', token.substring(0, 20));
-      }
-    }
-    
-    setUser(userData as User);
   };
 
   const register = async (data: RegisterData) => {
     const response = await authAPI.register(data);
-    // Backend returns: { data: { token: "...", user: { ... } } }
-    const authData = response.data.data;
-    
-    if (!authData || !authData.token || !authData.user) {
-      throw new Error('Invalid response from server');
+    const authData = response.data?.data;
+    const fromBody = mapUser(authData?.user);
+    if (fromBody) {
+      setUser(fromBody);
+      return;
     }
-    
-    const userData = {
-      id: authData.user.id,
-      email: authData.user.email,
-      phone: authData.user.phone,
-      role: authData.user.role,
-      school_id: authData.user.school_id,
-      school_code: authData.user.school_code,
-    };
-    const token = authData.token;
-
-    // Store token and user data FIRST, before setting state
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      // Force a small delay to ensure localStorage is written
-      await new Promise(resolve => setTimeout(resolve, 50));
+    const ok = await refreshUser();
+    if (!ok) {
+      throw new Error('Registration succeeded but session could not be established');
     }
-    
-    setUser(userData as User);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await authAPI.logout();
+    } catch {
+      // Still clear local session.
+    }
     setUser(null);
     if (typeof window !== 'undefined') {
       localStorage.removeItem('token');
@@ -134,7 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -147,4 +169,3 @@ export function useAuth() {
   }
   return context;
 }
-

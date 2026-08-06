@@ -9,6 +9,7 @@ import {
   Users,
   CreditCard,
   Receipt,
+  Wallet,
   Settings,
   LogOut,
   Menu,
@@ -31,9 +32,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    router.push('/login');
+  const handleLogout = async () => {
+    await logout();
+    router.push('/');
   };
 
   const menuItems = [
@@ -83,6 +84,18 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       name: 'Fees',
       icon: Receipt,
       href: '/dashboard/fees',
+      roles: ['school_admin'],
+    },
+    {
+      name: 'Fees Overview',
+      icon: Receipt,
+      href: '/dashboard/fees-overview',
+      roles: ['school_admin'],
+    },
+    {
+      name: 'Settlements',
+      icon: Wallet,
+      href: '/dashboard/settlements',
       roles: ['school_admin'],
     },
     {
@@ -177,7 +190,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
           {/* Right side */}
           <div className="flex items-center gap-3 pl-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white shadow-md">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#08163d] text-sm font-semibold text-white shadow-md">
               {user?.email?.charAt(0).toUpperCase()}
             </div>
             <div className="hidden md:block">

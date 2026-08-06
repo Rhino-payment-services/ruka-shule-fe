@@ -53,7 +53,6 @@ export default function SchoolDetailsPage() {
       const response = await schoolsAPI.get(id);
       setSchool(response.data.data);
     } catch (err: unknown) {
-      console.error('Failed to load school:', err);
       const axiosError = err as { response?: { status?: number; data?: { error?: string } } };
       setError(axiosError.response?.data?.error || 'Failed to load school');
     } finally {

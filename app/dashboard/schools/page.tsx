@@ -3,11 +3,20 @@
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
-import { schoolsAPI } from '@/lib/api';
+import { schoolsAPI, adminAPI } from '@/lib/api';
 import { School, Plus, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import {
   Table,
   TableBody,
@@ -26,6 +35,7 @@ interface SchoolData {
   email: string;
   phone: string;
   status: string;
+  merchant_status?: string;
   business_wallet_id: string;
   created_at: string;
 }
@@ -35,6 +45,10 @@ export default function SchoolsPage() {
   const [schools, setSchools] = useState<SchoolData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [approveDialogOpen, setApproveDialogOpen] = useState(false);
+  const [approveSchoolId, setApproveSchoolId] = useState<string | null>(null);
+  const [approveReason, setApproveReason] = useState('');
+  const [approving, setApproving] = useState(false);
 
   useEffect(() => {
     loadSchools();
@@ -43,9 +57,15 @@ export default function SchoolsPage() {
   const loadSchools = async () => {
     try {
       const response = await schoolsAPI.list(1, 100);
-      setSchools(response.data.data || []);
-    } catch (error) {
-      console.error('Failed to load schools:', error);
+      const data = response.data.data || [];
+      data.sort((a: SchoolData, b: SchoolData) => {
+        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return tb - ta; // newest first
+      });
+      setSchools(data);
+    } catch {
+      /* ignore */
     } finally {
       setLoading(false);
     }
@@ -56,6 +76,62 @@ export default function SchoolsPage() {
       school.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       school.code.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleApproveRejected = (schoolId: string) => {
+    setApproveSchoolId(schoolId);
+    setApproveReason('');
+    setApproveDialogOpen(true);
+  };
+
+  const submitApproveRejected = async () => {
+    if (!approveSchoolId) return;
+    try {
+      setApproving(true);
+      await adminAPI.updateMerchantStatus(approveSchoolId, {
+        merchant_status: 'approved',
+        reason: approveReason || null,
+      });
+      setApproveDialogOpen(false);
+      setApproveSchoolId(null);
+      await loadSchools();
+      toast.success('School approved successfully');
+    } catch (err) {
+      toast.error('Failed to approve school. See console for details.');
+    } finally {
+      setApproving(false);
+    }
+  };
+
+  const getMerchantStatusBadge = (status?: string) => {
+    if (!status) return <span className="text-muted-foreground">—</span>;
+    if (status === 'approved') {
+      return (
+        <Badge className="bg-green-100 text-green-700 border-green-300" variant="outline">
+          Approved
+        </Badge>
+      );
+    }
+    if (status === 'rejected') {
+      return (
+        <Badge className="bg-red-100 text-red-700 border-red-300" variant="outline">
+          Rejected
+        </Badge>
+      );
+    }
+    if (status === 'kyc_submitted') {
+      return (
+        <Badge className="bg-amber-100 text-amber-700 border-amber-300" variant="outline">
+          KYC Submitted
+        </Badge>
+      );
+    }
+    // pending_onboarding or other
+    return (
+      <Badge className="bg-orange-100 text-orange-700 border-orange-300" variant="outline">
+        {status}
+      </Badge>
+    );
+  };
 
   return (
     <ProtectedRoute allowedRoles={['admin']}>
@@ -110,6 +186,7 @@ export default function SchoolsPage() {
                       <TableHead className="font-semibold text-[#08163d]">Code</TableHead>
                       <TableHead className="font-semibold text-[#08163d]">Contact</TableHead>
                       <TableHead className="font-semibold text-[#08163d]">Status</TableHead>
+                      <TableHead className="font-semibold text-[#08163d]">Merchant Status</TableHead>
                       <TableHead className="font-semibold text-[#08163d]">Wallet ID</TableHead>
                       <TableHead className="text-right font-semibold text-[#08163d]">Actions</TableHead>
                     </TableRow>
@@ -117,7 +194,7 @@ export default function SchoolsPage() {
                   <TableBody>
                     {filteredSchools.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground">
+                        <TableCell colSpan={7} className="text-center text-muted-foreground">
                           No schools found
                         </TableCell>
                       </TableRow>
@@ -156,7 +233,20 @@ export default function SchoolsPage() {
                               {school.business_wallet_id || 'N/A'}
                             </code>
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell>
+                            {getMerchantStatusBadge((school as any).merchant_status)}
+                          </TableCell>
+                          <TableCell className="text-right flex items-center justify-end gap-2">
+                            {(school as any).merchant_status === 'rejected' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-green-700 hover:bg-green-50"
+                                onClick={() => handleApproveRejected(school.id)}
+                              >
+                                Re-approve
+                              </Button>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -174,6 +264,41 @@ export default function SchoolsPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Re-approve rejected school dialog */}
+          <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Re-approve School</DialogTitle>
+                <DialogDescription>
+                  Approve this rejected school for merchant onboarding. Optionally add an approval note.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="mt-4">
+                <p className="text-sm font-medium mb-3">
+                  School: {approveSchoolId ? (schools.find((s) => s.id === approveSchoolId)?.name ?? '—') : '—'}
+                </p>
+                <textarea
+                  className="modal-textarea w-full"
+                  value={approveReason}
+                  onChange={(e) => setApproveReason(e.target.value)}
+                  placeholder="Enter approval note (optional)"
+                />
+              </div>
+              <DialogFooter>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setApproveDialogOpen(false)}>Cancel</Button>
+                  <Button
+                    onClick={submitApproveRejected}
+                    disabled={approving}
+                    className="bg-green-600 text-white hover:bg-green-700"
+                  >
+                    {approving ? 'Approving...' : 'Approve'}
+                  </Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </DashboardLayout>
     </ProtectedRoute>

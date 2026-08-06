@@ -7,7 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CreditCard, Search, CheckCircle, XCircle, Clock, Loader2, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { paymentsAPI, studentsAPI, schoolsAPI, API_BASE_URL } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { normalizeUgandaPhoneForStorage } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
@@ -24,9 +27,17 @@ interface FeeForPayment {
   name: string;
   amount: number;
   currency: string;
+  fee_type?: string;
   total_paid: number;
   outstanding: number;
   is_paid: boolean;
+  is_locked: boolean;
+}
+
+interface SchoolProfile {
+  code?: string;
+  name?: string;
+  phone?: string;
 }
 
 interface StudentLookupData {
@@ -36,6 +47,7 @@ interface StudentLookupData {
     full_name: string;
     class: string;
     phone: string;
+    school_fees_amount?: number;
   };
   school: {
     code: string;
@@ -43,9 +55,11 @@ interface StudentLookupData {
   };
   available_fees: FeeForPayment[];
   payment_summary: {
+    school_fees_amount?: number;
     total_fees: number;
     total_paid: number;
     total_outstanding: number;
+    carry_forward_balance?: number;
     payment_status: string;
   };
 }
@@ -72,15 +86,28 @@ interface StudentPaymentSummary {
   class: string;
   total_paid: number;
   total_fees: number;
+  school_fees_amount?: number;
   outstanding: number;
   payment_status: string;
   payment_count: number;
   last_payment_at?: string;
+  fees?: Array<{
+    fee_id?: string;
+    fee_name: string;
+    fee_type?: string;
+    amount: number;
+    paid: number;
+    outstanding: number;
+    is_paid: boolean;
+  }>;
 }
 
 export default function PaymentsPage() {
+  const { user } = useAuth();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
+  const [schoolChecked, setSchoolChecked] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<StudentPaymentSummary | null>(null);
   const [searching, setSearching] = useState(false);
@@ -90,33 +117,59 @@ export default function PaymentsPage() {
 
   // Collect Payment state
   const [schoolCode, setSchoolCode] = useState<string>('');
+  const [schoolPhone, setSchoolPhone] = useState<string>('');
   const [lookupRegistrationId, setLookupRegistrationId] = useState('');
   const [studentLookupData, setStudentLookupData] = useState<StudentLookupData | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [selectedFee, setSelectedFee] = useState<FeeForPayment | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentPhone, setPaymentPhone] = useState('');
+  const [paymentPhoneTouched, setPaymentPhoneTouched] = useState(false);
   const [processingPayment, setProcessingPayment] = useState(false);
   const [paymentReference, setPaymentReference] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadPayments();
-  }, [page]);
+  const syncSchoolProfile = async (): Promise<SchoolProfile | null> => {
+    try {
+      const res = await schoolsAPI.getMySchool();
+      const school = res.data.data as SchoolProfile;
+      if (school?.code) setSchoolCode(school.code);
+      if (school?.phone) {
+        setSchoolPhone(school.phone);
+        setPaymentPhone((current) => (paymentPhoneTouched ? current : school.phone || current));
+      }
+      return school;
+    } catch (error: any) {
+      if (error?.response?.status === 404) {
+        setSchoolSetupRequired(true);
+      }
+      return null;
+    } finally {
+      setSchoolChecked(true);
+    }
+  };
 
   useEffect(() => {
-    const fetchSchool = async () => {
-      try {
-        const res = await schoolsAPI.getMySchool();
-        const school = res.data.data;
-        if (school?.code) setSchoolCode(school.code);
-      } catch {
-        // School admin may not have school in some edge cases
-      }
-    };
-    fetchSchool();
+    // Load school once on mount. Do NOT refetch on every window focus —
+    // /schools/me hits rdbs_core login and was burning the IP rate limit.
+    void syncSchoolProfile();
   }, []);
 
+  useEffect(() => {
+    if (!schoolChecked || schoolSetupRequired) {
+      setLoading(false);
+      return;
+    }
+    loadPayments();
+  }, [page, schoolChecked, schoolSetupRequired]);
+
+  useEffect(() => {
+    if (!paymentPhone && schoolPhone) {
+      setPaymentPhone(schoolPhone);
+    }
+  }, [paymentPhone, schoolPhone]);
+
   const loadPayments = async () => {
+    if (schoolSetupRequired) return;
     try {
       setLoading(true);
       const response = await paymentsAPI.list(page, pageSize);
@@ -125,8 +178,8 @@ export default function PaymentsPage() {
       const total = response.data.total;
       setPayments(paymentsData);
       setTotalPayments(total !== undefined ? total : paymentsData.length);
-    } catch (error) {
-      console.error('Failed to load payments:', error);
+    } catch {
+      /* ignore */
     } finally {
       setLoading(false);
     }
@@ -163,43 +216,53 @@ export default function PaymentsPage() {
         } else {
           setSearchResults(null);
         }
-      } catch (err) {
-        console.error('Student lookup failed:', err);
+      } catch {
         setSearchResults(null);
       }
-    } catch (error) {
-      console.error('Search failed:', error);
+    } catch {
       setSearchResults(null);
     } finally {
       setSearching(false);
     }
   };
 
-  const handlePaymentLookup = async () => {
-    if (!lookupRegistrationId.trim() || !schoolCode) {
-      toast.error(schoolCode ? 'Enter student registration ID' : 'School not loaded');
+  const handlePaymentLookup = async (options?: { silent?: boolean }) => {
+    // Avoid blocking lookup on /schools/me + rdbs wallet auth; only sync when code is missing.
+    let latestSchoolCode = schoolCode;
+    let latestSchoolPhone = schoolPhone;
+    if (!latestSchoolCode) {
+      const latestSchool = await syncSchoolProfile();
+      latestSchoolCode = latestSchool?.code || '';
+      latestSchoolPhone = latestSchool?.phone || '';
+    }
+
+    if (!lookupRegistrationId.trim() || !latestSchoolCode) {
+      if (!options?.silent) {
+        toast.error(schoolCode ? 'Enter student registration ID' : 'School not loaded');
+      }
       return;
     }
     try {
       setLookupLoading(true);
-      setStudentLookupData(null);
-      const res = await paymentsAPI.lookupStudentForPayment(lookupRegistrationId.trim(), schoolCode);
+      if (!options?.silent) {
+        setStudentLookupData(null);
+      }
+      const res = await paymentsAPI.lookupStudentForPayment(lookupRegistrationId.trim(), latestSchoolCode);
       const data = res.data.data;
       setStudentLookupData(data);
-      setPaymentPhone(data?.student?.phone || '');
-      // Auto-select first outstanding fee so admin can pay immediately
-      const payableFees = (data?.available_fees || []).filter((f: FeeForPayment) => !f.is_paid && f.outstanding > 0);
-      if (payableFees.length > 0) {
-        setSelectedFee(payableFees[0]);
-        setPaymentAmount(payableFees[0].outstanding.toString());
-      } else {
-        setSelectedFee(null);
-        setPaymentAmount('');
+      setPaymentPhone(latestSchoolPhone || data?.student?.phone || '');
+      setPaymentPhoneTouched(false);
+      // Let the user pick a fee and type the amount — do not auto-fill.
+      setSelectedFee(null);
+      setPaymentAmount('');
+      if (!options?.silent) {
+        toast.success('Student found');
       }
-      toast.success('Student found');
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } }; message?: string };
-      toast.error(axiosErr.response?.data?.error || 'Student not found');
+      if (!options?.silent) {
+        toast.error(axiosErr.response?.data?.error || 'Student not found');
+      }
       setStudentLookupData(null);
     } finally {
       setLookupLoading(false);
@@ -211,8 +274,12 @@ export default function PaymentsPage() {
       toast.error('Fill all required fields');
       return;
     }
-    const amount = parseFloat(paymentAmount);
-    if (isNaN(amount) || amount <= 0) {
+    if (!selectedFee.id) {
+      toast.error('Select a fee with a valid fee structure, then try again.');
+      return;
+    }
+    const amount = Number(paymentAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
       toast.error('Enter a valid amount');
       return;
     }
@@ -225,7 +292,7 @@ export default function PaymentsPage() {
       toast.error('Enter a valid phone number');
       return;
     }
-    const formattedPhone = phone.startsWith('256') ? `+${phone}` : `+256${phone}`;
+    const formattedPhone = normalizeUgandaPhoneForStorage(phone);
 
     try {
       setProcessingPayment(true);
@@ -264,7 +331,7 @@ export default function PaymentsPage() {
             toast.success('Payment completed!');
             setProcessingPayment(false);
             loadPayments();
-            handlePaymentLookup();
+            void handlePaymentLookup({ silent: true });
           } else if (status === 'failed' || status === 'cancelled') {
             clearInterval(pollInterval);
             toast.error(`Payment ${status}`);
@@ -282,6 +349,13 @@ export default function PaymentsPage() {
     }
   };
 
+  const enteredAmount = Number(paymentAmount);
+  const amountExceeded =
+    !!selectedFee &&
+    paymentAmount !== '' &&
+    Number.isFinite(enteredAmount) &&
+    enteredAmount > selectedFee.outstanding;
+
   const resetPaymentFlow = () => {
     setStudentLookupData(null);
     setSelectedFee(null);
@@ -295,12 +369,13 @@ export default function PaymentsPage() {
       case 'paid':
       case 'success':
         return <Badge className="bg-green-500 hover:bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />Paid</Badge>;
+      case 'processing':
+        return <Badge className="bg-blue-500 hover:bg-blue-600"><Loader2 className="h-3 w-3 mr-1 animate-spin" />Processing</Badge>;
       case 'failed':
       case 'error':
         return <Badge className="bg-red-500 hover:bg-red-600"><XCircle className="h-3 w-3 mr-1" />Failed</Badge>;
       case 'pending':
-      case 'processing':
-        return <Badge className="bg-yellow-500 hover:bg-yellow-600"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
+        return <Badge className="bg-yellow-500 hover:bg-yellow-600"><Clock className="h-3 w-3 mr-1" />Initiated</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -325,6 +400,25 @@ export default function PaymentsPage() {
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
         <div className="space-y-6">
+          {schoolSetupRequired && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-amber-900">School setup required</CardTitle>
+                <CardDescription className="text-amber-800">
+                  This account is active, but no school is linked yet. Complete school onboarding before collecting payments.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button onClick={() => window.location.assign('/dashboard/schools/onboard')} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  Onboard School
+                </Button>
+                <Button variant="outline" onClick={() => window.location.assign('/dashboard/settings')}>
+                  Open Settings
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <div>
             <h1 className="text-3xl font-bold">Payments</h1>
             <p className="mt-2 text-muted-foreground">View and manage payment transactions</p>
@@ -346,16 +440,21 @@ export default function PaymentsPage() {
               </div>
             )}
           </div>
+          <div className="flex justify-end">
+            <Button asChild variant="outline" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50">
+              <Link href="/dashboard/settlements">Go to Settlements</Link>
+            </Button>
+          </div>
 
           {/* Collect Payment Card */}
-          <Card className="border-2 border-emerald-200 bg-gradient-to-br from-white to-emerald-50">
+          <Card className="border-2 border-emerald-200 bg-linear-to-br from-white to-emerald-50">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Wallet className="h-5 w-5 text-emerald-600" />
                 Collect Payment
               </CardTitle>
               <CardDescription>
-                Look up a student and collect school fees via Mobile Money
+                Look up a student and collect fees via Mobile Money
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -379,7 +478,7 @@ export default function PaymentsPage() {
                   <div className="text-sm text-muted-foreground">School: {schoolCode}</div>
                 )}
                 <Button
-                  onClick={handlePaymentLookup}
+                  onClick={() => void handlePaymentLookup()}
                   disabled={lookupLoading || !schoolCode}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
@@ -411,6 +510,20 @@ export default function PaymentsPage() {
                     </Button>
                   </div>
                   <div className="grid gap-2 text-sm">
+                    {studentLookupData.payment_summary.school_fees_amount !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">School Fees</span>
+                        <span className="font-semibold text-emerald-700">
+                          UGX {studentLookupData.payment_summary.school_fees_amount.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Carry-forward</span>
+                      <span className="font-semibold text-amber-700">
+                        UGX {(studentLookupData.payment_summary.carry_forward_balance || 0).toLocaleString()}
+                      </span>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total outstanding</span>
                       <span className="font-semibold text-red-600">
@@ -423,14 +536,15 @@ export default function PaymentsPage() {
                     <label className="text-sm font-medium">Select fee to pay</label>
                     <div className="grid gap-2">
                       {studentLookupData.available_fees
-                        .filter((f) => !f.is_paid && f.outstanding > 0)
+                        .filter((f) => !!f.id && !f.is_paid && f.outstanding > 0)
                         .map((fee) => (
                           <button
                             key={fee.id}
                             type="button"
                             onClick={() => {
                               setSelectedFee(fee);
-                              setPaymentAmount(fee.outstanding.toString());
+                              // Locked fees require full outstanding; otherwise user types the amount.
+                              setPaymentAmount(fee.is_locked ? fee.outstanding.toString() : '');
                             }}
                             className={`flex items-center justify-between rounded-lg border-2 p-3 text-left transition-colors ${
                               selectedFee?.id === fee.id
@@ -443,6 +557,14 @@ export default function PaymentsPage() {
                               <p className="text-xs text-muted-foreground">
                                 Outstanding: UGX {fee.outstanding.toLocaleString()}
                               </p>
+                              {fee.is_locked && (
+                                <Badge className="mt-1 bg-amber-500 hover:bg-amber-600">Locked</Badge>
+                              )}
+                              {fee.fee_type === 'school_fees' && (
+                                <Badge variant="outline" className="mt-1 text-[11px] uppercase tracking-wide">
+                                  School Fees
+                                </Badge>
+                              )}
                             </div>
                             {selectedFee?.id === fee.id && (
                               <CheckCircle className="h-5 w-5 text-emerald-600" />
@@ -450,8 +572,10 @@ export default function PaymentsPage() {
                           </button>
                         ))}
                     </div>
-                    {studentLookupData.available_fees.filter((f) => !f.is_paid && f.outstanding > 0).length === 0 && (
-                      <p className="text-sm text-muted-foreground">All fees are paid.</p>
+                    {studentLookupData.available_fees.filter((f) => !!f.id && !f.is_paid && f.outstanding > 0).length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        No payable fee structure for this student. Create an active school fees fee for their class, or all fees are paid.
+                      </p>
                     )}
                   </div>
 
@@ -462,14 +586,18 @@ export default function PaymentsPage() {
                           <label className="text-sm font-medium">Amount (UGX)</label>
                           <Input
                             type="number"
-                            placeholder="Amount"
+                            min="1"
+                            max={selectedFee.outstanding}
                             value={paymentAmount}
                             onChange={(e) => setPaymentAmount(e.target.value)}
-                            min={1}
-                            max={selectedFee.outstanding}
+                            readOnly={!!selectedFee.is_locked}
+                            disabled={!!selectedFee.is_locked}
+                            placeholder={selectedFee.outstanding.toString()}
                           />
                           <p className="text-xs text-muted-foreground">
-                            Max: UGX {selectedFee.outstanding.toLocaleString()}
+                            {selectedFee.is_locked
+                              ? `Locked fee: full outstanding amount required, UGX ${selectedFee.outstanding.toLocaleString()}`
+                              : `Enter the amount to send. Max outstanding: UGX ${selectedFee.outstanding.toLocaleString()}`}
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -477,14 +605,18 @@ export default function PaymentsPage() {
                           <Input
                             placeholder="256700123456"
                             value={paymentPhone}
-                            onChange={(e) => setPaymentPhone(e.target.value)}
+                            readOnly
+                            disabled
                           />
+                          <p className="text-xs text-muted-foreground">
+                            Uses the school payment phone saved in Settings.
+                          </p>
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button
                           onClick={handleProcessPayment}
-                          disabled={processingPayment}
+                          disabled={processingPayment || amountExceeded || !paymentAmount || !Number.isFinite(enteredAmount) || enteredAmount <= 0}
                           className="bg-emerald-600 hover:bg-emerald-700 text-white"
                         >
                           {processingPayment ? (
@@ -495,7 +627,7 @@ export default function PaymentsPage() {
                           ) : (
                             <>
                               <Wallet className="h-4 w-4 mr-2" />
-                              Pay {paymentAmount && !isNaN(parseFloat(paymentAmount)) ? `UGX ${parseFloat(paymentAmount).toLocaleString()}` : 'Now'}
+                              Pay UGX {(Number(paymentAmount) || selectedFee.outstanding).toLocaleString()}
                             </>
                           )}
                         </Button>
@@ -569,6 +701,11 @@ export default function PaymentsPage() {
                       <p className="font-semibold">{searchResults.student_name}</p>
                       <p className="text-xs text-muted-foreground">ID: {searchResults.registration_id}</p>
                       <p className="text-xs text-muted-foreground">Class: {searchResults.class}</p>
+                      {searchResults.school_fees_amount !== undefined && (
+                        <p className="text-xs text-muted-foreground">
+                          School Fees: UGX {searchResults.school_fees_amount.toLocaleString()}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm text-muted-foreground">Total Fees</p>
@@ -601,6 +738,31 @@ export default function PaymentsPage() {
                       </Badge>
                     </div>
                   </div>
+                  {Array.isArray(searchResults.fees) && searchResults.fees.length > 0 && (
+                    <div className="mt-4 rounded-lg border border-blue-200 bg-white p-4">
+                      <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                        Fee Breakdown
+                      </h4>
+                      <div className="space-y-2">
+                        {searchResults.fees.map((fee) => (
+                          <div key={`${fee.fee_id || fee.fee_name}-${fee.fee_type || 'fee'}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                            <div>
+                              <p className="font-medium">
+                                {fee.fee_name}
+                                {fee.fee_type === 'school_fees' ? ' (School Fees)' : fee.fee_type ? ' (Other Fee)' : ''}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                Paid: UGX {(fee.paid || 0).toLocaleString()} · Outstanding: UGX {(fee.outstanding || 0).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="text-right font-semibold">
+                              UGX {(fee.amount || 0).toLocaleString()}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {searchResults.last_payment_at && (
                     <div className="mt-3 pt-3 border-t border-blue-200">
                       <p className="text-sm text-muted-foreground">

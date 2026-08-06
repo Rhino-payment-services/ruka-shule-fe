@@ -4,7 +4,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { studentsAPI } from '@/lib/api';
+import { schoolsAPI, studentsAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -49,6 +49,7 @@ interface Student {
   first_name: string;
   last_name: string;
   phone: string;
+  school_fees_amount?: number;
   class: string;
   stream?: string;  // Arts, Sciences, General, etc.
   scholarship_type?: string;  // Full, Partial, Merit, etc.
@@ -64,6 +65,8 @@ export default function StudentsPage() {
   const router = useRouter();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
+  const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
+  const [schoolChecked, setSchoolChecked] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
@@ -79,10 +82,30 @@ export default function StudentsPage() {
   const [selectedTerm, setSelectedTerm] = useState<string>('');
 
   useEffect(() => {
+    const checkSchool = async () => {
+      try {
+        await schoolsAPI.getMySchool();
+      } catch (error: any) {
+        if (error?.response?.status === 404) {
+          setSchoolSetupRequired(true);
+        }
+      } finally {
+        setSchoolChecked(true);
+      }
+    };
+    checkSchool();
+  }, []);
+
+  useEffect(() => {
+    if (!schoolChecked || schoolSetupRequired) {
+      setLoading(false);
+      return;
+    }
     fetchStudents();
-  }, [currentPage]);
+  }, [currentPage, schoolChecked, schoolSetupRequired]);
 
   const fetchStudents = async () => {
+    if (schoolSetupRequired) return;
     try {
       setLoading(true);
       const response = await studentsAPI.list(currentPage, pageSize);
@@ -110,18 +133,9 @@ export default function StudentsPage() {
         totalPagesCount = Math.ceil(studentsData.length / pageSize) || 1;
       }
       
-      console.log('Fetched students:', {
-        count: studentsData.length,
-        total: totalCount,
-        totalPages: totalPagesCount,
-        currentPage,
-        pageSize,
-      });
-      
       setStudents(studentsData);
       setTotalPages(totalPagesCount);
     } catch (error: any) {
-      console.error('Error fetching students:', error);
       toast.error('Failed to fetch students', {
         description: error.response?.data?.error || error.message || 'Unknown error',
       });
@@ -133,7 +147,6 @@ export default function StudentsPage() {
   const downloadExampleExcel = () => {
     const exampleData = [
       {
-        'Registration ID': 'REG2024001',
         'First Name': 'John',
         'Last Name': 'Doe',
         'Phone': '+256700123456',
@@ -146,7 +159,6 @@ export default function StudentsPage() {
         'Parent Phone': '+256700123457',
       },
       {
-        'Registration ID': 'REG2024002',
         'First Name': 'Mary',
         'Last Name': 'Smith',
         'Phone': '+256700123458',
@@ -159,7 +171,6 @@ export default function StudentsPage() {
         'Parent Phone': '+256700123459',
       },
       {
-        'Registration ID': 'REG2024003',
         'First Name': 'Peter',
         'Last Name': 'Johnson',
         'Phone': '+256700123460',
@@ -176,7 +187,6 @@ export default function StudentsPage() {
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(exampleData);
     const columnWidths = [
-      { wch: 15 }, // Registration ID
       { wch: 12 }, // First Name
       { wch: 12 }, // Last Name
       { wch: 15 }, // Phone
@@ -232,9 +242,8 @@ export default function StudentsPage() {
 
       setPaymentSummary(summaryRes.data.data);
       setPaymentHistory(historyRes.data.data || []);
-    } catch (error: any) {
-      console.error('Error fetching payment data:', error);
-      // Don't show error toast - just log it, as student might not have payments yet
+    } catch {
+      /* ignore */
     } finally {
       setLoadingPayments(false);
     }
@@ -274,6 +283,25 @@ export default function StudentsPage() {
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
         <div className="space-y-6">
+          {schoolSetupRequired && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardHeader>
+                <CardTitle className="text-amber-900">School setup required</CardTitle>
+                <CardDescription className="text-amber-800">
+                  This account is active, but no school is linked yet. Complete school onboarding before managing students.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-3">
+                <Button onClick={() => router.push('/dashboard/schools/onboard')} className="bg-amber-600 hover:bg-amber-700 text-white">
+                  Onboard School
+                </Button>
+                <Button variant="outline" onClick={() => router.push('/dashboard/settings')}>
+                  Open Settings
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold">Students</h1>
@@ -362,6 +390,7 @@ export default function StudentsPage() {
                           <TableHead>Registration ID</TableHead>
                           <TableHead>Name</TableHead>
                           <TableHead>Phone</TableHead>
+                          <TableHead>School Fees</TableHead>
                           <TableHead>Class</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
@@ -377,6 +406,15 @@ export default function StudentsPage() {
                               {student.first_name} {student.last_name}
                             </TableCell>
                             <TableCell>{student.phone}</TableCell>
+                            <TableCell>
+                              {student.school_fees_amount !== undefined && student.school_fees_amount !== null ? (
+                                <span className="font-medium">
+                                  UGX {student.school_fees_amount.toLocaleString()}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
                             <TableCell>
                               <Badge variant="outline">{student.class}</Badge>
                             </TableCell>
@@ -492,6 +530,14 @@ export default function StudentsPage() {
                       <p className="text-sm font-medium">{selectedStudent.phone}</p>
                     </div>
                     <div>
+                      <label className="text-sm font-medium text-muted-foreground">School Fees</label>
+                      <p className="text-sm font-medium">
+                        {selectedStudent.school_fees_amount !== undefined && selectedStudent.school_fees_amount !== null
+                          ? `UGX ${selectedStudent.school_fees_amount.toLocaleString()}`
+                          : '-'}
+                      </p>
+                    </div>
+                    <div>
                       <label className="text-sm font-medium text-muted-foreground">Class</label>
                       <div className="mt-1">
                         <Badge variant="outline">{selectedStudent.class}</Badge>
@@ -593,6 +639,15 @@ export default function StudentsPage() {
                   ) : paymentSummary ? (
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-slate-50 rounded-lg p-4">
+                          <label className="text-xs font-medium text-muted-foreground">
+                            School Fees
+                          </label>
+                          <p className="text-lg font-semibold mt-1">
+                            {paymentSummary.currency || 'UGX'}{' '}
+                            {(paymentSummary.school_fees_amount || 0).toLocaleString()}
+                          </p>
+                        </div>
                         <div className="bg-muted/50 rounded-lg p-4">
                           <label className="text-xs font-medium text-muted-foreground">
                             Total Fees
@@ -652,6 +707,31 @@ export default function StudentsPage() {
                       {paymentSummary.last_payment_at && (
                         <div className="text-sm text-muted-foreground">
                           Last payment: {new Date(paymentSummary.last_payment_at).toLocaleString()}
+                        </div>
+                      )}
+                      {Array.isArray(paymentSummary.fees) && paymentSummary.fees.length > 0 && (
+                        <div className="rounded-lg border bg-white p-4">
+                          <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                            Fee Breakdown
+                          </h4>
+                          <div className="space-y-2">
+                            {paymentSummary.fees.map((fee: any) => (
+                              <div key={`${fee.fee_id || fee.fee_name}-${fee.fee_type || 'fee'}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                                <div>
+                                  <p className="font-medium">
+                                    {fee.fee_name}
+                                    {fee.fee_type === 'school_fees' ? ' (School Fees)' : fee.fee_type ? ' (Other Fee)' : ''}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Paid: UGX {(fee.paid || 0).toLocaleString()} · Outstanding: UGX {(fee.outstanding || 0).toLocaleString()}
+                                  </p>
+                                </div>
+                                <div className="text-right font-semibold">
+                                  UGX {(fee.amount || 0).toLocaleString()}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
