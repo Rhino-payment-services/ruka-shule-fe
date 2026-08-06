@@ -1,7 +1,8 @@
 import axios, { AxiosRequestHeaders, InternalAxiosRequestConfig } from 'axios';
 
-// Prefer same-origin /api (Next rewrite → Shule BE) so httpOnly cookies work.
-export const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
+// Direct backend URL — set NEXT_PUBLIC_API_URL in each environment.
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api';
 
 export interface ApiSuccessResponse<T> {
   data: T;

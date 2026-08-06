@@ -188,7 +188,11 @@ npm start
 
 ## Environment Variables
 
-- `NEXT_PUBLIC_API_URL`: Backend API URL (default: `http://localhost:8080/api`)
+- **`NEXT_PUBLIC_API_URL`** — full backend API base URL (required in production)
+  - Local: `http://localhost:8080/api`
+  - Dev: `https://dev-rukashule.rukapay.net/api`
+
+All browser requests go directly to this URL. Auth cookies are set on the API host; dashboard access is guarded client-side via `ProtectedRoute` and `/auth/me`.
 
 ## shadcn/ui Configuration
 
