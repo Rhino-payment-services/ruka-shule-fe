@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { authAPI } from '@/lib/api';
+import { authAPI, tokenStore } from '@/lib/api';
 
 interface User {
   id: string;
@@ -35,22 +35,20 @@ interface RegisterData {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function mapUser(raw: Record<string, unknown> | null | undefined): User | null {
-  if (!raw || typeof raw.id !== 'string' || typeof raw.email !== 'string') {
-    return null;
-  }
-  const role = raw.role as User['role'];
-  if (!role || !['admin', 'school_admin', 'parent'].includes(role)) {
-    return null;
-  }
+function mapUser(raw: unknown): User | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'string' || typeof r.email !== 'string') return null;
+  const role = r.role as User['role'];
+  if (!role || !['admin', 'school_admin', 'parent'].includes(role)) return null;
   return {
-    id: raw.id,
-    email: raw.email,
-    phone: (raw.phone as string) || '',
+    id: r.id,
+    email: r.email,
+    phone: (r.phone as string) || '',
     role,
-    school_id: (raw.school_id as string) || undefined,
-    first_name: (raw.first_name as string) || undefined,
-    last_name: (raw.last_name as string) || undefined,
+    school_id: (r.school_id as string) || undefined,
+    first_name: (r.first_name as string) || undefined,
+    last_name: (r.last_name as string) || undefined,
   };
 }
 
@@ -58,7 +56,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const refreshUser = useCallback(async (): Promise<boolean> => {
+    const refreshUser = useCallback(async (): Promise<boolean> => {
     try {
       const meRes = await authAPI.me();
       const mapped = mapUser(meRes.data?.data);
@@ -67,9 +65,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return true;
       }
     } catch {
-      // Access may be expired — try refresh cookie once.
+      // Access token may be expired — try to get a new one using the stored refresh token.
       try {
-        await authAPI.refresh();
+        const refreshRes = await authAPI.refreshWithStored();
+        const refreshData = refreshRes.data?.data;
+        if (refreshData?.token && refreshData?.refresh_token) {
+          tokenStore.set(refreshData.token, refreshData.refresh_token);
+        }
         const meRes = await authAPI.me();
         const mapped = mapUser(meRes.data?.data);
         if (mapped) {
@@ -78,6 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         setUser(null);
+        tokenStore.clear();
         return false;
       }
     }
@@ -88,14 +91,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    const boot = async () => {
-      // Clear legacy localStorage tokens (pre-cookie auth).
+        const boot = async () => {
+      // Clear legacy localStorage keys (pre-token auth).
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
       }
       if (!cancelled) {
-        await refreshUser();
+        // Only attempt to restore session if a refresh token is stored.
+        if (tokenStore.getRefresh()) {
+          await refreshUser();
+        }
         setLoading(false);
       }
     };
@@ -114,9 +120,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshUser]);
 
-  const login = async (email: string, password: string) => {
+    const login = async (email: string, password: string) => {
     const response = await authAPI.login({ email, password });
     const authData = response.data?.data;
+    if (authData?.token && authData?.refresh_token) {
+      tokenStore.set(authData.token, authData.refresh_token);
+    }
     const fromBody = mapUser(authData?.user);
     if (fromBody) {
       setUser(fromBody);
@@ -131,6 +140,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = async (data: RegisterData) => {
     const response = await authAPI.register(data);
     const authData = response.data?.data;
+    if (authData?.token && authData?.refresh_token) {
+      tokenStore.set(authData.token, authData.refresh_token);
+    }
     const fromBody = mapUser(authData?.user);
     if (fromBody) {
       setUser(fromBody);
@@ -142,17 +154,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const logout = async () => {
+    const logout = async () => {
     try {
-      await authAPI.logout();
+      const refreshToken = tokenStore.getRefresh();
+      await authAPI.logout(refreshToken ?? undefined);
     } catch {
-      // Still clear local session.
+      // Still clear local session even if the revocation call fails.
     }
     setUser(null);
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-    }
+    tokenStore.clear();
   };
 
   return (
