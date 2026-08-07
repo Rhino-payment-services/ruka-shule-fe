@@ -64,8 +64,8 @@ export default function PendingApprovalsPage() {
       const response = await schoolsAPI.list(1, 500);
       const all = response.data.data || [];
       const pending = all
-        .filter((s: SchoolData) => s.merchant_status && PENDING_STATUSES.includes(s.merchant_status))
-        .sort((a: SchoolData, b: SchoolData) => {
+      .filter((s) => s.merchant_status && PENDING_STATUSES.includes(s.merchant_status))
+      .sort((a, b) => {
           const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
           const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
           return tb - ta; // newest first

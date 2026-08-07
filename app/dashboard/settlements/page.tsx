@@ -67,11 +67,11 @@ export default function SettlementsPage() {
         schoolsAPI.getMySchool(),
       ]);
 
-      const data = settlementsRes.data?.data || {};
-      setSettlements(data.settlements || []);
-      setSummary(data.summary || null);
-      setPage(data.page || nextPage);
-      setTotalPages(data.total_pages || 1);
+      const data = settlementsRes.data?.data;
+      setSettlements(data?.settlements || []);
+      setSummary(data?.summary || null);
+      setPage(data?.page || nextPage);
+      setTotalPages(data?.total_pages || 1);
       setSchool(schoolRes.data?.data || null);
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Failed to load settlements');

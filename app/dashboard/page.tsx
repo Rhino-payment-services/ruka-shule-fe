@@ -156,7 +156,7 @@ export default function DashboardPage() {
         totalStudents = studentsRes.data.total || 0;
       } else {
         // Fallback to array length if not paginated
-        totalStudents = studentsRes.data.data?.length || studentsRes.data.data?.data?.length || 0;
+        totalStudents = studentsRes.data.data?.length || 0;
       }
       
       let totalPayments = 0;
@@ -165,7 +165,7 @@ export default function DashboardPage() {
         totalPayments = paymentsRes.data.total || 0;
       } else {
         // Fallback to array length if not paginated
-        totalPayments = paymentsRes.data.data?.length || paymentsRes.data.data?.data?.length || 0;
+        totalPayments = paymentsRes.data.data?.length || 0;
       }
       
       // Calculate total revenue from payments (PaginatedResponse: data.data = array)
