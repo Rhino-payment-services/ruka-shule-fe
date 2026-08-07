@@ -207,15 +207,16 @@ export default function PaymentsPage() {
       // Try student lookup first
       try {
         const studentRes = await studentsAPI.lookup(lookupParams);
-        const student = studentRes.data.data;
-        
-        if (student && student.id) {
-          // Get payment summary for this student
-          const summaryRes = await paymentsAPI.getSummary(student.id);
-          setSearchResults(summaryRes.data.data);
-        } else {
-          setSearchResults(null);
-        }
+          const students = studentRes.data.data;
+          const student = Array.isArray(students) ? students[0] : students;
+
+          if (student && student.id) {
+            // Get payment summary for this student
+            const summaryRes = await paymentsAPI.getSummary(student.id);
+            setSearchResults(summaryRes.data.data);
+          } else {
+            setSearchResults(null);
+          }
       } catch {
         setSearchResults(null);
       }

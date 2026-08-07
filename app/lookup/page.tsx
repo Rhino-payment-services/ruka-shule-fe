@@ -30,8 +30,8 @@ interface Student {
   school_fees_amount?: number;
   class: string;
   stream?: string | null;
-  school_name: string;
-  school_code: string;
+  school_name?: string;
+  school_code?: string;
 }
 
 interface Fee {
@@ -40,11 +40,11 @@ interface Fee {
   amount: number;
   currency: string;
   fee_type: string;
-  class?: string;
+  class?: string | null;
   academic_year: string;
-  term: string;
+  term?: string | null;
   stream?: string | null;
-  due_date?: string;
+  due_date?: string | null;
 }
 
 interface FeeForPayment {

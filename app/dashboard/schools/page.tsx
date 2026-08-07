@@ -36,7 +36,7 @@ interface SchoolData {
   phone: string;
   status: string;
   merchant_status?: string;
-  business_wallet_id: string;
+  business_wallet_id?: string;
   created_at: string;
 }
 
@@ -58,7 +58,7 @@ export default function SchoolsPage() {
     try {
       const response = await schoolsAPI.list(1, 100);
       const data = response.data.data || [];
-      data.sort((a: SchoolData, b: SchoolData) => {
+      data.sort((a, b) => {
         const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
         const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
         return tb - ta; // newest first
