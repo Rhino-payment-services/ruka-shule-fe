@@ -192,7 +192,7 @@ npm start
   - Local: `http://localhost:8080/api`
   - Dev: `https://dev-rukashule.rukapay.net/api`
 
-All browser requests go directly to this URL. Auth cookies are set on the API host; dashboard access is guarded client-side via `ProtectedRoute` and `/auth/me`.
+Browser calls the API directly; CORS is handled by ruka-shule-be (`AllowAllOrigins`). Auth uses Bearer tokens in localStorage; session restore uses `/auth/me`.
 
 ## shadcn/ui Configuration
 

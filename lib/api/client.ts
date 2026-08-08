@@ -25,11 +25,26 @@ export const tokenStore = {
     localStorage.setItem('access_token', access);
     localStorage.setItem('refresh_token', refresh);
   },
+  /** Persisted profile from login — used when /auth/me is missing on older API builds. */
+  getCachedUser: (): unknown | null => {
+    if (typeof window === 'undefined') return null;
+    const raw = localStorage.getItem('shule_user');
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  },
+  setCachedUser: (user: unknown) => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem('shule_user', JSON.stringify(user));
+  },
   clear: () => {
     if (typeof window === 'undefined') return;
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
-    // Clear legacy keys too
+    localStorage.removeItem('shule_user');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
   },
@@ -65,10 +80,13 @@ const isPublicEndpoint = (url: string | undefined): boolean => {
 // Silent token refresh (singleton promise — prevents parallel refresh races)
 // ---------------------------------------------------------------------------
 let refreshPromise: Promise<boolean> | null = null;
+/** Set when the last refresh attempt failed because the route is missing (older API). */
+let lastRefreshWasMissing = false;
 
 async function tryRefreshSession(): Promise<boolean> {
   if (!refreshPromise) {
     refreshPromise = (async () => {
+      lastRefreshWasMissing = false;
       const refreshToken = tokenStore.getRefresh();
       if (!refreshToken) return false;
       try {
@@ -76,9 +94,18 @@ async function tryRefreshSession(): Promise<boolean> {
         const data = res.data?.data;
         if (data?.token && data?.refresh_token) {
           tokenStore.set(data.token, data.refresh_token);
+          return true;
         }
-        return true;
-      } catch {
+        if (data?.token) {
+          tokenStore.set(data.token, refreshToken);
+          return true;
+        }
+        return false;
+      } catch (err) {
+        const status = (err as { response?: { status?: number } })?.response?.status;
+        if (status === 404) {
+          lastRefreshWasMissing = true;
+        }
         return false;
       }
     })().finally(() => {
@@ -128,6 +155,11 @@ api.interceptors.response.use(
       const refreshed = await tryRefreshSession();
       if (refreshed) {
         return api(original);
+      }
+      // Older API without /auth/refresh: don't force logout on a single 401 —
+      // AuthContext keeps the login user; the failing call still rejects.
+      if (lastRefreshWasMissing) {
+        return Promise.reject(error);
       }
       clearClientSessionAndGoHome();
       if (typeof window !== 'undefined') {
