@@ -52,54 +52,88 @@ function mapUser(raw: unknown): User | null {
   };
 }
 
+function httpStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== 'object') return undefined;
+  return (err as { response?: { status?: number } }).response?.status;
+}
+
+function persistUser(mapped: User, setUser: (u: User | null) => void) {
+  setUser(mapped);
+  tokenStore.setCachedUser(mapped);
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-    const refreshUser = useCallback(async (): Promise<boolean> => {
+  const restoreFromLoginCache = useCallback((): boolean => {
+    if (!tokenStore.getAccess()) return false;
+    const mapped = mapUser(tokenStore.getCachedUser());
+    if (!mapped) return false;
+    setUser(mapped);
+    return true;
+  }, []);
+
+  const refreshUser = useCallback(async (): Promise<boolean> => {
     try {
       const meRes = await authAPI.me();
       const mapped = mapUser(meRes.data?.data);
       if (mapped) {
-        setUser(mapped);
+        persistUser(mapped, setUser);
         return true;
       }
-    } catch {
-      // Access token may be expired — try to get a new one using the stored refresh token.
+    } catch (meErr) {
+      // Older prod builds may not have /auth/me — keep the login session.
+      if (httpStatus(meErr) === 404 && restoreFromLoginCache()) {
+        return true;
+      }
+
       try {
         const refreshRes = await authAPI.refreshWithStored();
         const refreshData = refreshRes.data?.data;
         if (refreshData?.token && refreshData?.refresh_token) {
           tokenStore.set(refreshData.token, refreshData.refresh_token);
         }
+        const fromRefresh = mapUser(refreshData?.user);
+        if (fromRefresh) {
+          persistUser(fromRefresh, setUser);
+          return true;
+        }
         const meRes = await authAPI.me();
         const mapped = mapUser(meRes.data?.data);
         if (mapped) {
-          setUser(mapped);
+          persistUser(mapped, setUser);
           return true;
         }
-      } catch {
+      } catch (refreshErr) {
+        // Older builds may also lack /auth/refresh — still allow access with cached login user.
+        if (
+          (httpStatus(refreshErr) === 404 || httpStatus(meErr) === 404) &&
+          restoreFromLoginCache()
+        ) {
+          return true;
+        }
         setUser(null);
         tokenStore.clear();
         return false;
       }
     }
+
+    if (restoreFromLoginCache()) return true;
     setUser(null);
     return false;
-  }, []);
+  }, [restoreFromLoginCache]);
 
   useEffect(() => {
     let cancelled = false;
 
-        const boot = async () => {
-      // Clear legacy localStorage keys (pre-token auth).
+    const boot = async () => {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('token');
         localStorage.removeItem('user');
       }
       if (!cancelled) {
-        // Only attempt to restore session if a refresh token is stored.
-        if (tokenStore.getRefresh()) {
+        if (tokenStore.getAccess() || tokenStore.getRefresh()) {
           await refreshUser();
         }
         setLoading(false);
@@ -120,15 +154,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshUser]);
 
-    const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string) => {
     const response = await authAPI.login({ email, password });
     const authData = response.data?.data;
     if (authData?.token && authData?.refresh_token) {
       tokenStore.set(authData.token, authData.refresh_token);
+    } else if (authData?.token) {
+      // Older APIs may only return an access token.
+      tokenStore.set(authData.token, authData.refresh_token || authData.token);
     }
     const fromBody = mapUser(authData?.user);
     if (fromBody) {
-      setUser(fromBody);
+      persistUser(fromBody, setUser);
       return;
     }
     const ok = await refreshUser();
@@ -142,10 +179,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const authData = response.data?.data;
     if (authData?.token && authData?.refresh_token) {
       tokenStore.set(authData.token, authData.refresh_token);
+    } else if (authData?.token) {
+      tokenStore.set(authData.token, authData.refresh_token || authData.token);
     }
     const fromBody = mapUser(authData?.user);
     if (fromBody) {
-      setUser(fromBody);
+      persistUser(fromBody, setUser);
       return;
     }
     const ok = await refreshUser();
@@ -154,7 +193,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-    const logout = async () => {
+  const logout = async () => {
     try {
       const refreshToken = tokenStore.getRefresh();
       await authAPI.logout(refreshToken ?? undefined);
