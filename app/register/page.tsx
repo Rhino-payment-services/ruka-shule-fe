@@ -89,7 +89,7 @@ export default function RegisterPage() {
         return (
           formData.password.length >= 6 &&
           formData.password === formData.confirmPassword &&
-          /^\d{4,6}$/.test(formData.pin) &&
+          /^\d{4,5}$/.test(formData.pin) &&
           formData.pin === formData.confirmPin
         );
       case 'school':
@@ -260,8 +260,8 @@ export default function RegisterPage() {
         return;
       }
 
-      if (!/^\d{4,6}$/.test(formData.pin)) {
-        const errorMsg = 'Enter a Rukapay PIN with 4–6 digits.';
+      if (!/^\d{4,5}$/.test(formData.pin)) {
+        const errorMsg = 'Enter a Rukapay PIN with 4–5 digits.';
         setError(errorMsg);
         toast.error(errorMsg);
         setLoading(false);
@@ -639,13 +639,13 @@ export default function RegisterPage() {
                         onChange={(e) =>
                           setFormData({
                             ...formData,
-                            pin: e.target.value.replace(/\D/g, '').slice(0, 6),
+                            pin: e.target.value.replace(/\D/g, '').slice(0, 5),
                           })
                         }
-                        placeholder="4–6 digits"
+                        placeholder="4–5 digits"
                         required
                         minLength={4}
-                        maxLength={6}
+                        maxLength={5}
                         className="h-10 border-2 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
                       />
                       <p className="text-xs text-muted-foreground">
@@ -666,13 +666,13 @@ export default function RegisterPage() {
                         onChange={(e) =>
                           setFormData({
                             ...formData,
-                            confirmPin: e.target.value.replace(/\D/g, '').slice(0, 6),
+                            confirmPin: e.target.value.replace(/\D/g, '').slice(0, 5),
                           })
                         }
                         placeholder="Re-enter PIN"
                         required
                         minLength={4}
-                        maxLength={6}
+                        maxLength={5}
                         className={`h-10 border-2 transition-all focus:ring-2 focus:ring-primary/20 ${
                           formData.confirmPin && formData.pin !== formData.confirmPin
                             ? 'border-destructive focus:border-destructive'

@@ -137,7 +137,7 @@ export default function OnboardSchoolPage() {
         return Boolean(formData.name && formData.phone && formData.email);
       case 'owner': {
         const pinOk =
-          /^\d{4,6}$/.test(formData.ownerPin) &&
+          /^\d{4,5}$/.test(formData.ownerPin) &&
           formData.ownerPin === formData.ownerPinConfirm;
         return Boolean(
           formData.ownerFirstName &&
@@ -181,8 +181,8 @@ export default function OnboardSchoolPage() {
     }
 
     if (!quickSignup) {
-      if (!/^\d{4,6}$/.test(formData.ownerPin)) {
-        setError('Enter a Rukapay PIN with 4–6 digits.');
+      if (!/^\d{4,5}$/.test(formData.ownerPin)) {
+        setError('Enter a Rukapay PIN with 4–5 digits.');
         return;
       }
       if (formData.ownerPin !== formData.ownerPinConfirm) {
@@ -606,13 +606,13 @@ export default function OnboardSchoolPage() {
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              ownerPin: e.target.value.replace(/\D/g, '').slice(0, 6),
+                              ownerPin: e.target.value.replace(/\D/g, '').slice(0, 5),
                             })
                           }
-                          placeholder="4–6 digits"
+                          placeholder="4–5 digits"
                           required
                           minLength={4}
-                          maxLength={6}
+                          maxLength={5}
                           className="h-11"
                         />
                       </div>
@@ -629,13 +629,13 @@ export default function OnboardSchoolPage() {
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              ownerPinConfirm: e.target.value.replace(/\D/g, '').slice(0, 6),
+                              ownerPinConfirm: e.target.value.replace(/\D/g, '').slice(0, 5),
                             })
                           }
                           placeholder="Re-enter PIN"
                           required
                           minLength={4}
-                          maxLength={6}
+                          maxLength={5}
                           className="h-11"
                         />
                       </div>
