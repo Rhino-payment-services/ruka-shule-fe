@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RukapayLogo } from '@/components/RukapayLogo';
+import { getApiErrorMessage } from '@/lib/api/errors';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -18,16 +19,29 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, user, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  // Prevent scroll restoration on page reload
+  // Prevent scroll restoration on page reload; prefill email from register redirect
   useEffect(() => {
     if (typeof window !== 'undefined') {
       window.history.scrollRestoration = 'manual';
       window.scrollTo(0, 0);
+      const q = new URLSearchParams(window.location.search).get('email');
+      if (q) {
+        setEmail(q);
+      }
     }
   }, []);
+
+  useEffect(() => {
+    if (authLoading || !user) return;
+    if (user.role === 'school_admin' && !user.school_id) {
+      router.replace('/dashboard/schools/onboard');
+      return;
+    }
+    router.replace('/dashboard');
+  }, [user, authLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,12 +50,11 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      // Wait a moment to ensure token is stored before redirecting
       await new Promise(resolve => setTimeout(resolve, 100));
+      // Destination is handled by the auth redirect effect once `user` is set.
       router.push('/dashboard');
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { error?: string } }; message?: string };
-      setError(axiosError.response?.data?.error || axiosError.message || 'Login failed. Please try again.');
+      setError(getApiErrorMessage(err, 'Login failed. Please try again.'));
     } finally {
       setLoading(false);
     }
