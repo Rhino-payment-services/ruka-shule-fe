@@ -16,6 +16,7 @@ export { studentsAPI } from './students';
 export { paymentsAPI } from './payments';
 export { feesAPI } from './fees';
 export { adminAPI } from './admin';
+export { getApiErrorMessage, mapSchoolCreateFieldErrors } from './errors';
 
 // All shared types — import with `import type { ... } from '@/lib/api'`
 export type {

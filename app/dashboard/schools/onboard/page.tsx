@@ -5,8 +5,10 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { schoolsAPI } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/contexts/AuthContext';
 import { School, ArrowLeft, Loader2, User, Building2, CreditCard, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -221,14 +223,17 @@ export default function OnboardSchoolPage() {
         ? await schoolsAPI.register(payload)
         : await schoolsAPI.create(payload);
 
+      void response;
       setSuccess(true);
+      toast.success('School created successfully');
       // Redirect to the appropriate destination after 2 seconds
       setTimeout(() => {
         router.push(user?.role === 'school_admin' ? '/dashboard' : '/dashboard/schools');
       }, 2000);
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { error?: string } }; message?: string };
-      setError(axiosError.response?.data?.error || axiosError.message || 'Failed to create school');
+      const msg = getApiErrorMessage(err, 'Failed to create school');
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
