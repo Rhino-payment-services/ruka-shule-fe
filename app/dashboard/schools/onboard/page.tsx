@@ -5,8 +5,10 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { schoolsAPI } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/contexts/AuthContext';
 import { School, ArrowLeft, Loader2, User, Building2, CreditCard, ChevronRight } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -135,7 +137,7 @@ export default function OnboardSchoolPage() {
         return Boolean(formData.name && formData.phone && formData.email);
       case 'owner': {
         const pinOk =
-          /^\d{4,6}$/.test(formData.ownerPin) &&
+          /^\d{4,5}$/.test(formData.ownerPin) &&
           formData.ownerPin === formData.ownerPinConfirm;
         return Boolean(
           formData.ownerFirstName &&
@@ -179,8 +181,8 @@ export default function OnboardSchoolPage() {
     }
 
     if (!quickSignup) {
-      if (!/^\d{4,6}$/.test(formData.ownerPin)) {
-        setError('Enter a Rukapay PIN with 4–6 digits.');
+      if (!/^\d{4,5}$/.test(formData.ownerPin)) {
+        setError('Enter a Rukapay PIN with 4–5 digits.');
         return;
       }
       if (formData.ownerPin !== formData.ownerPinConfirm) {
@@ -221,14 +223,17 @@ export default function OnboardSchoolPage() {
         ? await schoolsAPI.register(payload)
         : await schoolsAPI.create(payload);
 
+      void response;
       setSuccess(true);
+      toast.success('School created successfully');
       // Redirect to the appropriate destination after 2 seconds
       setTimeout(() => {
         router.push(user?.role === 'school_admin' ? '/dashboard' : '/dashboard/schools');
       }, 2000);
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { error?: string } }; message?: string };
-      setError(axiosError.response?.data?.error || axiosError.message || 'Failed to create school');
+      const msg = getApiErrorMessage(err, 'Failed to create school');
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -601,13 +606,13 @@ export default function OnboardSchoolPage() {
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              ownerPin: e.target.value.replace(/\D/g, '').slice(0, 6),
+                              ownerPin: e.target.value.replace(/\D/g, '').slice(0, 5),
                             })
                           }
-                          placeholder="4–6 digits"
+                          placeholder="4–5 digits"
                           required
                           minLength={4}
-                          maxLength={6}
+                          maxLength={5}
                           className="h-11"
                         />
                       </div>
@@ -624,13 +629,13 @@ export default function OnboardSchoolPage() {
                           onChange={(e) =>
                             setFormData({
                               ...formData,
-                              ownerPinConfirm: e.target.value.replace(/\D/g, '').slice(0, 6),
+                              ownerPinConfirm: e.target.value.replace(/\D/g, '').slice(0, 5),
                             })
                           }
                           placeholder="Re-enter PIN"
                           required
                           minLength={4}
-                          maxLength={6}
+                          maxLength={5}
                           className="h-11"
                         />
                       </div>
