@@ -27,6 +27,8 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ListPagination } from '@/components/ListPagination';
+import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
 
 interface SchoolData {
   id: string;
@@ -41,13 +43,15 @@ interface SchoolData {
   created_at: string;
 }
 
-const PENDING_STATUSES = ['pending_onboarding', 'kyc_submitted'];
-
 export default function PendingApprovalsPage() {
   const router = useRouter();
   const [schools, setSchools] = useState<SchoolData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebouncedValue(searchTerm);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectSchoolId, setRejectSchoolId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -57,32 +61,28 @@ export default function PendingApprovalsPage() {
 
   useEffect(() => {
     loadSchools();
-  }, []);
+  }, [page, debouncedSearch]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   const loadSchools = async () => {
     try {
-      const response = await schoolsAPI.list(1, 500);
-      const all = response.data.data || [];
-      const pending = all
-      .filter((s) => s.merchant_status && PENDING_STATUSES.includes(s.merchant_status))
-      .sort((a, b) => {
-          const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-          const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-          return tb - ta; // newest first
-        });
-      setSchools(pending);
+      const response = await schoolsAPI.list(page, DEFAULT_PAGE_SIZE, {
+        merchant_status: 'pending',
+        search: debouncedSearch || undefined,
+      });
+      setSchools(response.data.data || []);
+      const meta = normalizePaginationMeta(response.data, page);
+      setTotal(meta.total);
+      setTotalPages(meta.totalPages);
     } catch {
       /* ignore */
     } finally {
       setLoading(false);
     }
   };
-
-  const filteredSchools = schools.filter(
-    (school) =>
-      school.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      school.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   const handleApprove = (schoolId: string) => {
     setApproveSchoolId(schoolId);
@@ -232,7 +232,7 @@ export default function PendingApprovalsPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Clock className="h-5 w-5 text-orange-600" />
-                Schools Awaiting Approval ({filteredSchools.length})
+                Schools Awaiting Approval ({total})
               </CardTitle>
               <CardDescription>
                 These schools have been onboarded but their merchant/wallet setup is
@@ -244,7 +244,7 @@ export default function PendingApprovalsPage() {
                 <div className="flex items-center justify-center py-12">
                   <div className="text-muted-foreground">Loading...</div>
                 </div>
-              ) : filteredSchools.length === 0 ? (
+              ) : schools.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="rounded-full bg-orange-100 p-4 mb-4">
                     <School className="h-8 w-8 text-orange-600" />
@@ -285,7 +285,7 @@ export default function PendingApprovalsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredSchools.map((school) => (
+                    {schools.map((school) => (
                       <TableRow
                         key={school.id}
                         className="hover:bg-orange-50/50 transition-colors"
@@ -345,6 +345,14 @@ export default function PendingApprovalsPage() {
                   </TableBody>
                 </Table>
               )}
+              <ListPagination
+                className="mt-4"
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+              />
             </CardContent>
           </Card>
         </div>

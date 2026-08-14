@@ -27,6 +27,8 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ListPagination } from '@/components/ListPagination';
+import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
 
 interface SchoolData {
   id: string;
@@ -45,6 +47,10 @@ export default function SchoolsPage() {
   const [schools, setSchools] = useState<SchoolData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebouncedValue(searchTerm);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [approveSchoolId, setApproveSchoolId] = useState<string | null>(null);
   const [approveReason, setApproveReason] = useState('');
@@ -52,30 +58,28 @@ export default function SchoolsPage() {
 
   useEffect(() => {
     loadSchools();
-  }, []);
+  }, [page, debouncedSearch]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   const loadSchools = async () => {
     try {
-      const response = await schoolsAPI.list(1, 100);
-      const data = response.data.data || [];
-      data.sort((a, b) => {
-        const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return tb - ta; // newest first
+      const response = await schoolsAPI.list(page, DEFAULT_PAGE_SIZE, {
+        search: debouncedSearch || undefined,
       });
+      const data = response.data.data || [];
       setSchools(data);
+      const meta = normalizePaginationMeta(response.data, page);
+      setTotal(meta.total);
+      setTotalPages(meta.totalPages);
     } catch {
       /* ignore */
     } finally {
       setLoading(false);
     }
   };
-
-  const filteredSchools = schools.filter(
-    (school) =>
-      school.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      school.code.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   const handleApproveRejected = (schoolId: string) => {
     setApproveSchoolId(schoolId);
@@ -192,14 +196,14 @@ export default function SchoolsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredSchools.length === 0 ? (
+                    {schools.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="text-center text-muted-foreground">
                           No schools found
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredSchools.map((school) => (
+                      schools.map((school) => (
                         <TableRow key={school.id} className="hover:bg-primary/5 transition-colors">
                           <TableCell>
                             <div className="flex items-center gap-3">
@@ -262,6 +266,14 @@ export default function SchoolsPage() {
                   </TableBody>
                 </Table>
               )}
+              <ListPagination
+                className="mt-4"
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+              />
             </CardContent>
           </Card>
 

@@ -72,7 +72,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       name: 'Students',
       icon: Users,
       href: '/dashboard/students',
-      roles: ['school_admin'],
+      roles: ['admin', 'school_admin'],
     },
     {
       name: 'Payments',
@@ -84,6 +84,12 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       name: 'Fees',
       icon: Receipt,
       href: '/dashboard/fees',
+      roles: ['school_admin'],
+    },
+    {
+      name: 'One-Off Charges',
+      icon: Receipt,
+      href: '/dashboard/one-off-charges',
       roles: ['school_admin'],
     },
     {

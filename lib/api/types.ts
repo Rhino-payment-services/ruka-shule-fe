@@ -114,6 +114,9 @@ export interface Student {
   school_name?: string;
   school_code?: string;
   school_fees_amount?: number;
+  resolved_school_fees?: number;
+  total_fees_due?: number;
+  fee_source?: string;
   scholarship_type?: string;
   scholarship_percentage?: number;
   parent_first_name?: string;
@@ -143,6 +146,7 @@ export interface StudentPaymentInfo {
 // ---------------------------------------------------------------------------
 
 export type FeeType = 'school_fees' | 'other_fees';
+export type BillingFrequency = 'daily' | 'weekly' | 'monthly' | 'termly' | 'annual' | 'one_off';
 
 export interface Fee {
   id: string;
@@ -150,6 +154,7 @@ export interface Fee {
   amount: number;
   currency: string;
   fee_type: FeeType;
+  billing_frequency?: BillingFrequency | string;
   academic_year: string;
   term?: string | null | undefined;
   class?: string | null | undefined;
@@ -223,13 +228,18 @@ export interface PaymentSummary {
   student_name: string;
   class: string;
   total_fees: number;
+  fee_total?: number;
+  one_off_total?: number;
   total_paid: number;
   outstanding: number;
+  fee_outstanding?: number;
+  one_off_outstanding?: number;
   school_fees_amount?: number;
   payment_status: 'full' | 'partial' | 'outstanding';
   payment_count: number;
   last_payment_at?: string;
   fees?: FeePaymentStatus[];
+  one_off_charges?: OneOffChargeForPayment[];
 }
 
 export interface TermPaymentStatus {
@@ -249,8 +259,12 @@ export interface TermPaymentStatus {
 export interface StudentPaymentSummary {
   school_fees_amount?: number;
   total_fees: number;
+  fee_total?: number;
+  one_off_total?: number;
   total_paid: number;
   total_outstanding: number;
+  fee_outstanding?: number;
+  one_off_outstanding?: number;
   carry_forward_balance?: number;
   payment_status: 'full' | 'partial' | 'outstanding';
   payment_count: number;
@@ -269,10 +283,28 @@ export interface SchoolPaymentInfo {
   accepts_partial_payment?: boolean;
 }
 
+export interface OneOffChargeForPayment {
+  id: string;
+  one_off_charge_id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  status: string;
+  total_paid: number;
+  outstanding: number;
+  is_paid: boolean;
+  paid_at?: string;
+  payment_id?: string;
+  payment_reference?: string;
+  payment_method?: string;
+}
+
 export interface StudentLookupResponse {
   student: StudentPaymentInfo;
   school: SchoolPaymentInfo;
   available_fees: FeeForPayment[];
+  available_one_off_charges?: OneOffChargeForPayment[];
+  one_off_charges?: OneOffChargeForPayment[];
   payment_summary: StudentPaymentSummary;
 }
 
@@ -304,6 +336,8 @@ export interface SettlementsResponse {
   settlements: Settlement[];
   summary: SettlementSummary;
   page: number;
+  page_size: number;
+  total: number;
   total_pages: number;
 }
 

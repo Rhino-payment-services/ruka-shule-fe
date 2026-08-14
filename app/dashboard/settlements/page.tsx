@@ -9,9 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { paymentsAPI, schoolsAPI } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Loader2, RefreshCcw, Landmark } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { ListPagination } from '@/components/ListPagination';
+import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
 
 interface SchoolProfile {
   bank_name?: string;
@@ -32,7 +35,7 @@ interface SettlementRow {
   parent_settlement_id?: string;
   reference: string;
   transaction_id?: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'escrow_funded' | 'completed' | 'failed';
   amount: number;
   currency: string;
   retry_count: number;
@@ -43,7 +46,6 @@ interface SettlementRow {
 
 export default function SettlementsPage() {
   const router = useRouter();
-  const defaultPageSize = 20;
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
@@ -55,23 +57,31 @@ export default function SettlementsPage() {
   const [schoolChecked, setSchoolChecked] = useState(false);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const [runConfirmOpen, setRunConfirmOpen] = useState(false);
+  const [retryConfirmId, setRetryConfirmId] = useState<string | null>(null);
 
-  const hasBankProfile = !!(school?.bank_name && school?.bank_account_name && school?.bank_account_number);
+  const hasBankProfile = !!(
+    school?.bank_name &&
+    school?.bank_code &&
+    school?.bank_account_name &&
+    school?.bank_account_number
+  );
 
   const loadData = async (nextPage = page) => {
     if (schoolSetupRequired) return;
     try {
       setLoading(true);
       const [settlementsRes, schoolRes] = await Promise.all([
-        paymentsAPI.listSettlements(nextPage, defaultPageSize),
+        paymentsAPI.listSettlements(nextPage, DEFAULT_PAGE_SIZE),
         schoolsAPI.getMySchool(),
       ]);
 
       const data = settlementsRes.data?.data;
       setSettlements(data?.settlements || []);
       setSummary(data?.summary || null);
-      setPage(data?.page || nextPage);
-      setTotalPages(data?.total_pages || 1);
+      const meta = normalizePaginationMeta(data || {}, nextPage);
+      setPage(meta.page);
+      setTotalPages(meta.totalPages);
       setSchool(schoolRes.data?.data || null);
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Failed to load settlements');
@@ -101,7 +111,7 @@ export default function SettlementsPage() {
       return;
     }
     loadData();
-  }, [schoolChecked, schoolSetupRequired]);
+  }, [page, schoolChecked, schoolSetupRequired]);
 
   const runSettlement = async () => {
     try {
@@ -119,6 +129,7 @@ export default function SettlementsPage() {
       await paymentsAPI.runSettlement(amount);
       toast.success('Settlement initiated');
       setAmountInput('');
+      setRunConfirmOpen(false);
       await loadData();
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Failed to run settlement');
@@ -132,6 +143,7 @@ export default function SettlementsPage() {
       setRetryingId(id);
       await paymentsAPI.retrySettlement(id);
       toast.success('Settlement retry submitted');
+      setRetryConfirmId(null);
       await loadData();
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Failed to retry settlement');
@@ -140,12 +152,26 @@ export default function SettlementsPage() {
     }
   };
 
+  const openRunConfirm = () => {
+    if (!hasBankProfile) {
+      toast.error('School bank profile is incomplete. Please add bank details first.');
+      return;
+    }
+    const amount = amountInput.trim() ? parseFloat(amountInput) : undefined;
+    if (amountInput.trim() && (!amount || amount <= 0)) {
+      toast.error('Enter a valid settlement amount');
+      return;
+    }
+    setRunConfirmOpen(true);
+  };
+
   const formatCurrency = (value: number, currency = 'UGX') => `${currency} ${value.toLocaleString()}`;
   const formatDate = (value?: string) => (value ? new Date(value).toLocaleString() : '—');
 
   const statusBadge = (status: SettlementRow['status']) => {
     if (status === 'completed') return <Badge className="bg-green-500">Completed</Badge>;
     if (status === 'processing') return <Badge className="bg-blue-500">Processing</Badge>;
+    if (status === 'escrow_funded') return <Badge className="bg-amber-500">Escrow funded</Badge>;
     if (status === 'failed') return <Badge className="bg-red-500">Failed</Badge>;
     return <Badge className="bg-yellow-500">Pending</Badge>;
   };
@@ -187,7 +213,7 @@ export default function SettlementsPage() {
                 Bank Profile
               </CardTitle>
               <CardDescription>
-                Settlements require bank name, account name, and account number. Bank code is optional but recommended.
+                Settlements require bank name, bank code, account name, and account number.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-1 text-sm">
@@ -197,12 +223,7 @@ export default function SettlementsPage() {
               <p><span className="text-muted-foreground">Account Number:</span> {school?.bank_account_number || '—'}</p>
               {!hasBankProfile && (
                 <p className="pt-2 text-amber-700">
-                  Bank profile incomplete. Add these details in school onboarding/profile before running settlements.
-                </p>
-              )}
-              {hasBankProfile && !school?.bank_code && (
-                <p className="pt-2 text-amber-700">
-                  Bank code is missing. Settlement may still work depending on partner, but adding bank code improves reliability.
+                  Bank profile incomplete. Add bank name, bank code, account name, and account number before running settlements.
                 </p>
               )}
             </CardContent>
@@ -229,7 +250,7 @@ export default function SettlementsPage() {
                 value={amountInput}
                 onChange={(e) => setAmountInput(e.target.value)}
               />
-              <Button onClick={runSettlement} disabled={running || loading || !hasBankProfile}>
+              <Button onClick={openRunConfirm} disabled={running || loading || !hasBankProfile}>
                 {running ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Run Settlement'}
               </Button>
               <Button variant="outline" onClick={() => loadData()} disabled={loading}>
@@ -281,12 +302,12 @@ export default function SettlementsPage() {
                         <TableCell>{formatDate(row.created_at)}</TableCell>
                         <TableCell>{formatDate(row.settled_at)}</TableCell>
                         <TableCell>
-                          {row.status === 'failed' ? (
+                          {row.status === 'failed' || row.status === 'escrow_funded' ? (
                             <Button
                               variant="outline"
                               size="sm"
                               disabled={retryingId === row.id}
-                              onClick={() => retrySettlement(row.id)}
+                              onClick={() => setRetryConfirmId(row.id)}
                             >
                               {retryingId === row.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Retry'}
                             </Button>
@@ -299,29 +320,41 @@ export default function SettlementsPage() {
                   )}
                 </TableBody>
               </Table>
-              <div className="mt-4 flex items-center justify-between gap-3 text-sm text-muted-foreground">
-                <p>Page {page} of {totalPages}</p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loading || page <= 1}
-                    onClick={() => loadData(page - 1)}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loading || page >= totalPages}
-                    onClick={() => loadData(page + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+              <ListPagination
+                className="mt-4"
+                page={page}
+                totalPages={totalPages}
+                loading={loading}
+                onPageChange={setPage}
+              />
             </CardContent>
           </Card>
+
+          <ConfirmDialog
+            open={runConfirmOpen}
+            onOpenChange={setRunConfirmOpen}
+            description={
+              amountInput.trim()
+                ? `Are you sure you want to transfer UGX ${Number(amountInput).toLocaleString()} from the school business wallet to the configured bank account?`
+                : 'Are you sure you want to transfer the full available balance from the school business wallet to the configured bank account?'
+            }
+            confirmLabel="Run settlement"
+            loading={running}
+            onConfirm={runSettlement}
+          />
+
+          <ConfirmDialog
+            open={!!retryConfirmId}
+            onOpenChange={(open) => {
+              if (!open) setRetryConfirmId(null);
+            }}
+            description="Are you sure you want to retry this settlement payout?"
+            confirmLabel="Retry"
+            loading={!!retryingId}
+            onConfirm={async () => {
+              if (retryConfirmId) await retrySettlement(retryConfirmId);
+            }}
+          />
         </div>
       </DashboardLayout>
     </ProtectedRoute>

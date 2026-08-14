@@ -13,6 +13,8 @@ import { paymentsAPI, schoolsAPI } from '@/lib/api';
 import { Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
+import { ListPagination } from '@/components/ListPagination';
+import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
 
 type OverviewStatus = 'all' | 'paid' | 'partial' | 'unpaid';
 
@@ -22,9 +24,13 @@ interface OverviewStudentRow {
   student_name: string;
   class: string;
   total_fees: number;
+  fee_total?: number;
+  one_off_total?: number;
   total_paid: number;
   carry_forward_balance: number;
   outstanding: number;
+  fee_outstanding?: number;
+  one_off_outstanding?: number;
   payment_status: 'full' | 'partial' | 'outstanding';
   last_payment_at?: string;
 }
@@ -45,7 +51,6 @@ interface OverviewResponse {
 
 export default function FeesOverviewPage() {
   const router = useRouter();
-  const defaultPageSize = 100;
   const [loading, setLoading] = useState(true);
   const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
   const [schoolChecked, setSchoolChecked] = useState(false);
@@ -66,10 +71,12 @@ export default function FeesOverviewPage() {
         class: className || undefined,
         status,
         page: nextPage,
-        page_size: defaultPageSize,
+        page_size: DEFAULT_PAGE_SIZE,
       });
-      setOverview(res.data.data);
-      setPage(nextPage);
+      const data = res.data.data;
+      const meta = normalizePaginationMeta(data || {}, nextPage);
+      setOverview(data);
+      setPage(meta.page);
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Failed to load fees overview');
     } finally {
@@ -113,6 +120,8 @@ export default function FeesOverviewPage() {
       'Student Name',
       'Class',
       'Total Fees',
+      'Fee Outstanding',
+      'One-off Outstanding',
       'Total Paid',
       'Carry Forward',
       'Outstanding',
@@ -123,6 +132,8 @@ export default function FeesOverviewPage() {
       row.student_name,
       row.class,
       row.total_fees.toFixed(2),
+      (row.fee_outstanding || 0).toFixed(2),
+      (row.one_off_outstanding || 0).toFixed(2),
       row.total_paid.toFixed(2),
       row.carry_forward_balance.toFixed(2),
       row.outstanding.toFixed(2),
@@ -156,6 +167,7 @@ export default function FeesOverviewPage() {
   }, [overview]);
 
   const applyFilters = async () => {
+    setPage(1);
     await loadOverview(1);
   };
 
@@ -252,6 +264,8 @@ export default function FeesOverviewPage() {
                     <TableHead>Student</TableHead>
                     <TableHead>Class</TableHead>
                     <TableHead>Fees</TableHead>
+                    <TableHead>Fee outstanding</TableHead>
+                    <TableHead>One-off outstanding</TableHead>
                     <TableHead>Paid</TableHead>
                     <TableHead>Carry-Forward</TableHead>
                     <TableHead>Outstanding</TableHead>
@@ -269,6 +283,8 @@ export default function FeesOverviewPage() {
                       </TableCell>
                       <TableCell>{row.class}</TableCell>
                       <TableCell>{formatCurrency(row.total_fees)}</TableCell>
+                      <TableCell>{formatCurrency(row.fee_outstanding || 0)}</TableCell>
+                      <TableCell className="text-red-700">{formatCurrency(row.one_off_outstanding || 0)}</TableCell>
                       <TableCell className="text-green-700">{formatCurrency(row.total_paid)}</TableCell>
                       <TableCell>{formatCurrency(row.carry_forward_balance)}</TableCell>
                       <TableCell className="text-red-700">{formatCurrency(row.outstanding)}</TableCell>
@@ -277,29 +293,14 @@ export default function FeesOverviewPage() {
                   ))}
                 </TableBody>
               </Table>
-              <div className="mt-4 flex items-center justify-between gap-3 text-sm text-muted-foreground">
-                <p>
-                  Page {overview?.page || page} of {overview?.total_pages || 1}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loading || (overview?.page || page) <= 1}
-                    onClick={() => loadOverview((overview?.page || page) - 1)}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={loading || !overview || overview.page >= overview.total_pages}
-                    onClick={() => loadOverview((overview?.page || page) + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
+              <ListPagination
+                className="mt-4"
+                page={page}
+                totalPages={normalizePaginationMeta(overview || {}, page).totalPages}
+                total={overview?.total_students}
+                loading={loading}
+                onPageChange={(nextPage) => void loadOverview(nextPage)}
+              />
             </CardContent>
           </Card>
         </div>

@@ -59,11 +59,27 @@ interface FeeForPayment {
   is_locked: boolean;
 }
 
+interface OneOffChargeForPayment {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  status: string;
+  total_paid: number;
+  outstanding: number;
+  is_paid: boolean;
+  paid_at?: string;
+  payment_reference?: string;
+  payment_method?: string;
+}
+
 interface StudentLookupData {
   student: { id: string; registration_id: string; full_name: string; class: string; phone: string; school_fees_amount?: number };
   school: { code: string; name: string };
   available_fees: FeeForPayment[];
-  payment_summary: { total_fees: number; total_paid: number; total_outstanding: number; school_fees_amount?: number; payment_status: string };
+  available_one_off_charges?: OneOffChargeForPayment[];
+  one_off_charges?: OneOffChargeForPayment[];
+  payment_summary: { total_fees: number; total_paid: number; total_outstanding: number; fee_total?: number; one_off_total?: number; fee_outstanding?: number; one_off_outstanding?: number; school_fees_amount?: number; payment_status: string };
 }
 
 // All valid class values
@@ -111,6 +127,7 @@ export default function LookupPage() {
   const [studentLookupData, setStudentLookupData] = useState<StudentLookupData | null>(null);
   const [lookupPaymentLoading, setLookupPaymentLoading] = useState(false);
   const [selectedFee, setSelectedFee] = useState<FeeForPayment | null>(null);
+  const [selectedOneOff, setSelectedOneOff] = useState<OneOffChargeForPayment | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentPhone, setPaymentPhone] = useState('');
   const [processingPayment, setProcessingPayment] = useState(false);
@@ -220,6 +237,7 @@ export default function LookupPage() {
     // Clear previous payment flow so user can pay for newly searched student
     setStudentLookupData(null);
     setSelectedFee(null);
+    setSelectedOneOff(null);
     setPaymentAmount('');
     setPaymentReference(null);
 
@@ -283,6 +301,7 @@ export default function LookupPage() {
       setPaymentPhone(data?.student?.phone || student.phone || '');
       // Let the user pick a fee and type the amount — do not auto-fill.
       setSelectedFee(null);
+      setSelectedOneOff(null);
       setPaymentAmount('');
       toast.success('Ready to pay');
     } catch (err: unknown) {
@@ -295,12 +314,13 @@ export default function LookupPage() {
   };
 
   const handleProcessPayment = async () => {
-    if (!studentLookupData || !selectedFee || !paymentAmount || !paymentPhone) {
+    if (!studentLookupData || (!selectedFee && !selectedOneOff) || !paymentAmount || !paymentPhone) {
       toast.error('Fill all required fields');
       return;
     }
-    if (!selectedFee.id) {
-      toast.error('Select a fee with a valid fee structure, then try again.');
+    const selectedItem = selectedOneOff || selectedFee;
+    if (!selectedItem?.id) {
+      toast.error('Select a payable item, then try again.');
       return;
     }
     const amount = Number(paymentAmount);
@@ -308,8 +328,10 @@ export default function LookupPage() {
       toast.error('Enter a valid amount');
       return;
     }
-    if (amount > selectedFee.outstanding) {
-      toast.error(`Amount cannot exceed UGX ${selectedFee.outstanding.toLocaleString()}`);
+    if (amount > selectedItem.outstanding || (selectedOneOff && Math.abs(amount - selectedOneOff.outstanding) > 0.01)) {
+      toast.error(selectedOneOff
+        ? `One-off charges must be paid in full: UGX ${selectedOneOff.outstanding.toLocaleString()}`
+        : `Amount cannot exceed UGX ${selectedFee!.outstanding.toLocaleString()}`);
       return;
     }
     const phone = paymentPhone.replace(/\D/g, '');
@@ -322,17 +344,22 @@ export default function LookupPage() {
     try {
       setProcessingPayment(true);
       setPaymentReference(null);
-      const res = await paymentsAPI.processPayment({
+      const paymentPayload: Record<string, unknown> = {
         registration_id: studentLookupData.student.registration_id,
         school_code: studentLookupData.school.code,
-        fee_id: selectedFee.id,
-        class: studentLookupData.student.class,
         amount,
         currency: 'UGX',
         payment_method: 'MOBILE_MONEY',
         phone_number: formattedPhone,
-        description: `School fees: ${selectedFee.name}`,
-      });
+        description: selectedOneOff ? `One-off charge: ${selectedOneOff.name}` : `School fees: ${selectedFee!.name}`,
+      };
+      if (selectedOneOff) {
+        paymentPayload.student_one_off_charge_id = selectedOneOff.id;
+      } else {
+        paymentPayload.fee_id = selectedFee!.id;
+        paymentPayload.class = studentLookupData.student.class;
+      }
+      const res = await paymentsAPI.processPayment(paymentPayload);
       const payment = res.data.data;
       setPaymentReference(payment.reference);
       toast.success('Payment initiated. Check your phone to complete.');
@@ -354,6 +381,7 @@ export default function LookupPage() {
             setProcessingPayment(false);
             setStudentLookupData(null);
             setSelectedFee(null);
+            setSelectedOneOff(null);
             setPaymentReference(null);
           } else if (status === 'failed' || status === 'cancelled') {
             clearInterval(pollInterval);
@@ -374,10 +402,10 @@ export default function LookupPage() {
 
   const enteredAmount = Number(paymentAmount);
   const amountExceeded =
-    !!selectedFee &&
+    !!(selectedFee || selectedOneOff) &&
     paymentAmount !== '' &&
     Number.isFinite(enteredAmount) &&
-    enteredAmount > selectedFee.outstanding;
+    enteredAmount > (selectedOneOff || selectedFee)!.outstanding;
 
   const resetPaymentFlow = () => {
     setStudentLookupData(null);
@@ -687,6 +715,14 @@ export default function LookupPage() {
                         UGX {studentLookupData.payment_summary.total_outstanding.toLocaleString()}
                       </span>
                     </div>
+                    {studentLookupData.payment_summary.one_off_outstanding !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">One-off outstanding</span>
+                        <span className="font-semibold text-red-600">
+                          UGX {studentLookupData.payment_summary.one_off_outstanding.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {Array.isArray(studentLookupData.available_fees) && studentLookupData.available_fees.length > 0 && (
@@ -726,6 +762,7 @@ export default function LookupPage() {
                             type="button"
                             onClick={() => {
                               setSelectedFee(fee);
+                              setSelectedOneOff(null);
                               // Locked fees require full outstanding; otherwise user types the amount.
                               setPaymentAmount(fee.is_locked ? fee.outstanding.toString() : '');
                             }}
@@ -767,7 +804,55 @@ export default function LookupPage() {
                     )}
                   </div>
 
-                  {selectedFee && (
+                  {Array.isArray(studentLookupData.available_one_off_charges) && studentLookupData.available_one_off_charges.filter((charge) => charge.status === 'unpaid' && charge.outstanding > 0).length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">One-off charges (full amount required)</label>
+                      <div className="grid gap-2">
+                        {studentLookupData.available_one_off_charges
+                          .filter((charge) => charge.status === 'unpaid' && charge.outstanding > 0)
+                          .map((charge) => (
+                            <button
+                              key={charge.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedOneOff(charge);
+                                setSelectedFee(null);
+                                setPaymentAmount(charge.outstanding.toString());
+                              }}
+                              className={`flex items-center justify-between rounded-lg border-2 p-3 text-left transition-colors ${
+                                selectedOneOff?.id === charge.id
+                                  ? 'border-emerald-500 bg-emerald-50'
+                                  : 'border-gray-200 hover:border-emerald-300 bg-white'
+                              }`}
+                            >
+                              <div>
+                                <p className="font-medium">{charge.name}</p>
+                                <p className="text-xs text-muted-foreground">Outstanding: UGX {charge.outstanding.toLocaleString()}</p>
+                              </div>
+                              {selectedOneOff?.id === charge.id && <CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {Array.isArray(studentLookupData.one_off_charges) && studentLookupData.one_off_charges.some((charge) => ['paid', 'waived', 'pending'].includes(charge.status)) && (
+                    <div className="rounded-lg border bg-white p-4">
+                      <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">One-off charge history</h4>
+                      <div className="space-y-2">
+                        {studentLookupData.one_off_charges
+                          .filter((charge) => ['paid', 'waived', 'pending'].includes(charge.status))
+                          .map((charge) => (
+                            <div key={`history-${charge.id}`} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
+                              <div><p className="font-medium">{charge.name}</p><p className="text-muted-foreground">{charge.payment_reference || charge.paid_at || 'No payment reference'}</p></div>
+                              <Badge variant={charge.status === 'paid' ? 'default' : 'secondary'}>{charge.status}</Badge>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(selectedFee || selectedOneOff) && (
                     <div className="space-y-3 border-t pt-4">
                       <div className="grid gap-2 sm:grid-cols-2">
                         <div className="space-y-2">
@@ -775,17 +860,19 @@ export default function LookupPage() {
                           <Input
                             type="number"
                             min="1"
-                            max={selectedFee.outstanding}
+                            max={(selectedOneOff || selectedFee)!.outstanding}
                             value={paymentAmount}
                             onChange={(e) => setPaymentAmount(e.target.value)}
-                            readOnly={!!selectedFee.is_locked}
-                            disabled={!!selectedFee.is_locked}
-                            placeholder={selectedFee.outstanding.toString()}
+                            readOnly={!!selectedOneOff || !!selectedFee?.is_locked}
+                            disabled={!!selectedOneOff || !!selectedFee?.is_locked}
+                            placeholder={(selectedOneOff || selectedFee)!.outstanding.toString()}
                           />
                           <p className="text-xs text-muted-foreground">
-                            {selectedFee.is_locked
+                            {selectedOneOff
+                              ? `One-off charge: full amount of UGX ${selectedOneOff.outstanding.toLocaleString()} is required`
+                              : selectedFee?.is_locked
                               ? `Locked fee: full outstanding amount required, UGX ${selectedFee.outstanding.toLocaleString()}`
-                              : `Enter the amount to send. Max outstanding: UGX ${selectedFee.outstanding.toLocaleString()}`}
+                              : `Enter the amount to send. Max outstanding: UGX ${(selectedFee?.outstanding ?? 0).toLocaleString()}`}
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -811,7 +898,7 @@ export default function LookupPage() {
                           ) : (
                             <>
                               <Wallet className="h-4 w-4 mr-2" />
-                              Pay UGX {(Number(paymentAmount) || selectedFee.outstanding).toLocaleString()}
+                              Pay UGX {(Number(paymentAmount) || (selectedOneOff || selectedFee)!.outstanding).toLocaleString()}
                             </>
                           )}
                         </Button>

@@ -2,8 +2,19 @@ import { api } from './client';
 import type { ApiSuccessResponse, ApiPaginatedResponse, School, PublicSchool } from './types';
 
 export const schoolsAPI = {
-  list: (page = 1, pageSize = 10) =>
-    api.get<ApiPaginatedResponse<School>>(`/schools?page=${page}&page_size=${pageSize}`),
+  list: (
+    page = 1,
+    pageSize = 10,
+    opts?: { search?: string; merchant_status?: string },
+  ) =>
+    api.get<ApiPaginatedResponse<School>>('/schools', {
+      params: {
+        page,
+        page_size: pageSize,
+        ...(opts?.search?.trim() ? { search: opts.search.trim() } : {}),
+        ...(opts?.merchant_status ? { merchant_status: opts.merchant_status } : {}),
+      },
+    }),
 
   get: (id: string) => api.get<ApiSuccessResponse<School>>(`/schools/${id}`),
 

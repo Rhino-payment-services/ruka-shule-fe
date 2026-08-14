@@ -9,11 +9,14 @@ import { CreditCard, Search, CheckCircle, XCircle, Clock, Loader2, Wallet } from
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { paymentsAPI, studentsAPI, schoolsAPI, API_BASE_URL } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/contexts/AuthContext';
 import { normalizeUgandaPhoneForStorage } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { ListPagination } from '@/components/ListPagination';
+import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
 import {
   Select,
   SelectContent,
@@ -32,6 +35,19 @@ interface FeeForPayment {
   outstanding: number;
   is_paid: boolean;
   is_locked: boolean;
+}
+
+interface OneOffChargeForPayment {
+  id: string;
+  name: string;
+  amount: number;
+  currency: string;
+  status: string;
+  total_paid: number;
+  outstanding: number;
+  is_paid: boolean;
+  paid_at?: string;
+  payment_reference?: string;
 }
 
 interface SchoolProfile {
@@ -54,11 +70,15 @@ interface StudentLookupData {
     name: string;
   };
   available_fees: FeeForPayment[];
+  available_one_off_charges?: OneOffChargeForPayment[];
+  one_off_charges?: OneOffChargeForPayment[];
   payment_summary: {
     school_fees_amount?: number;
     total_fees: number;
     total_paid: number;
     total_outstanding: number;
+    fee_outstanding?: number;
+    one_off_outstanding?: number;
     carry_forward_balance?: number;
     payment_status: string;
   };
@@ -112,8 +132,8 @@ export default function PaymentsPage() {
   const [searchResults, setSearchResults] = useState<StudentPaymentSummary | null>(null);
   const [searching, setSearching] = useState(false);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(20);
   const [totalPayments, setTotalPayments] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Collect Payment state
   const [schoolCode, setSchoolCode] = useState<string>('');
@@ -122,6 +142,7 @@ export default function PaymentsPage() {
   const [studentLookupData, setStudentLookupData] = useState<StudentLookupData | null>(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [selectedFee, setSelectedFee] = useState<FeeForPayment | null>(null);
+  const [selectedOneOff, setSelectedOneOff] = useState<OneOffChargeForPayment | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentPhone, setPaymentPhone] = useState('');
   const [paymentPhoneTouched, setPaymentPhoneTouched] = useState(false);
@@ -172,14 +193,15 @@ export default function PaymentsPage() {
     if (schoolSetupRequired) return;
     try {
       setLoading(true);
-      const response = await paymentsAPI.list(page, pageSize);
+      const response = await paymentsAPI.list(page, DEFAULT_PAGE_SIZE);
       // Backend returns PaginatedResponse: { data, page, page_size, total, total_pages }
       const paymentsData = response.data.data || [];
       const total = response.data.total;
       setPayments(paymentsData);
       setTotalPayments(total !== undefined ? total : paymentsData.length);
-    } catch {
-      /* ignore */
+      setTotalPages(normalizePaginationMeta(response.data).totalPages);
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Failed to load payments'));
     } finally {
       setLoading(false);
     }
@@ -255,6 +277,7 @@ export default function PaymentsPage() {
       setPaymentPhoneTouched(false);
       // Let the user pick a fee and type the amount — do not auto-fill.
       setSelectedFee(null);
+      setSelectedOneOff(null);
       setPaymentAmount('');
       if (!options?.silent) {
         toast.success('Student found');
@@ -271,12 +294,13 @@ export default function PaymentsPage() {
   };
 
   const handleProcessPayment = async () => {
-    if (!studentLookupData || !selectedFee || !paymentAmount || !paymentPhone) {
+    if (!studentLookupData || (!selectedFee && !selectedOneOff) || !paymentAmount || !paymentPhone) {
       toast.error('Fill all required fields');
       return;
     }
-    if (!selectedFee.id) {
-      toast.error('Select a fee with a valid fee structure, then try again.');
+    const selectedItem = selectedOneOff || selectedFee;
+    if (!selectedItem?.id) {
+      toast.error('Select a payable item, then try again.');
       return;
     }
     const amount = Number(paymentAmount);
@@ -284,8 +308,10 @@ export default function PaymentsPage() {
       toast.error('Enter a valid amount');
       return;
     }
-    if (amount > selectedFee.outstanding) {
-      toast.error(`Amount cannot exceed UGX ${selectedFee.outstanding.toLocaleString()}`);
+    if (amount > selectedItem.outstanding || (selectedOneOff && Math.abs(amount - selectedOneOff.outstanding) > 0.01)) {
+      toast.error(selectedOneOff
+        ? `One-off charges must be paid in full: UGX ${selectedOneOff.outstanding.toLocaleString()}`
+        : `Amount cannot exceed UGX ${selectedFee!.outstanding.toLocaleString()}`);
       return;
     }
     const phone = paymentPhone.replace(/\D/g, '');
@@ -298,17 +324,22 @@ export default function PaymentsPage() {
     try {
       setProcessingPayment(true);
       setPaymentReference(null);
-      const res = await paymentsAPI.processPayment({
+      const paymentPayload: Record<string, unknown> = {
         registration_id: studentLookupData.student.registration_id,
         school_code: studentLookupData.school.code,
-        fee_id: selectedFee.id,
-        class: studentLookupData.student.class,
         amount,
         currency: 'UGX',
         payment_method: 'MOBILE_MONEY',
         phone_number: formattedPhone,
-        description: `School fees: ${selectedFee.name}`,
-      });
+        description: selectedOneOff ? `One-off charge: ${selectedOneOff.name}` : `School fees: ${selectedFee!.name}`,
+      };
+      if (selectedOneOff) {
+        paymentPayload.student_one_off_charge_id = selectedOneOff.id;
+      } else {
+        paymentPayload.fee_id = selectedFee!.id;
+        paymentPayload.class = studentLookupData.student.class;
+      }
+      const res = await paymentsAPI.processPayment(paymentPayload);
       const payment = res.data.data;
       setPaymentReference(payment.reference);
       toast.success('Payment initiated. Check your phone to complete.');
@@ -352,14 +383,15 @@ export default function PaymentsPage() {
 
   const enteredAmount = Number(paymentAmount);
   const amountExceeded =
-    !!selectedFee &&
+    !!(selectedFee || selectedOneOff) &&
     paymentAmount !== '' &&
     Number.isFinite(enteredAmount) &&
-    enteredAmount > selectedFee.outstanding;
+    enteredAmount > (selectedOneOff || selectedFee)!.outstanding;
 
   const resetPaymentFlow = () => {
     setStudentLookupData(null);
     setSelectedFee(null);
+    setSelectedOneOff(null);
     setPaymentAmount('');
     setPaymentReference(null);
   };
@@ -531,6 +563,14 @@ export default function PaymentsPage() {
                         UGX {studentLookupData.payment_summary.total_outstanding.toLocaleString()}
                       </span>
                     </div>
+                    {studentLookupData.payment_summary.one_off_outstanding !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">One-off outstanding</span>
+                        <span className="font-semibold text-red-600">
+                          UGX {studentLookupData.payment_summary.one_off_outstanding.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -544,6 +584,7 @@ export default function PaymentsPage() {
                             type="button"
                             onClick={() => {
                               setSelectedFee(fee);
+                              setSelectedOneOff(null);
                               // Locked fees require full outstanding; otherwise user types the amount.
                               setPaymentAmount(fee.is_locked ? fee.outstanding.toString() : '');
                             }}
@@ -580,7 +621,48 @@ export default function PaymentsPage() {
                     )}
                   </div>
 
-                  {selectedFee && (
+                  {Array.isArray(studentLookupData.available_one_off_charges) && studentLookupData.available_one_off_charges.filter((charge) => charge.status === 'unpaid' && charge.outstanding > 0).length > 0 && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">One-off charges (full amount required)</label>
+                      <div className="grid gap-2">
+                        {studentLookupData.available_one_off_charges
+                          .filter((charge) => charge.status === 'unpaid' && charge.outstanding > 0)
+                          .map((charge) => (
+                            <button
+                              key={charge.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedOneOff(charge);
+                                setSelectedFee(null);
+                                setPaymentAmount(charge.outstanding.toString());
+                              }}
+                              className={`flex items-center justify-between rounded-lg border-2 p-3 text-left transition-colors ${
+                                selectedOneOff?.id === charge.id ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-emerald-300'
+                              }`}
+                            >
+                              <div><p className="font-medium">{charge.name}</p><p className="text-xs text-muted-foreground">Outstanding: UGX {charge.outstanding.toLocaleString()}</p></div>
+                              {selectedOneOff?.id === charge.id && <CheckCircle className="h-5 w-5 text-emerald-600" />}
+                            </button>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {Array.isArray(studentLookupData.one_off_charges) && studentLookupData.one_off_charges.some((charge) => ['paid', 'waived', 'pending'].includes(charge.status)) && (
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <h4 className="mb-2 text-sm font-semibold">One-off charge history</h4>
+                      <div className="space-y-2">
+                        {studentLookupData.one_off_charges.filter((charge) => ['paid', 'waived', 'pending'].includes(charge.status)).map((charge) => (
+                          <div key={`history-${charge.id}`} className="flex items-center justify-between text-sm">
+                            <span>{charge.name}{charge.payment_reference ? ` · ${charge.payment_reference}` : ''}</span>
+                            <Badge variant={charge.status === 'paid' ? 'default' : 'secondary'}>{charge.status}</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {(selectedFee || selectedOneOff) && (
                     <div className="space-y-3 border-t pt-4">
                       <div className="grid gap-2 sm:grid-cols-2">
                         <div className="space-y-2">
@@ -588,17 +670,19 @@ export default function PaymentsPage() {
                           <Input
                             type="number"
                             min="1"
-                            max={selectedFee.outstanding}
+                            max={(selectedOneOff || selectedFee)!.outstanding}
                             value={paymentAmount}
                             onChange={(e) => setPaymentAmount(e.target.value)}
-                            readOnly={!!selectedFee.is_locked}
-                            disabled={!!selectedFee.is_locked}
-                            placeholder={selectedFee.outstanding.toString()}
+                            readOnly={!!selectedOneOff || !!selectedFee?.is_locked}
+                            disabled={!!selectedOneOff || !!selectedFee?.is_locked}
+                            placeholder={(selectedOneOff || selectedFee)!.outstanding.toString()}
                           />
                           <p className="text-xs text-muted-foreground">
-                            {selectedFee.is_locked
+                            {selectedOneOff
+                              ? `One-off charge: full amount of UGX ${selectedOneOff.outstanding.toLocaleString()} is required`
+                              : selectedFee?.is_locked
                               ? `Locked fee: full outstanding amount required, UGX ${selectedFee.outstanding.toLocaleString()}`
-                              : `Enter the amount to send. Max outstanding: UGX ${selectedFee.outstanding.toLocaleString()}`}
+                              : `Enter the amount to send. Max outstanding: UGX ${(selectedFee?.outstanding ?? 0).toLocaleString()}`}
                           </p>
                         </div>
                         <div className="space-y-2">
@@ -628,7 +712,7 @@ export default function PaymentsPage() {
                           ) : (
                             <>
                               <Wallet className="h-4 w-4 mr-2" />
-                              Pay UGX {(Number(paymentAmount) || selectedFee.outstanding).toLocaleString()}
+                              Pay UGX {(Number(paymentAmount) || (selectedOneOff || selectedFee)!.outstanding).toLocaleString()}
                             </>
                           )}
                         </Button>
@@ -869,30 +953,14 @@ export default function PaymentsPage() {
                     </Table>
                   </div>
 
-                  {/* Pagination */}
-                  <div className="flex items-center justify-between mt-4">
-                    <p className="text-sm text-muted-foreground">
-                      Showing {payments.length} of {totalPayments} payments
-                    </p>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        disabled={page === 1 || loading}
-                      >
-                        Previous
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setPage((p) => p + 1)}
-                        disabled={payments.length < pageSize || loading}
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </div>
+                  <ListPagination
+                    className="mt-4"
+                    page={page}
+                    totalPages={totalPages}
+                    total={totalPayments}
+                    loading={loading}
+                    onPageChange={setPage}
+                  />
                 </>
               )}
             </CardContent>

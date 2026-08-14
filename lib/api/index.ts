@@ -15,6 +15,7 @@ export { schoolsAPI } from './schools';
 export { studentsAPI } from './students';
 export { paymentsAPI } from './payments';
 export { feesAPI } from './fees';
+export { oneOffChargesAPI } from './one-off-charges';
 export { adminAPI } from './admin';
 export { getApiErrorMessage, mapSchoolCreateFieldErrors } from './errors';
 
@@ -49,6 +50,7 @@ export type {
   TermPaymentStatus,
   StudentPaymentSummary,
   StudentLookupResponse,
+  OneOffChargeForPayment,
   SchoolPaymentInfo,
   // Settlements
   Settlement,
