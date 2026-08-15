@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ApiSuccessResponse, ApiPaginatedResponse, AdminStats, AdminUser, School, Payment } from './types';
+import type { ApiSuccessResponse, ApiPaginatedResponse, AdminStats, AdminUser, School, Payment, Student } from './types';
 
 export const adminAPI = {
   getStats: () => api.get<ApiSuccessResponse<AdminStats>>('/admin/stats'),
@@ -13,6 +13,24 @@ export const adminAPI = {
     api.get<ApiPaginatedResponse<Payment>>('/admin/payments', {
       params: { page, page_size: pageSize },
     }),
+
+  listDeletedStudents: (
+    schoolId: string,
+    page = 1,
+    pageSize = 10,
+    search?: string,
+  ) =>
+    api.get<ApiPaginatedResponse<Student>>('/admin/students/deleted', {
+      params: {
+        school_id: schoolId,
+        page,
+        page_size: pageSize,
+        ...(search?.trim() ? { search: search.trim() } : {}),
+      },
+    }),
+
+  restoreStudent: (id: string) =>
+    api.post<ApiSuccessResponse<Student>>(`/admin/students/${encodeURIComponent(id)}/restore`),
 
   updateMerchantStatus: (
     schoolId: string,

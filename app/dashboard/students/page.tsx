@@ -4,7 +4,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { schoolsAPI, studentsAPI } from '@/lib/api';
+import { oneOffChargesAPI, schoolsAPI, studentsAPI, adminAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -18,23 +18,32 @@ import {
   Search, 
   Eye,
   Loader2,
-  ChevronLeft,
-  ChevronRight,
   DollarSign,
   CheckCircle2,
   XCircle,
   Clock,
+  GraduationCap,
+  Pencil,
+  Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import { paymentsAPI } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api/errors';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { ListPagination } from '@/components/ListPagination';
+import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
 import {
   Select,
   SelectContent,
@@ -50,91 +59,156 @@ interface Student {
   last_name: string;
   phone: string;
   school_fees_amount?: number;
+  resolved_school_fees?: number;
+  total_fees_due?: number;
+  fee_source?: string;
   class: string;
-  stream?: string;  // Arts, Sciences, General, etc.
-  scholarship_type?: string;  // Full, Partial, Merit, etc.
-  scholarship_percentage?: number;  // Discount percentage
+  stream?: string;
+  scholarship_type?: string;
+  scholarship_percentage?: number;
   status: string;
   parent_first_name?: string;
   parent_last_name?: string;
   parent_phone?: string;
   created_at: string;
+  deleted_at?: string;
 }
+
+interface SchoolOption {
+  id: string;
+  name: string;
+  code: string;
+}
+
+const STREAMS = ['General', 'Arts', 'Sciences', 'Business', 'Technical'];
+const SCHOLARSHIP_TYPES = ['Full', 'Partial', 'Merit', 'Need-based', 'Sports'];
 
 export default function StudentsPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isPlatformAdmin = user?.role === 'admin';
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
   const [schoolChecked, setSchoolChecked] = useState(false);
+  const [schools, setSchools] = useState<SchoolOption[]>([]);
+  const [selectedSchoolId, setSelectedSchoolId] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const debouncedSearch = useDebouncedValue(searchTerm);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalStudents, setTotalStudents] = useState(0);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [showViewModal, setShowViewModal] = useState(false);
   const [paymentSummary, setPaymentSummary] = useState<any>(null);
   const [paymentHistory, setPaymentHistory] = useState<any[]>([]);
+  const [oneOffCharges, setOneOffCharges] = useState<any[]>([]);
+  const [markPaidAssignment, setMarkPaidAssignment] = useState<any>(null);
+  const [markPaidNote, setMarkPaidNote] = useState('');
+  const [markPaidReference, setMarkPaidReference] = useState('');
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [paymentPage, setPaymentPage] = useState(1);
+  const [paymentPagination, setPaymentPagination] = useState(
+    normalizePaginationMeta({}),
+  );
   const [termPaymentStatus, setTermPaymentStatus] = useState<any>(null);
   const [loadingTermStatus, setLoadingTermStatus] = useState(false);
   const [selectedAcademicYear, setSelectedAcademicYear] = useState<string>('');
   const [selectedTerm, setSelectedTerm] = useState<string>('');
+  const [classChangeStudent, setClassChangeStudent] = useState<Student | null>(null);
+  const [newClass, setNewClass] = useState('');
+  const [classChangeConfirmOpen, setClassChangeConfirmOpen] = useState(false);
+  const [changingClass, setChangingClass] = useState(false);
+  const [editStudent, setEditStudent] = useState<Student | null>(null);
+  const [editForm, setEditForm] = useState({
+    first_name: '',
+    last_name: '',
+    phone: '',
+    class: '',
+    stream: '',
+    school_fees_amount: '',
+    scholarship_type: '',
+    scholarship_percentage: '',
+    status: 'active',
+    parent_first_name: '',
+    parent_last_name: '',
+    parent_phone: '',
+  });
+  const [editConfirmOpen, setEditConfirmOpen] = useState(false);
+  const [deleteStudent, setDeleteStudent] = useState<Student | null>(null);
+  const [restoreStudent, setRestoreStudent] = useState<Student | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     const checkSchool = async () => {
       try {
-        await schoolsAPI.getMySchool();
+        if (isPlatformAdmin) {
+          const res = await schoolsAPI.list(1, 200);
+          setSchools(res.data.data || []);
+          setSchoolSetupRequired(false);
+        } else {
+          await schoolsAPI.getMySchool();
+        }
       } catch (error: any) {
-        if (error?.response?.status === 404) {
+        if (!isPlatformAdmin && error?.response?.status === 404) {
           setSchoolSetupRequired(true);
         }
       } finally {
         setSchoolChecked(true);
       }
     };
-    checkSchool();
-  }, []);
+    if (user) {
+      checkSchool();
+    }
+  }, [user, isPlatformAdmin]);
 
   useEffect(() => {
     if (!schoolChecked || schoolSetupRequired) {
       setLoading(false);
       return;
     }
+    if (isPlatformAdmin && !selectedSchoolId) {
+      setStudents([]);
+      setLoading(false);
+      return;
+    }
     fetchStudents();
-  }, [currentPage, schoolChecked, schoolSetupRequired]);
+  }, [currentPage, schoolChecked, schoolSetupRequired, selectedSchoolId, isPlatformAdmin, debouncedSearch, showDeleted]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, showDeleted]);
 
   const fetchStudents = async () => {
     if (schoolSetupRequired) return;
+    if (isPlatformAdmin && !selectedSchoolId) return;
     try {
       setLoading(true);
-      const response = await studentsAPI.list(currentPage, pageSize);
-      
-      // Handle both paginated and non-paginated responses
-      let studentsData: Student[] = [];
-      let totalCount = 0;
-      let totalPagesCount = 1;
-      
-      // Check if response has pagination metadata
-      if (response.data.total !== undefined) {
-        // Paginated response
-        studentsData = response.data.data || [];
-        totalCount = response.data.total || 0;
-        totalPagesCount = response.data.total_pages || 1;
-      } else if (Array.isArray(response.data.data)) {
-        // Non-paginated response (fallback)
-        studentsData = response.data.data || [];
-        totalCount = studentsData.length;
-        totalPagesCount = Math.ceil(studentsData.length / pageSize) || 1;
-      } else if (Array.isArray(response.data)) {
-        // Direct array response (another fallback)
-        studentsData = response.data || [];
-        totalCount = studentsData.length;
-        totalPagesCount = Math.ceil(studentsData.length / pageSize) || 1;
-      }
-      
+      const response =
+        isPlatformAdmin && showDeleted
+          ? await adminAPI.listDeletedStudents(
+              selectedSchoolId,
+              currentPage,
+              DEFAULT_PAGE_SIZE,
+              debouncedSearch || undefined,
+            )
+          : await studentsAPI.list(
+              currentPage,
+              DEFAULT_PAGE_SIZE,
+              isPlatformAdmin ? selectedSchoolId : undefined,
+              debouncedSearch || undefined,
+            );
+      const body = response.data;
+      const studentsData: Student[] = Array.isArray(body?.data)
+        ? body.data
+        : Array.isArray(body)
+          ? body
+          : [];
+      const meta = normalizePaginationMeta(body ?? {}, currentPage);
       setStudents(studentsData);
-      setTotalPages(totalPagesCount);
+      setTotalStudents(meta.total);
+      setTotalPages(meta.totalPages);
     } catch (error: any) {
       toast.error('Failed to fetch students', {
         description: error.response?.data?.error || error.message || 'Unknown error',
@@ -150,8 +224,9 @@ export default function StudentsPage() {
         'First Name': 'John',
         'Last Name': 'Doe',
         'Phone': '+256700123456',
-        'Class': 'P1',
-        'Stream': '',
+        'Class': 'Nursery',
+        'Stream': 'General',
+        'School Fees Amount': '350000',
         'Scholarship Type': '',
         'Scholarship Percentage': '',
         'Parent First Name': 'Jane',
@@ -162,8 +237,9 @@ export default function StudentsPage() {
         'First Name': 'Mary',
         'Last Name': 'Smith',
         'Phone': '+256700123458',
-        'Class': 'S5',
-        'Stream': 'Sciences',
+        'Class': 'KG1',
+        'Stream': 'General',
+        'School Fees Amount': '250000',
         'Scholarship Type': 'Merit',
         'Scholarship Percentage': '50',
         'Parent First Name': 'Robert',
@@ -176,6 +252,7 @@ export default function StudentsPage() {
         'Phone': '+256700123460',
         'Class': 'S6',
         'Stream': 'Arts',
+        'School Fees Amount': '500000',
         'Scholarship Type': '',
         'Scholarship Percentage': '',
         'Parent First Name': 'Grace',
@@ -187,41 +264,39 @@ export default function StudentsPage() {
     const workbook = XLSX.utils.book_new();
     const worksheet = XLSX.utils.json_to_sheet(exampleData);
     const columnWidths = [
-      { wch: 12 }, // First Name
-      { wch: 12 }, // Last Name
-      { wch: 15 }, // Phone
-      { wch: 10 }, // Class
-      { wch: 12 }, // Stream
-      { wch: 16 }, // Scholarship Type
-      { wch: 20 }, // Scholarship Percentage
-      { wch: 18 }, // Parent First Name
-      { wch: 18 }, // Parent Last Name
-      { wch: 15 }, // Parent Phone
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 15 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 20 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 15 },
     ];
     worksheet['!cols'] = columnWidths;
+
+    const instructions = XLSX.utils.aoa_to_sheet([
+      ['Column', 'Required', 'Notes'],
+      ['First Name', 'Yes', 'Student first name'],
+      ['Last Name', 'Yes', 'Student last name'],
+      ['Phone', 'Yes*', 'Student phone, or leave blank if Parent Phone is provided'],
+      ['Class', 'Yes', 'Free text (e.g. P1, KG1, Nursery)'],
+      ['Stream', 'No', 'General, Arts, Sciences, Business, Technical'],
+      ['School Fees Amount', 'No', 'Per-student override. Leave blank to use class fee'],
+      ['Scholarship Type', 'No', 'Full, Partial, Merit, Need-based, Sports'],
+      ['Scholarship Percentage', 'No', 'e.g. 50 for 50%'],
+      ['Parent First Name', 'No', ''],
+      ['Parent Last Name', 'No', ''],
+      ['Parent Phone', 'Yes*', 'Required if student Phone is blank'],
+    ]);
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Students');
+    XLSX.utils.book_append_sheet(workbook, instructions, 'Instructions');
     XLSX.writeFile(workbook, 'student_import_example.xlsx');
     toast.success('Example Excel file downloaded');
   };
-
-  // Filter students - if searching, show all matching results; otherwise show paginated results
-  const filteredStudents = searchTerm.trim()
-    ? students.filter((student) => {
-        const searchLower = searchTerm.toLowerCase().trim();
-        const fullName = `${student.first_name} ${student.last_name}`.toLowerCase();
-        const fullNameReversed = `${student.last_name} ${student.first_name}`.toLowerCase();
-        
-        return (
-          student.registration_id.toLowerCase().includes(searchLower) ||
-          student.first_name.toLowerCase().includes(searchLower) ||
-          student.last_name.toLowerCase().includes(searchLower) ||
-          fullName.includes(searchLower) ||
-          fullNameReversed.includes(searchLower) ||
-          student.phone.includes(searchTerm) ||
-          student.class.toLowerCase().includes(searchLower)
-        );
-      })
-    : students; // When not searching, show paginated results as-is
 
   const handleViewStudent = async (student: Student) => {
     setSelectedStudent(student);
@@ -229,25 +304,66 @@ export default function StudentsPage() {
     setLoadingPayments(true);
     setPaymentSummary(null);
     setPaymentHistory([]);
+    setOneOffCharges([]);
+    setPaymentPage(1);
+    setPaymentPagination(normalizePaginationMeta({}));
     setTermPaymentStatus(null);
     setSelectedAcademicYear('');
     setSelectedTerm('');
 
     try {
-      // Fetch payment summary and history in parallel
-      const [summaryRes, historyRes] = await Promise.all([
+      const [summaryResult, oneOffResult] = await Promise.allSettled([
         paymentsAPI.getSummary(student.id),
-        paymentsAPI.listByStudent(student.id),
+        oneOffChargesAPI.listForStudent(student.id),
       ]);
-
-      setPaymentSummary(summaryRes.data.data);
-      setPaymentHistory(historyRes.data.data || []);
-    } catch {
-      /* ignore */
+      if (summaryResult.status === 'fulfilled') {
+        setPaymentSummary(summaryResult.value.data.data);
+      } else {
+        toast.error(getApiErrorMessage(summaryResult.reason, 'Failed to load payment summary'));
+      }
+      if (oneOffResult.status === 'fulfilled') {
+        setOneOffCharges(oneOffResult.value.data.data || []);
+      } else {
+        setOneOffCharges([]);
+        toast.error(getApiErrorMessage(oneOffResult.reason, 'Failed to load one-off charges'));
+      }
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Failed to load student payment details'));
     } finally {
       setLoadingPayments(false);
     }
   };
+
+  useEffect(() => {
+    if (!showViewModal || !selectedStudent) return;
+    const studentId = selectedStudent.id;
+    const page = paymentPage;
+    let cancelled = false;
+    const loadPaymentHistory = async () => {
+      try {
+        setLoadingPayments(true);
+        const response = await paymentsAPI.listByStudent(
+          studentId,
+          page,
+          DEFAULT_PAGE_SIZE,
+        );
+        if (cancelled) return;
+        const body = response.data;
+        setPaymentHistory(Array.isArray(body?.data) ? body.data : []);
+        setPaymentPagination(normalizePaginationMeta(body ?? {}, page));
+      } catch (err: unknown) {
+        if (!cancelled) {
+          toast.error(getApiErrorMessage(err, 'Failed to load payment history'));
+        }
+      } finally {
+        if (!cancelled) setLoadingPayments(false);
+      }
+    };
+    void loadPaymentHistory();
+    return () => {
+      cancelled = true;
+    };
+  }, [paymentPage, selectedStudent, showViewModal]);
 
   const handleCheckTermPayment = async () => {
     if (!selectedStudent || !selectedAcademicYear || !selectedTerm) {
@@ -273,14 +389,187 @@ export default function StudentsPage() {
     }
   };
 
+  const handleMarkOneOffPaid = async () => {
+    if (!markPaidAssignment || !selectedStudent) return;
+    try {
+      setActionLoading(true);
+      await oneOffChargesAPI.markPaid(markPaidAssignment.id, {
+        note: markPaidNote.trim() || undefined,
+        external_ref: markPaidReference.trim() || undefined,
+      });
+      const [summaryRes, oneOffRes] = await Promise.all([
+        paymentsAPI.getSummary(selectedStudent.id),
+        oneOffChargesAPI.listForStudent(selectedStudent.id),
+      ]);
+      setPaymentSummary(summaryRes.data.data);
+      setOneOffCharges(oneOffRes.data.data || []);
+      setMarkPaidAssignment(null);
+      setMarkPaidNote('');
+      setMarkPaidReference('');
+      toast.success('One-off charge marked as paid');
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Failed to mark one-off charge as paid'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Generate academic years (current year and previous 2 years)
   const currentYear = new Date().getFullYear();
   const academicYears = Array.from({ length: 3 }, (_, i) => String(currentYear - i));
   
   const terms = ['Term 1', 'Term 2', 'Term 3'];
 
+  const openEditStudent = async (student: Student) => {
+    try {
+      const res = await studentsAPI.get(student.id);
+      const data = res.data.data;
+      setEditStudent(data);
+      setEditForm({
+        first_name: data.first_name || '',
+        last_name: data.last_name || '',
+        phone: data.phone || '',
+        class: data.class || '',
+        stream: data.stream || '',
+        school_fees_amount:
+          data.school_fees_amount !== undefined && data.school_fees_amount !== null
+            ? String(data.school_fees_amount)
+            : '',
+        scholarship_type: data.scholarship_type || '',
+        scholarship_percentage:
+          data.scholarship_percentage !== undefined && data.scholarship_percentage !== null
+            ? String(data.scholarship_percentage)
+            : '',
+        status: data.status || 'active',
+        parent_first_name: data.parent_first_name || '',
+        parent_last_name: data.parent_last_name || '',
+        parent_phone: data.parent_phone || '',
+      });
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Failed to load student'));
+    }
+  };
+
+  const buildUpdatePayload = () => {
+    if (!editStudent) return {};
+    const payload: Record<string, unknown> = {};
+    if (editForm.first_name !== editStudent.first_name) payload.first_name = editForm.first_name;
+    if (editForm.last_name !== editStudent.last_name) payload.last_name = editForm.last_name;
+    if ((editForm.phone || '') !== (editStudent.phone || '')) payload.phone = editForm.phone || '';
+    if (editForm.class !== editStudent.class) payload.class = editForm.class;
+    if ((editForm.stream || '') !== (editStudent.stream || '')) {
+      payload.stream = editForm.stream || '';
+    }
+    const originalFees =
+      editStudent.school_fees_amount !== undefined && editStudent.school_fees_amount !== null
+        ? String(editStudent.school_fees_amount)
+        : '';
+    if (editForm.school_fees_amount !== originalFees) {
+      if (editForm.school_fees_amount.trim() === '') {
+        payload.clear_school_fees_amount = true;
+      } else {
+        payload.school_fees_amount = parseFloat(editForm.school_fees_amount);
+      }
+    }
+    if ((editForm.scholarship_type || '') !== (editStudent.scholarship_type || '')) {
+      payload.scholarship_type = editForm.scholarship_type || '';
+    }
+    const originalPct =
+      editStudent.scholarship_percentage !== undefined && editStudent.scholarship_percentage !== null
+        ? String(editStudent.scholarship_percentage)
+        : '';
+    if (editForm.scholarship_percentage !== originalPct) {
+      payload.scholarship_percentage = editForm.scholarship_percentage
+        ? parseFloat(editForm.scholarship_percentage)
+        : 0;
+    }
+    if (editForm.status !== editStudent.status) payload.status = editForm.status;
+    if ((editForm.parent_first_name || '') !== (editStudent.parent_first_name || '')) {
+      payload.parent_first_name = editForm.parent_first_name || null;
+    }
+    if ((editForm.parent_last_name || '') !== (editStudent.parent_last_name || '')) {
+      payload.parent_last_name = editForm.parent_last_name || null;
+    }
+    if ((editForm.parent_phone || '') !== (editStudent.parent_phone || '')) {
+      payload.parent_phone = editForm.parent_phone || null;
+    }
+    return payload;
+  };
+
+  const hasSensitiveEditChanges = () => {
+    if (!editStudent) return false;
+    const originalFees =
+      editStudent.school_fees_amount !== undefined && editStudent.school_fees_amount !== null
+        ? String(editStudent.school_fees_amount)
+        : '';
+    const originalPct =
+      editStudent.scholarship_percentage !== undefined && editStudent.scholarship_percentage !== null
+        ? String(editStudent.scholarship_percentage)
+        : '';
+    return (
+      editForm.class !== editStudent.class ||
+      (editForm.stream || '') !== (editStudent.stream || '') ||
+      editForm.school_fees_amount !== originalFees ||
+      (editForm.scholarship_type || '') !== (editStudent.scholarship_type || '') ||
+      editForm.scholarship_percentage !== originalPct ||
+      editForm.status !== editStudent.status
+    );
+  };
+
+  const submitEdit = async () => {
+    if (!editStudent) return;
+    const payload = buildUpdatePayload();
+    if (Object.keys(payload).length === 0) {
+      toast.error('No changes to save');
+      setEditConfirmOpen(false);
+      return;
+    }
+    try {
+      setActionLoading(true);
+      await studentsAPI.update(editStudent.id, payload);
+      toast.success('Student updated');
+      setEditConfirmOpen(false);
+      setEditStudent(null);
+      fetchStudents();
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Failed to update student'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteStudent = async () => {
+    if (!deleteStudent) return;
+    try {
+      setActionLoading(true);
+      await studentsAPI.delete(deleteStudent.id);
+      toast.success('Student deleted');
+      setDeleteStudent(null);
+      await fetchStudents();
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Failed to delete student'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRestoreStudent = async () => {
+    if (!restoreStudent) return;
+    try {
+      setActionLoading(true);
+      await adminAPI.restoreStudent(restoreStudent.id);
+      toast.success('Student restored');
+      setRestoreStudent(null);
+      await fetchStudents();
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Failed to restore student'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return (
-    <ProtectedRoute allowedRoles={['school_admin']}>
+    <ProtectedRoute allowedRoles={['admin', 'school_admin']}>
       <DashboardLayout>
         <div className="space-y-6">
           {schoolSetupRequired && (
@@ -305,37 +594,96 @@ export default function StudentsPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold">Students</h1>
-              <p className="mt-2 text-muted-foreground">Manage your school's students</p>
+              <p className="mt-2 text-muted-foreground">
+                {isPlatformAdmin
+                  ? 'View students across schools (select a school to continue)'
+                  : "Manage your school's students"}
+              </p>
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={downloadExampleExcel}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Download Example Excel
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => router.push('/dashboard/students/import')}
-              >
-                <FileSpreadsheet className="mr-2 h-4 w-4" />
-                Import from Excel
-              </Button>
-              <Button onClick={() => router.push('/dashboard/students/add')}>
-                <Plus className="mr-2 h-4 w-4" />
-                Add Student
-              </Button>
+              {!isPlatformAdmin && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={downloadExampleExcel}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    Download Example Excel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push('/dashboard/students/import')}
+                  >
+                    <FileSpreadsheet className="mr-2 h-4 w-4" />
+                    Import from Excel
+                  </Button>
+                  <Button onClick={() => router.push('/dashboard/students/add')}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Student
+                  </Button>
+                </>
+              )}
             </div>
           </div>
+
+          {isPlatformAdmin && (
+            <Card>
+              <CardHeader>
+                <CardTitle>School</CardTitle>
+                <CardDescription>Select a school to view its students.</CardDescription>
+              </CardHeader>
+              <CardContent className="max-w-md space-y-4">
+                <Select
+                  value={selectedSchoolId || undefined}
+                  onValueChange={(value) => {
+                    setSelectedSchoolId(value);
+                    setShowDeleted(false);
+                    setCurrentPage(1);
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select school" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {schools.map((school) => (
+                      <SelectItem key={school.id} value={school.id}>
+                        {school.name} ({school.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={!showDeleted ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setShowDeleted(false)}
+                    disabled={!selectedSchoolId}
+                  >
+                    Active
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={showDeleted ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setShowDeleted(true)}
+                    disabled={!selectedSchoolId}
+                  >
+                    Deleted
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Student Management</CardTitle>
+                  <CardTitle>{showDeleted && isPlatformAdmin ? 'Deleted Students' : 'Student Management'}</CardTitle>
                   <CardDescription>
-                    {students.length} {students.length === 1 ? 'student' : 'students'} total
+                    {totalStudents} {totalStudents === 1 ? 'student' : 'students'} total
+                    {showDeleted && isPlatformAdmin ? ' (soft-deleted)' : ''}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
@@ -356,13 +704,17 @@ export default function StudentsPage() {
                 <div className="flex items-center justify-center py-12">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                 </div>
-              ) : filteredStudents.length === 0 ? (
+              ) : students.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Users className="mb-4 h-12 w-12 text-muted-foreground" />
                   <p className="text-muted-foreground mb-4">
-                    {searchTerm ? 'No students found matching your search' : 'No students found'}
+                    {isPlatformAdmin && !selectedSchoolId
+                      ? 'Select a school to view students'
+                      : searchTerm
+                        ? 'No students found matching your search'
+                        : 'No students found'}
                   </p>
-                  {!searchTerm && (
+                  {!searchTerm && !isPlatformAdmin && (
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
@@ -397,7 +749,7 @@ export default function StudentsPage() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {filteredStudents.map((student) => (
+                        {students.map((student) => (
                           <TableRow key={student.id}>
                             <TableCell className="font-medium">
                               {student.registration_id}
@@ -407,9 +759,23 @@ export default function StudentsPage() {
                             </TableCell>
                             <TableCell>{student.phone}</TableCell>
                             <TableCell>
-                              {student.school_fees_amount !== undefined && student.school_fees_amount !== null ? (
+                              {student.resolved_school_fees !== undefined && student.resolved_school_fees !== null ? (
+                                <span className="font-medium">
+                                  UGX {student.resolved_school_fees.toLocaleString()}
+                                  {student.fee_source === 'student_override' ? (
+                                    <span className="ml-1 text-xs text-muted-foreground">(override)</span>
+                                  ) : student.fee_source === 'class_fee' ? (
+                                    <span className="ml-1 text-xs text-muted-foreground">
+                                      {student.scholarship_percentage
+                                        ? `(class − ${student.scholarship_percentage}% scholarship)`
+                                        : '(class)'}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              ) : student.school_fees_amount !== undefined && student.school_fees_amount !== null ? (
                                 <span className="font-medium">
                                   UGX {student.school_fees_amount.toLocaleString()}
+                                  <span className="ml-1 text-xs text-muted-foreground">(override)</span>
                                 </span>
                               ) : (
                                 <span className="text-muted-foreground">-</span>
@@ -428,54 +794,73 @@ export default function StudentsPage() {
                               </Badge>
                             </TableCell>
                             <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleViewStudent(student)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
+                              <div className="flex justify-end gap-1">
+                                {isPlatformAdmin && showDeleted ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Restore student"
+                                    onClick={() => setRestoreStudent(student)}
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                  </Button>
+                                ) : null}
+                                {!isPlatformAdmin && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      title="Change class"
+                                      onClick={() => {
+                                        setClassChangeStudent(student);
+                                        setNewClass(student.class);
+                                      }}
+                                    >
+                                      <GraduationCap className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      title="Edit student"
+                                      onClick={() => openEditStudent(student)}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      title="Delete student"
+                                      className="text-destructive hover:text-destructive"
+                                      onClick={() => setDeleteStudent(student)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
+                                {!showDeleted && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleViewStudent(student)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </div>
                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>
                     </Table>
                   </div>
-                  {!searchTerm && (
-                    <div className="flex items-center justify-between mt-4">
-                      <div className="text-sm text-muted-foreground">
-                        Showing {students.length} student{students.length !== 1 ? 's' : ''}
-                        {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
-                      </div>
-                      {totalPages > 1 && (
-                        <div className="flex gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                            disabled={currentPage === 1 || loading}
-                          >
-                            <ChevronLeft className="h-4 w-4" />
-                            Previous
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={currentPage === totalPages || loading}
-                          >
-                            Next
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {searchTerm && filteredStudents.length > 0 && (
-                    <div className="mt-4 text-sm text-muted-foreground">
-                      Found {filteredStudents.length} matching student{filteredStudents.length !== 1 ? 's' : ''}
-                    </div>
-                  )}
+                  <ListPagination
+                    className="mt-4"
+                    page={currentPage}
+                    totalPages={totalPages}
+                    total={totalStudents}
+                    loading={loading}
+                    onPageChange={setCurrentPage}
+                  />
                 </>
               )}
             </CardContent>
@@ -532,9 +917,22 @@ export default function StudentsPage() {
                     <div>
                       <label className="text-sm font-medium text-muted-foreground">School Fees</label>
                       <p className="text-sm font-medium">
-                        {selectedStudent.school_fees_amount !== undefined && selectedStudent.school_fees_amount !== null
+                        {selectedStudent.resolved_school_fees !== undefined && selectedStudent.resolved_school_fees !== null
+                          ? `UGX ${selectedStudent.resolved_school_fees.toLocaleString()}`
+                          : selectedStudent.school_fees_amount !== undefined && selectedStudent.school_fees_amount !== null
                           ? `UGX ${selectedStudent.school_fees_amount.toLocaleString()}`
                           : '-'}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedStudent.fee_source === 'student_override'
+                          ? 'Source: student override'
+                          : selectedStudent.fee_source === 'class_fee'
+                            ? selectedStudent.scholarship_percentage
+                              ? `Source: class fee with ${selectedStudent.scholarship_percentage}% scholarship`
+                              : 'Source: class fee'
+                            : selectedStudent.school_fees_amount != null
+                              ? 'Source: student override'
+                              : 'Source: none'}
                       </p>
                     </div>
                     <div>
@@ -675,6 +1073,17 @@ export default function StudentsPage() {
                             {paymentSummary.outstanding?.toLocaleString() || '0'}
                           </p>
                         </div>
+                        {paymentSummary.one_off_outstanding !== undefined && (
+                          <div className="bg-rose-50 rounded-lg p-4">
+                            <label className="text-xs font-medium text-muted-foreground">
+                              One-off Outstanding
+                            </label>
+                            <p className="text-lg font-semibold text-rose-700 mt-1">
+                              {paymentSummary.currency || 'UGX'}{' '}
+                              {paymentSummary.one_off_outstanding.toLocaleString()}
+                            </p>
+                          </div>
+                        )}
                         <div className="bg-blue-50 rounded-lg p-4">
                           <label className="text-xs font-medium text-muted-foreground">
                             Payment Status
@@ -737,6 +1146,49 @@ export default function StudentsPage() {
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">No payment data available</p>
+                  )}
+                </div>
+
+                <div className="border-t pt-4">
+                  <h3 className="text-lg font-semibold mb-4">One-off charges</h3>
+                  {oneOffCharges.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No one-off charges assigned.</p>
+                  ) : (
+                    <div className="rounded-lg border overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Charge</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead>Payment details</TableHead>
+                            <TableHead className="text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {oneOffCharges.map((charge) => (
+                            <TableRow key={charge.id}>
+                              <TableCell className="font-medium">{charge.charge_name}</TableCell>
+                              <TableCell>{charge.currency || 'UGX'} {Number(charge.amount || 0).toLocaleString()}</TableCell>
+                              <TableCell><Badge variant={charge.status === 'paid' ? 'default' : charge.status === 'waived' ? 'secondary' : 'outline'}>{charge.status}</Badge></TableCell>
+                              <TableCell className="text-xs text-muted-foreground">
+                                {charge.paid_at ? new Date(charge.paid_at).toLocaleString() : '-'}
+                                {charge.payment_reference ? ` · ${charge.payment_reference}` : ''}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {!isPlatformAdmin && charge.status === 'unpaid' ? (
+                                  <Button size="sm" variant="outline" onClick={() => {
+                                    setMarkPaidAssignment(charge);
+                                    setMarkPaidNote('');
+                                    setMarkPaidReference('');
+                                  }}>Mark as paid</Button>
+                                ) : '-'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </div>
 
@@ -901,57 +1353,66 @@ export default function StudentsPage() {
                       <Loader2 className="h-6 w-6 animate-spin text-primary" />
                     </div>
                   ) : paymentHistory.length > 0 ? (
-                    <div className="border rounded-lg overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Date</TableHead>
-                            <TableHead>Reference</TableHead>
-                            <TableHead>Amount</TableHead>
-                            <TableHead>Fee</TableHead>
-                            <TableHead>Method</TableHead>
-                            <TableHead>Status</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {paymentHistory.map((payment) => (
-                            <TableRow key={payment.id}>
-                              <TableCell>
-                                {payment.paid_at
-                                  ? new Date(payment.paid_at).toLocaleDateString()
-                                  : new Date(payment.created_at).toLocaleDateString()}
-                              </TableCell>
-                              <TableCell className="font-mono text-xs">
-                                {payment.reference}
-                              </TableCell>
-                              <TableCell>
-                                {payment.currency} {payment.amount?.toLocaleString()}
-                              </TableCell>
-                              <TableCell>
-                                {payment.fee_name || (
-                                  <span className="text-muted-foreground">General</span>
-                                )}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline">{payment.payment_method}</Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Badge
-                                  variant={
-                                    payment.status === 'completed'
-                                      ? 'default'
-                                      : payment.status === 'pending'
-                                        ? 'secondary'
-                                        : 'destructive'
-                                  }
-                                >
-                                  {payment.status}
-                                </Badge>
-                              </TableCell>
+                    <div className="space-y-3">
+                      <div className="border rounded-lg overflow-hidden">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Reference</TableHead>
+                              <TableHead>Amount</TableHead>
+                              <TableHead>Fee</TableHead>
+                              <TableHead>Method</TableHead>
+                              <TableHead>Status</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                          </TableHeader>
+                          <TableBody>
+                            {paymentHistory.map((payment) => (
+                              <TableRow key={payment.id}>
+                                <TableCell>
+                                  {payment.paid_at
+                                    ? new Date(payment.paid_at).toLocaleDateString()
+                                    : new Date(payment.created_at).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell className="font-mono text-xs">
+                                  {payment.reference}
+                                </TableCell>
+                                <TableCell>
+                                  {payment.currency} {payment.amount?.toLocaleString()}
+                                </TableCell>
+                                <TableCell>
+                                  {payment.fee_name || (
+                                    <span className="text-muted-foreground">General</span>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Badge variant="outline">{payment.payment_method}</Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={
+                                      payment.status === 'completed'
+                                        ? 'default'
+                                        : payment.status === 'pending'
+                                          ? 'secondary'
+                                          : 'destructive'
+                                    }
+                                  >
+                                    {payment.status}
+                                  </Badge>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                      <ListPagination
+                        page={paymentPage}
+                        totalPages={paymentPagination.totalPages}
+                        total={paymentPagination.total}
+                        loading={loadingPayments}
+                        onPageChange={setPaymentPage}
+                      />
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">
@@ -973,6 +1434,336 @@ export default function StudentsPage() {
             )}
           </DialogContent>
         </Dialog>
+
+        <Dialog
+          open={!!markPaidAssignment}
+          onOpenChange={(open) => {
+            if (!open) setMarkPaidAssignment(null);
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Mark one-off charge as paid</DialogTitle>
+              <DialogDescription>
+                Confirm the offline payment for {markPaidAssignment?.charge_name}. This marks the full assigned amount as paid.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label htmlFor="one-off-payment-reference">External reference (optional)</Label>
+                <Input id="one-off-payment-reference" value={markPaidReference} onChange={(e) => setMarkPaidReference(e.target.value)} placeholder="Receipt or transaction reference" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="one-off-payment-note">Note (optional)</Label>
+                <Input id="one-off-payment-note" value={markPaidNote} onChange={(e) => setMarkPaidNote(e.target.value)} placeholder="Payment note" />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setMarkPaidAssignment(null)}>Cancel</Button>
+              <Button disabled={actionLoading} onClick={handleMarkOneOffPaid}>Mark as paid</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog
+          open={!!classChangeStudent}
+          onOpenChange={(open) => {
+            if (!open) {
+              setClassChangeStudent(null);
+              setNewClass('');
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Change student class</DialogTitle>
+              <DialogDescription>
+                {classChangeStudent
+                  ? `Update class for ${classChangeStudent.first_name} ${classChangeStudent.last_name}. Fee resolution will follow the new class.`
+                  : 'Update student class'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="new-class">New class</Label>
+              <Input
+                id="new-class"
+                value={newClass}
+                onChange={(e) => setNewClass(e.target.value)}
+                placeholder="e.g. P2, KG1, S1"
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setClassChangeStudent(null);
+                  setNewClass('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (!newClass.trim()) {
+                    toast.error('Enter a class name');
+                    return;
+                  }
+                  if (classChangeStudent && newClass.trim() === classChangeStudent.class) {
+                    toast.error('Choose a different class');
+                    return;
+                  }
+                  setClassChangeConfirmOpen(true);
+                }}
+                className="bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+              >
+                Continue
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <ConfirmDialog
+          open={classChangeConfirmOpen}
+          onOpenChange={setClassChangeConfirmOpen}
+          description={
+            classChangeStudent
+              ? `Are you sure you want to move ${classChangeStudent.first_name} ${classChangeStudent.last_name} from ${classChangeStudent.class} to ${newClass.trim()}?`
+              : 'Are you sure you want to change this student\'s class?'
+          }
+          confirmLabel="Change class"
+          loading={changingClass}
+          onConfirm={async () => {
+            if (!classChangeStudent) return;
+            try {
+              setChangingClass(true);
+              await studentsAPI.changeClass(classChangeStudent.id, newClass.trim());
+              toast.success('Student class updated');
+              setClassChangeConfirmOpen(false);
+              setClassChangeStudent(null);
+              setNewClass('');
+              fetchStudents();
+            } catch (error: unknown) {
+              toast.error(getApiErrorMessage(error, 'Failed to change class'));
+            } finally {
+              setChangingClass(false);
+            }
+          }}
+        />
+
+        <Dialog
+          open={!!editStudent}
+          onOpenChange={(open) => {
+            if (!open) setEditStudent(null);
+          }}
+        >
+          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Edit student</DialogTitle>
+              <DialogDescription>
+                Registration ID cannot be changed. Changing class, fees, scholarship, or status requires confirmation.
+              </DialogDescription>
+            </DialogHeader>
+            {editStudent && (
+              <div className="grid gap-4 py-2 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Registration ID</Label>
+                  <Input value={editStudent.registration_id} disabled />
+                </div>
+                <div className="space-y-2">
+                  <Label>First name</Label>
+                  <Input
+                    value={editForm.first_name}
+                    onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Last name</Label>
+                  <Input
+                    value={editForm.last_name}
+                    onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Phone</Label>
+                  <Input
+                    value={editForm.phone}
+                    onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Class</Label>
+                  <Input
+                    value={editForm.class}
+                    onChange={(e) => setEditForm({ ...editForm, class: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Stream</Label>
+                  <Select
+                    value={editForm.stream || 'none'}
+                    onValueChange={(value) =>
+                      setEditForm({ ...editForm, stream: value === 'none' ? '' : value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Stream" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {STREAMS.map((stream) => (
+                        <SelectItem key={stream} value={stream}>
+                          {stream}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Status</Label>
+                  <Select
+                    value={editForm.status}
+                    onValueChange={(value) => setEditForm({ ...editForm, status: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">active</SelectItem>
+                      <SelectItem value="inactive">inactive</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>School fees override</Label>
+                  <Input
+                    type="number"
+                    value={editForm.school_fees_amount}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, school_fees_amount: e.target.value })
+                    }
+                    placeholder="Leave blank to use class fee"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Scholarship type</Label>
+                  <Select
+                    value={editForm.scholarship_type || 'none'}
+                    onValueChange={(value) =>
+                      setEditForm({
+                        ...editForm,
+                        scholarship_type: value === 'none' ? '' : value,
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {SCHOLARSHIP_TYPES.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Scholarship %</Label>
+                  <Input
+                    type="number"
+                    value={editForm.scholarship_percentage}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, scholarship_percentage: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Parent first name</Label>
+                  <Input
+                    value={editForm.parent_first_name}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, parent_first_name: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Parent last name</Label>
+                  <Input
+                    value={editForm.parent_last_name}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, parent_last_name: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label>Parent phone</Label>
+                  <Input
+                    value={editForm.parent_phone}
+                    onChange={(e) => setEditForm({ ...editForm, parent_phone: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditStudent(null)}>
+                Cancel
+              </Button>
+              <Button
+                className="bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+                onClick={() => {
+                  if (hasSensitiveEditChanges()) {
+                    setEditConfirmOpen(true);
+                    return;
+                  }
+                  void submitEdit();
+                }}
+              >
+                Save changes
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <ConfirmDialog
+          open={editConfirmOpen}
+          onOpenChange={setEditConfirmOpen}
+          description="Are you sure you want to change class, stream, fees, scholarship, and/or status? This can change what the student owes."
+          confirmLabel="Save changes"
+          loading={actionLoading}
+          onConfirm={submitEdit}
+        />
+
+        <ConfirmDialog
+          open={!!deleteStudent}
+          onOpenChange={(open) => {
+            if (!open) setDeleteStudent(null);
+          }}
+          description={
+            deleteStudent
+              ? `Are you sure you want to delete ${deleteStudent.first_name} ${deleteStudent.last_name}?`
+              : 'Are you sure you want to delete this student?'
+          }
+          confirmLabel="Delete"
+          variant="destructive"
+          loading={actionLoading}
+          onConfirm={handleDeleteStudent}
+        />
+
+        <ConfirmDialog
+          open={!!restoreStudent}
+          onOpenChange={(open) => {
+            if (!open) setRestoreStudent(null);
+          }}
+          description={
+            restoreStudent
+              ? `Restore ${restoreStudent.first_name} ${restoreStudent.last_name} (${restoreStudent.registration_id})?`
+              : 'Restore this student?'
+          }
+          confirmLabel="Restore"
+          loading={actionLoading}
+          onConfirm={handleRestoreStudent}
+        />
       </DashboardLayout>
     </ProtectedRoute>
   );

@@ -6,10 +6,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { School, Users, CreditCard, TrendingUp, Wallet, Building2, CheckCircle, Clock, XCircle, ArrowRight, UserPlus, Receipt } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { schoolsAPI, studentsAPI, paymentsAPI, feesAPI, adminAPI, API_BASE_URL } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api/errors';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
 
 interface SchoolData {
   id: string;
@@ -85,7 +87,10 @@ export default function DashboardPage() {
     try {
       const [schoolsRes, statsRes] = await Promise.all([
         schoolsAPI.list(1, 500),
-        adminAPI.getStats().catch(() => ({ data: { data: null } })),
+        adminAPI.getStats().catch((err) => {
+          toast.error(getApiErrorMessage(err, 'Failed to load platform stats'));
+          return { data: { data: null } };
+        }),
       ]);
       const schools = schoolsRes.data.data || [];
       const platformStats = statsRes.data?.data;
@@ -114,8 +119,8 @@ export default function DashboardPage() {
           : []
       );
       setPendingApprovalsCount(pendingApprovals);
-    } catch {
-      /* ignore */
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Failed to load dashboard data'));
     } finally {
       setLoading(false);
     }
@@ -134,9 +139,7 @@ export default function DashboardPage() {
           setLoading(false);
           return;
         }
-
-        // Don't fail the whole dashboard if school fetch fails for another reason.
-        // The user can still see other stats.
+        toast.error(getApiErrorMessage(err, 'Failed to load school profile'));
       }
       
       if (school) {
@@ -179,8 +182,8 @@ export default function DashboardPage() {
           }
           return sum;
         }, 0);
-      } catch {
-        /* ignore */
+      } catch (err: unknown) {
+        toast.error(getApiErrorMessage(err, 'Failed to calculate revenue'));
       }
 
       // Count active fees
@@ -198,8 +201,8 @@ export default function DashboardPage() {
       // Set recent payments for the dashboard card (payments are ordered newest first)
       const recent = paymentsRes.data.data || [];
       setRecentPayments(recent);
-    } catch {
-      /* ignore */
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Failed to load dashboard data'));
     } finally {
       setLoading(false);
     }

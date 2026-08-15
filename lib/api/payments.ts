@@ -43,8 +43,10 @@ export const paymentsAPI = {
       params: { academic_year: academicYear, term },
     }),
 
-  listByStudent: (studentId: string) =>
-    api.get<ApiSuccessResponse<Payment[]>>(`/payments/student/${studentId}`),
+  listByStudent: (studentId: string, page = 1, pageSize = 10) =>
+    api.get<ApiPaginatedResponse<Payment>>(`/payments/student/${studentId}`, {
+      params: { page, page_size: pageSize },
+    }),
 
   // Returns a custom envelope: { settlements, summary, page, total_pages }
   listSettlements: (page = 1, pageSize = 10) =>
@@ -52,12 +54,15 @@ export const paymentsAPI = {
       params: { page, page_size: pageSize },
     }),
 
+  fundSettlementEscrow: (amount?: number) =>
+    api.post<ApiSuccessResponse<Settlement>>(
+      '/payments/settlements/fund-escrow',
+      amount != null ? { amount } : {},
+    ),
+
   runSettlement: (amount?: number) =>
     api.post<ApiSuccessResponse<Settlement>>(
       '/payments/settlements/run',
       amount != null ? { amount } : {},
     ),
-
-  retrySettlement: (settlementId: string) =>
-    api.post<ApiSuccessResponse<Settlement>>(`/payments/settlements/${settlementId}/retry`),
 };
