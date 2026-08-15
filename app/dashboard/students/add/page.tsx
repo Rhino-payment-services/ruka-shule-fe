@@ -5,6 +5,8 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { studentsAPI } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api/errors';
+import { isValidClassLabel } from '@/lib/students/import';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,56 +20,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-
-const VALID_CLASSES = [
-  'Kindergarten',
-  'P1',
-  'P2',
-  'P3',
-  'P4',
-  'P5',
-  'P6',
-  'P7',
-  'S1',
-  'S2',
-  'S3',
-  'S4',
-  'S5',
-  'S6',
-  'Cambridge Year 1',
-  'Cambridge Year 2',
-  'Cambridge Year 3',
-  'Cambridge Year 4',
-  'Cambridge Year 5',
-  'Cambridge Year 6',
-  'Cambridge Year 7',
-  'Cambridge Year 8',
-  'Cambridge Year 9',
-  'Cambridge Year 10',
-  'Cambridge Year 11',
-  'Cambridge Year 12',
-  'Cambridge Year 13',
-  'IGCSE',
-  'AS Level',
-  'A Level',
-  'IB PYP 1',
-  'IB PYP 2',
-  'IB PYP 3',
-  'IB PYP 4',
-  'IB PYP 5',
-  'IB MYP 1',
-  'IB MYP 2',
-  'IB MYP 3',
-  'IB MYP 4',
-  'IB MYP 5',
-  'IB DP 1',
-  'IB DP 2',
-  'University Year 1',
-  'University Year 2',
-  'University Year 3',
-  'University Year 4',
-  'University Year 5',
-];
 
 const STREAMS = ['General', 'Arts', 'Sciences', 'Business', 'Technical'];
 
@@ -101,13 +53,20 @@ export default function AddStudentPage() {
       return;
     }
 
+    if (!isValidClassLabel(formData.class)) {
+      toast.error('Invalid class name', {
+        description: 'Enter a class label up to 50 characters (e.g. P1, KG1, Nursery).',
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
       const payload: any = {
         first_name: formData.first_name,
         last_name: formData.last_name,
-        class: formData.class,
+        class: formData.class.trim(),
       };
 
       // Student phone (optional)
@@ -150,12 +109,21 @@ export default function AddStudentPage() {
       });
       router.push('/dashboard/students');
     } catch (error: any) {
-      toast.error('Failed to add student', {
-        description:
-          error.response?.data?.error ||
-          error.message ||
-          'An error occurred while adding the student.',
-      });
+      const candidates = error.response?.data?.candidates;
+      if (error.response?.status === 409 && Array.isArray(candidates) && candidates.length > 0) {
+        const names = candidates
+          .map((c: { registration_id?: string; first_name?: string; last_name?: string }) =>
+            `${c.registration_id || ''} ${c.first_name || ''} ${c.last_name || ''}`.trim()
+          )
+          .join('; ');
+        toast.error('Possible duplicate student', {
+          description: `Review existing record(s) first: ${names}`,
+        });
+      } else {
+        toast.error('Failed to add student', {
+          description: getApiErrorMessage(error, 'An error occurred while adding the student.'),
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -234,23 +202,18 @@ export default function AddStudentPage() {
                     <Label htmlFor="class">
                       Class <span className="text-red-500">*</span>
                     </Label>
-                    <Select
+                    <Input
+                      id="class"
+                      name="class"
                       value={formData.class}
-                      onValueChange={(value) =>
-                        handleChange({ target: { name: 'class', value } })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select class" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {VALID_CLASSES.map((cls) => (
-                          <SelectItem key={cls} value={cls}>
-                            {cls}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      onChange={handleChange}
+                      placeholder="e.g. P1, KG1, Nursery"
+                      required
+                      maxLength={50}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Use your school&apos;s class name (free text, max 50 characters).
+                    </p>
                   </div>
                 </div>
 

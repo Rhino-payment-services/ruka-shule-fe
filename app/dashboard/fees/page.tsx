@@ -26,7 +26,11 @@ import {
 import { Receipt, Plus, Edit, Trash2, Lock, Unlock } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { schoolsAPI, feesAPI } from '@/lib/api';
+import { getApiErrorMessage } from '@/lib/api/errors';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { toast } from 'sonner';
+import { ListPagination } from '@/components/ListPagination';
+import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
 
 interface Fee {
   id: string;
@@ -34,10 +38,11 @@ interface Fee {
   amount: number;
   currency: string;
   fee_type: 'school_fees' | 'other_fees';
+  billing_frequency?: string;
   academic_year: string;
-  term?: string | null; // Optional - null for annual fees
+  term?: string | null;
   class?: string | null;
-  stream?: string | null; // Arts, Sciences, General, etc.
+  stream?: string | null;
   due_date?: string | null;
   status: 'active' | 'inactive';
   is_locked: boolean;
@@ -48,24 +53,37 @@ interface Fee {
 
 const STREAMS = ['General', 'Arts', 'Sciences', 'Business', 'Technical'];
 const TERMS = ['Term 1', 'Term 2', 'Term 3'];
+const BILLING_FREQUENCIES = ['daily', 'weekly', 'monthly', 'termly', 'annual', 'one_off'] as const;
 
 export default function FeesPage() {
   const [fees, setFees] = useState<Fee[]>([]);
   const [loading, setLoading] = useState(true);
   const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
   const [schoolChecked, setSchoolChecked] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [editingFee, setEditingFee] = useState<Fee | null>(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [overrideConfirm, setOverrideConfirm] = useState<{
+    mode: 'create' | 'update';
+    count: number;
+  } | null>(null);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [lockConfirmFee, setLockConfirmFee] = useState<Fee | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     amount: '',
     currency: 'UGX',
     fee_type: 'school_fees' as 'school_fees' | 'other_fees',
+    billing_frequency: 'termly',
     academic_year: new Date().getFullYear().toString(),
-    term: '', // Optional - empty for annual fees
+    term: '',
     class: '',
-    stream: '', // Optional - empty for all streams
+    stream: '',
     due_date: '',
   });
 
@@ -90,14 +108,17 @@ export default function FeesPage() {
       return;
     }
     loadFees();
-  }, [schoolChecked, schoolSetupRequired]);
+  }, [page, schoolChecked, schoolSetupRequired]);
 
   const loadFees = async () => {
     if (schoolSetupRequired) return;
     setLoading(true);
     try {
-      const res = await feesAPI.list(1, 100);
+      const res = await feesAPI.list(page, DEFAULT_PAGE_SIZE);
       setFees(res.data.data || []);
+      const meta = normalizePaginationMeta(res.data, page);
+      setTotal(meta.total);
+      setTotalPages(meta.totalPages);
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to load fees');
     } finally {
@@ -105,42 +126,52 @@ export default function FeesPage() {
     }
   };
 
-  const handleCreate = async () => {
+  const handleCreate = async (confirmOverrides = false) => {
     try {
-      const payload: any = {
+      setConfirmLoading(true);
+      const payload: Record<string, unknown> = {
         name: formData.name,
         amount: parseFloat(formData.amount),
-        currency: formData.currency,
+        currency: 'UGX',
         fee_type: formData.fee_type,
+        billing_frequency: formData.billing_frequency,
         academic_year: formData.academic_year,
+        confirm_overrides: confirmOverrides,
       };
 
-      // Term is optional - only add if selected
-      if (formData.term) {
-        payload.term = formData.term;
-      }
-
-      // Class is optional - only add if selected
-      if (formData.class) {
-        payload.class = formData.class;
-      }
-
-      // Stream is optional - only add if selected
-      if (formData.stream) {
-        payload.stream = formData.stream;
-      }
-
-      if (formData.due_date) {
-        payload.due_date = formData.due_date;
-      }
+      if (formData.term) payload.term = formData.term;
+      if (formData.class) payload.class = formData.class;
+      if (formData.stream) payload.stream = formData.stream;
+      if (formData.due_date) payload.due_date = formData.due_date;
 
       await feesAPI.create(payload);
       toast.success('Fee created successfully');
       setIsCreateDialogOpen(false);
+      setOverrideConfirm(null);
       resetForm();
       loadFees();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to create fee');
+      if (
+        error?.response?.status === 409 &&
+        error?.response?.data?.code === 'duplicate_fee_structure'
+      ) {
+        setDuplicateDialogOpen(true);
+        return;
+      }
+      if (
+        error?.response?.status === 409 &&
+        error?.response?.data?.require_confirm_overrides &&
+        !confirmOverrides
+      ) {
+        setOverrideConfirm({
+          mode: 'create',
+          count: error.response.data.students_with_overrides ?? 0,
+        });
+        return;
+      }
+      toast.error(getApiErrorMessage(error, 'Failed to create fee'));
+    } finally {
+      setConfirmLoading(false);
     }
   };
 
@@ -155,6 +186,7 @@ export default function FeesPage() {
       amount: fee.amount.toString(),
       currency: fee.currency,
       fee_type: fee.fee_type,
+      billing_frequency: fee.billing_frequency || 'termly',
       academic_year: fee.academic_year,
       term: fee.term || '',
       class: fee.class || '',
@@ -164,15 +196,19 @@ export default function FeesPage() {
     setIsEditDialogOpen(true);
   };
 
-  const handleUpdate = async () => {
+  const handleUpdate = async (confirmOverrides = false) => {
     if (!editingFee) return;
 
     try {
-      const payload: any = {};
+      setConfirmLoading(true);
+      const payload: Record<string, unknown> = {};
 
       if (formData.name !== editingFee.name) payload.name = formData.name;
       if (parseFloat(formData.amount) !== editingFee.amount) payload.amount = parseFloat(formData.amount);
       if (formData.fee_type !== editingFee.fee_type) payload.fee_type = formData.fee_type;
+      if (formData.billing_frequency !== (editingFee.billing_frequency || 'termly')) {
+        payload.billing_frequency = formData.billing_frequency;
+      }
       if (formData.term !== (editingFee.term || '')) {
         payload.term = formData.term || null;
       }
@@ -182,25 +218,51 @@ export default function FeesPage() {
       if (formData.due_date !== (editingFee.due_date?.split('T')[0] || '')) {
         payload.due_date = formData.due_date || null;
       }
+      if (confirmOverrides) payload.confirm_overrides = true;
 
       await feesAPI.update(editingFee.id, payload);
       toast.success('Fee updated successfully');
       setIsEditDialogOpen(false);
       setEditingFee(null);
+      setOverrideConfirm(null);
       resetForm();
       loadFees();
     } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to update fee');
+      if (
+        error?.response?.status === 409 &&
+        error?.response?.data?.code === 'duplicate_fee_structure'
+      ) {
+        setDuplicateDialogOpen(true);
+        return;
+      }
+      if (
+        error?.response?.status === 409 &&
+        error?.response?.data?.require_confirm_overrides &&
+        !confirmOverrides
+      ) {
+        setOverrideConfirm({
+          mode: 'update',
+          count: error.response.data.students_with_overrides ?? 0,
+        });
+        return;
+      }
+      toast.error(getApiErrorMessage(error, 'Failed to update fee'));
+    } finally {
+      setConfirmLoading(false);
     }
   };
 
   const handleToggleLock = async (fee: Fee) => {
     try {
+      setConfirmLoading(true);
       await feesAPI.update(fee.id, { is_locked: !fee.is_locked });
       toast.success(fee.is_locked ? 'Fee unlocked successfully' : 'Fee locked successfully');
+      setLockConfirmFee(null);
       loadFees();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to update fee lock');
+    } finally {
+      setConfirmLoading(false);
     }
   };
 
@@ -210,14 +272,17 @@ export default function FeesPage() {
       toast.error('Unlock the fee before deleting it');
       return;
     }
-    if (!confirm('Are you sure you want to delete this fee?')) return;
 
     try {
+      setConfirmLoading(true);
       await feesAPI.delete(id);
       toast.success('Fee deleted successfully');
+      setDeleteConfirmId(null);
       loadFees();
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to delete fee');
+    } finally {
+      setConfirmLoading(false);
     }
   };
 
@@ -227,6 +292,7 @@ export default function FeesPage() {
       amount: '',
       currency: 'UGX',
       fee_type: 'school_fees',
+      billing_frequency: 'termly',
       academic_year: new Date().getFullYear().toString(),
       term: '',
       class: '',
@@ -306,11 +372,13 @@ export default function FeesPage() {
                   </Button>
                 </div>
               ) : (
+                <>
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Type</TableHead>
+                      <TableHead>Frequency</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Year</TableHead>
                       <TableHead>Term</TableHead>
@@ -327,6 +395,7 @@ export default function FeesPage() {
                       <TableRow key={fee.id}>
                         <TableCell className="font-medium">{fee.name}</TableCell>
                         <TableCell>{getFeeTypeBadge(fee.fee_type)}</TableCell>
+                        <TableCell className="capitalize">{fee.billing_frequency || 'termly'}</TableCell>
                         <TableCell>
                           {fee.currency} {fee.amount.toLocaleString()}
                         </TableCell>
@@ -359,7 +428,7 @@ export default function FeesPage() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleToggleLock(fee)}
+                              onClick={() => setLockConfirmFee(fee)}
                               className={`h-8 w-8 p-0 ${fee.is_locked ? 'text-amber-600 hover:text-amber-700' : 'text-slate-600 hover:text-slate-900'}`}
                               title={fee.is_locked ? 'Unlock fee' : 'Lock fee'}
                             >
@@ -369,7 +438,7 @@ export default function FeesPage() {
                               variant="ghost"
                               size="sm"
                               disabled={fee.is_locked}
-                              onClick={() => handleDelete(fee.id)}
+                              onClick={() => setDeleteConfirmId(fee.id)}
                               className="h-8 w-8 p-0 text-destructive hover:text-destructive"
                             >
                               <Trash2 className="h-4 w-4" />
@@ -380,6 +449,15 @@ export default function FeesPage() {
                     ))}
                   </TableBody>
                 </Table>
+                <ListPagination
+                  className="mt-4"
+                  page={page}
+                  totalPages={totalPages}
+                  total={total}
+                  loading={loading}
+                  onPageChange={setPage}
+                />
+                </>
               )}
             </CardContent>
           </Card>
@@ -401,32 +479,15 @@ export default function FeesPage() {
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="amount">Amount *</Label>
-                    <Input
-                      id="amount"
-                      type="number"
-                      placeholder="0.00"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="currency">Currency *</Label>
-                    <Select
-                      value={formData.currency}
-                      onValueChange={(value) => setFormData({ ...formData, currency: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="UGX">UGX</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="amount">Amount (UGX) *</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    placeholder="0.00"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="fee_type">Fee Type *</Label>
@@ -442,6 +503,24 @@ export default function FeesPage() {
                     <SelectContent>
                       <SelectItem value="school_fees">School Fees</SelectItem>
                       <SelectItem value="other_fees">Other Fees</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="billing_frequency">Billing Frequency *</Label>
+                  <Select
+                    value={formData.billing_frequency}
+                    onValueChange={(value) => setFormData({ ...formData, billing_frequency: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BILLING_FREQUENCIES.map((freq) => (
+                        <SelectItem key={freq} value={freq} className="capitalize">
+                          {freq.replace('_', '-')}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -483,7 +562,7 @@ export default function FeesPage() {
                     <Label htmlFor="class">Class (Optional)</Label>
                     <Input
                       id="class"
-                      placeholder="e.g., P1, P2, S1"
+                      placeholder="e.g., P1, KG1, Nursery"
                       value={formData.class}
                       onChange={(e) => setFormData({ ...formData, class: e.target.value })}
                     />
@@ -528,7 +607,7 @@ export default function FeesPage() {
                 <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleCreate} className="bg-[#08163d] hover:bg-[#0a1f4f] text-white">
+                <Button onClick={() => handleCreate()} className="bg-[#08163d] hover:bg-[#0a1f4f] text-white">
                   Create Fee
                 </Button>
               </DialogFooter>
@@ -551,31 +630,14 @@ export default function FeesPage() {
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-amount">Amount *</Label>
-                    <Input
-                      id="edit-amount"
-                      type="number"
-                      value={formData.amount}
-                      onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="edit-currency">Currency *</Label>
-                    <Select
-                      value={formData.currency}
-                      onValueChange={(value) => setFormData({ ...formData, currency: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="UGX">UGX</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-amount">Amount (UGX) *</Label>
+                  <Input
+                    id="edit-amount"
+                    type="number"
+                    value={formData.amount}
+                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                  />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-fee_type">Fee Type *</Label>
@@ -591,6 +653,24 @@ export default function FeesPage() {
                     <SelectContent>
                       <SelectItem value="school_fees">School Fees</SelectItem>
                       <SelectItem value="other_fees">Other Fees</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-billing_frequency">Billing Frequency *</Label>
+                  <Select
+                    value={formData.billing_frequency}
+                    onValueChange={(value) => setFormData({ ...formData, billing_frequency: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {BILLING_FREQUENCIES.map((freq) => (
+                        <SelectItem key={freq} value={freq} className="capitalize">
+                          {freq.replace('_', '-')}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -648,12 +728,70 @@ export default function FeesPage() {
                 <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={handleUpdate} className="bg-[#08163d] hover:bg-[#0a1f4f] text-white">
+                <Button onClick={() => handleUpdate()} className="bg-[#08163d] hover:bg-[#0a1f4f] text-white">
                   Update Fee
                 </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          <ConfirmDialog
+            open={!!overrideConfirm}
+            onOpenChange={(open) => {
+              if (!open) setOverrideConfirm(null);
+            }}
+            description={`Are you sure you want to continue? ${overrideConfirm?.count ?? 0} student(s) in this class already have fee overrides, and those overrides will be kept.`}
+            confirmLabel={overrideConfirm?.mode === 'update' ? 'Update fee' : 'Create fee'}
+            loading={confirmLoading}
+            onConfirm={async () => {
+              if (overrideConfirm?.mode === 'update') {
+                await handleUpdate(true);
+              } else {
+                await handleCreate(true);
+              }
+            }}
+          />
+
+          <ConfirmDialog
+            open={duplicateDialogOpen}
+            onOpenChange={setDuplicateDialogOpen}
+            title="Duplicate fee structure"
+            description="An active school fees structure already exists for this class, year, term, and stream. Edit or deactivate the existing fee instead of creating another."
+            confirmLabel="OK"
+            cancelLabel="Close"
+            onConfirm={() => setDuplicateDialogOpen(false)}
+          />
+
+          <ConfirmDialog
+            open={!!deleteConfirmId}
+            onOpenChange={(open) => {
+              if (!open) setDeleteConfirmId(null);
+            }}
+            description="Are you sure you want to delete this fee? This cannot be undone."
+            confirmLabel="Delete"
+            variant="destructive"
+            loading={confirmLoading}
+            onConfirm={async () => {
+              if (deleteConfirmId) await handleDelete(deleteConfirmId);
+            }}
+          />
+
+          <ConfirmDialog
+            open={!!lockConfirmFee}
+            onOpenChange={(open) => {
+              if (!open) setLockConfirmFee(null);
+            }}
+            description={
+              lockConfirmFee?.is_locked
+                ? 'Are you sure you want to unlock this fee so it can be edited or deleted?'
+                : 'Are you sure you want to lock this fee to prevent edits and deletion?'
+            }
+            confirmLabel={lockConfirmFee?.is_locked ? 'Unlock' : 'Lock'}
+            loading={confirmLoading}
+            onConfirm={async () => {
+              if (lockConfirmFee) await handleToggleLock(lockConfirmFee);
+            }}
+          />
         </div>
       </DashboardLayout>
     </ProtectedRoute>

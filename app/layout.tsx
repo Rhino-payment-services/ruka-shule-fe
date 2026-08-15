@@ -22,6 +22,11 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: "Ruka Shule - School Fees Management",
   description: "School fees tracking system for Rukapay integration",
+  icons: {
+    icon: "/favicon.ico",
+    shortcut: "/favicon.ico",
+    apple: "/favicon.png",
+  },
 };
 
 export default function RootLayout({

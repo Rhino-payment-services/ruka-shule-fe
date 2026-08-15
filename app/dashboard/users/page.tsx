@@ -4,7 +4,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
 import { adminAPI } from '@/lib/api';
-import { Users, ChevronLeft, ChevronRight, Shield, UserCircle } from 'lucide-react';
+import { Users, Shield, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 import {
@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { ListPagination } from '@/components/ListPagination';
+import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
 
 interface UserData {
   id: string;
@@ -34,7 +36,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
-  const pageSize = 20;
+  const [totalPages, setTotalPages] = useState(1);
 
   useEffect(() => {
     loadUsers();
@@ -43,17 +45,16 @@ export default function UsersPage() {
   const loadUsers = async () => {
     try {
       setLoading(true);
-      const res = await adminAPI.listUsers(page, pageSize);
+      const res = await adminAPI.listUsers(page, DEFAULT_PAGE_SIZE);
       setUsers(res.data.data || []);
       setTotal(res.data.total ?? 0);
+      setTotalPages(normalizePaginationMeta(res.data).totalPages);
     } catch {
       /* ignore */
     } finally {
       setLoading(false);
     }
   };
-
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
     <ProtectedRoute allowedRoles={['admin']}>
@@ -147,31 +148,14 @@ export default function UsersPage() {
                       ))}
                     </TableBody>
                   </Table>
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-between mt-4">
-                      <p className="text-sm text-muted-foreground">
-                        Page {page} of {totalPages}
-                      </p>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={page <= 1}
-                          onClick={() => setPage((p) => Math.max(1, p - 1))}
-                        >
-                          <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={page >= totalPages}
-                          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                        >
-                          <ChevronRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+                  <ListPagination
+                    className="mt-4"
+                    page={page}
+                    totalPages={totalPages}
+                    total={total}
+                    loading={loading}
+                    onPageChange={setPage}
+                  />
                 </>
               )}
             </CardContent>

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Settings, Loader2, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { authAPI, schoolsAPI } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -58,6 +59,7 @@ export default function SettingsPage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saveConfirmOpen, setSaveConfirmOpen] = useState(false);
   const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
   const [school, setSchool] = useState<SchoolProfile | null>(null);
   const [adminProfile, setAdminProfile] = useState<AdminProfile | null>(null);
@@ -178,6 +180,7 @@ export default function SettingsPage() {
 
       await schoolsAPI.updateMySchool(payload);
       toast.success('School settings updated');
+      setSaveConfirmOpen(false);
 
       const refreshed = await schoolsAPI.getMySchool();
       setSchool(refreshed.data?.data);
@@ -186,6 +189,29 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const openSaveConfirm = () => {
+    if (schoolSetupRequired) {
+      toast.error('Complete school onboarding before updating settings');
+      return;
+    }
+    if (!['manual', 'daily', 'weekly'].includes(formData.settlement_frequency)) {
+      toast.error('Settlement frequency must be manual, daily, or weekly');
+      return;
+    }
+    const thresholdValue =
+      formData.settlement_min_threshold.trim() === ''
+        ? undefined
+        : Number(formData.settlement_min_threshold);
+    if (
+      thresholdValue !== undefined &&
+      (!Number.isFinite(thresholdValue) || thresholdValue < 0)
+    ) {
+      toast.error('Settlement minimum threshold must be zero or greater');
+      return;
+    }
+    setSaveConfirmOpen(true);
   };
 
   return (
@@ -366,7 +392,8 @@ export default function SettingsPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Bank Code / Sort Code</Label>
-                      <Input value={formData.bank_code} onChange={(e) => setFormData((s) => ({ ...s, bank_code: e.target.value }))} placeholder="e.g. 040147" />
+                      <Input value={formData.bank_code} onChange={(e) => setFormData((s) => ({ ...s, bank_code: e.target.value }))} placeholder="e.g. 040147" required />
+                      <p className="text-xs text-muted-foreground">Required for school bank settlements.</p>
                     </div>
                     <div className="space-y-2">
                       <Label>Bank Account Name</Label>
@@ -415,7 +442,7 @@ export default function SettingsPage() {
                   </label>
 
                   <div className="flex justify-end">
-                    <Button onClick={handleSave} disabled={saving || loading}>
+                    <Button onClick={openSaveConfirm} disabled={saving || loading}>
                       {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Settings'}
                     </Button>
                   </div>
@@ -423,6 +450,15 @@ export default function SettingsPage() {
               </Card>
             </>
           )}
+
+          <ConfirmDialog
+            open={saveConfirmOpen}
+            onOpenChange={setSaveConfirmOpen}
+            description="Are you sure you want to save these school settings? Incorrect bank details can delay payouts."
+            confirmLabel="Save settings"
+            loading={saving}
+            onConfirm={handleSave}
+          />
         </div>
       </DashboardLayout>
     </ProtectedRoute>
