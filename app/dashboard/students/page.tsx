@@ -4,7 +4,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { oneOffChargesAPI, schoolsAPI, studentsAPI } from '@/lib/api';
+import { oneOffChargesAPI, schoolsAPI, studentsAPI, adminAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -25,6 +25,7 @@ import {
   GraduationCap,
   Pencil,
   Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
@@ -70,6 +71,7 @@ interface Student {
   parent_last_name?: string;
   parent_phone?: string;
   created_at: string;
+  deleted_at?: string;
 }
 
 interface SchoolOption {
@@ -91,6 +93,7 @@ export default function StudentsPage() {
   const [schoolChecked, setSchoolChecked] = useState(false);
   const [schools, setSchools] = useState<SchoolOption[]>([]);
   const [selectedSchoolId, setSelectedSchoolId] = useState('');
+  const [showDeleted, setShowDeleted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebouncedValue(searchTerm);
   const [currentPage, setCurrentPage] = useState(1);
@@ -134,6 +137,7 @@ export default function StudentsPage() {
   });
   const [editConfirmOpen, setEditConfirmOpen] = useState(false);
   const [deleteStudent, setDeleteStudent] = useState<Student | null>(null);
+  const [restoreStudent, setRestoreStudent] = useState<Student | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
@@ -170,23 +174,31 @@ export default function StudentsPage() {
       return;
     }
     fetchStudents();
-  }, [currentPage, schoolChecked, schoolSetupRequired, selectedSchoolId, isPlatformAdmin, debouncedSearch]);
+  }, [currentPage, schoolChecked, schoolSetupRequired, selectedSchoolId, isPlatformAdmin, debouncedSearch, showDeleted]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch]);
+  }, [debouncedSearch, showDeleted]);
 
   const fetchStudents = async () => {
     if (schoolSetupRequired) return;
     if (isPlatformAdmin && !selectedSchoolId) return;
     try {
       setLoading(true);
-      const response = await studentsAPI.list(
-        currentPage,
-        DEFAULT_PAGE_SIZE,
-        isPlatformAdmin ? selectedSchoolId : undefined,
-        debouncedSearch || undefined,
-      );
+      const response =
+        isPlatformAdmin && showDeleted
+          ? await adminAPI.listDeletedStudents(
+              selectedSchoolId,
+              currentPage,
+              DEFAULT_PAGE_SIZE,
+              debouncedSearch || undefined,
+            )
+          : await studentsAPI.list(
+              currentPage,
+              DEFAULT_PAGE_SIZE,
+              isPlatformAdmin ? selectedSchoolId : undefined,
+              debouncedSearch || undefined,
+            );
       const body = response.data;
       const studentsData: Student[] = Array.isArray(body?.data)
         ? body.data
@@ -300,14 +312,24 @@ export default function StudentsPage() {
     setSelectedTerm('');
 
     try {
-      const [summaryRes, oneOffRes] = await Promise.all([
+      const [summaryResult, oneOffResult] = await Promise.allSettled([
         paymentsAPI.getSummary(student.id),
         oneOffChargesAPI.listForStudent(student.id),
       ]);
-      setPaymentSummary(summaryRes.data.data);
-      setOneOffCharges(oneOffRes.data.data || []);
+      if (summaryResult.status === 'fulfilled') {
+        setPaymentSummary(summaryResult.value.data.data);
+      } else {
+        toast.error(getApiErrorMessage(summaryResult.reason, 'Failed to load payment summary'));
+      }
+      if (oneOffResult.status === 'fulfilled') {
+        setOneOffCharges(oneOffResult.value.data.data || []);
+      } else {
+        setOneOffCharges([]);
+        toast.error(getApiErrorMessage(oneOffResult.reason, 'Failed to load one-off charges'));
+      }
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Failed to load student payment details'));
+    } finally {
       setLoadingPayments(false);
     }
   };
@@ -523,9 +545,24 @@ export default function StudentsPage() {
       await studentsAPI.delete(deleteStudent.id);
       toast.success('Student deleted');
       setDeleteStudent(null);
-      fetchStudents();
+      await fetchStudents();
     } catch (error: unknown) {
       toast.error(getApiErrorMessage(error, 'Failed to delete student'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRestoreStudent = async () => {
+    if (!restoreStudent) return;
+    try {
+      setActionLoading(true);
+      await adminAPI.restoreStudent(restoreStudent.id);
+      toast.success('Student restored');
+      setRestoreStudent(null);
+      await fetchStudents();
+    } catch (error: unknown) {
+      toast.error(getApiErrorMessage(error, 'Failed to restore student'));
     } finally {
       setActionLoading(false);
     }
@@ -559,7 +596,7 @@ export default function StudentsPage() {
               <h1 className="text-3xl font-bold">Students</h1>
               <p className="mt-2 text-muted-foreground">
                 {isPlatformAdmin
-                  ? 'Manage students across schools (select a school to continue)'
+                  ? 'View students across schools (select a school to continue)'
                   : "Manage your school's students"}
               </p>
             </div>
@@ -593,13 +630,14 @@ export default function StudentsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>School</CardTitle>
-                <CardDescription>Select a school to list and manage its students.</CardDescription>
+                <CardDescription>Select a school to view its students.</CardDescription>
               </CardHeader>
-              <CardContent className="max-w-md">
+              <CardContent className="max-w-md space-y-4">
                 <Select
                   value={selectedSchoolId || undefined}
                   onValueChange={(value) => {
                     setSelectedSchoolId(value);
+                    setShowDeleted(false);
                     setCurrentPage(1);
                   }}
                 >
@@ -614,6 +652,26 @@ export default function StudentsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={!showDeleted ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setShowDeleted(false)}
+                    disabled={!selectedSchoolId}
+                  >
+                    Active
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={showDeleted ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setShowDeleted(true)}
+                    disabled={!selectedSchoolId}
+                  >
+                    Deleted
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -622,9 +680,10 @@ export default function StudentsPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Student Management</CardTitle>
+                  <CardTitle>{showDeleted && isPlatformAdmin ? 'Deleted Students' : 'Student Management'}</CardTitle>
                   <CardDescription>
                     {totalStudents} {totalStudents === 1 ? 'student' : 'students'} total
+                    {showDeleted && isPlatformAdmin ? ' (soft-deleted)' : ''}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
@@ -736,41 +795,57 @@ export default function StudentsPage() {
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  title="Change class"
-                                  onClick={() => {
-                                    setClassChangeStudent(student);
-                                    setNewClass(student.class);
-                                  }}
-                                >
-                                  <GraduationCap className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  title="Edit student"
-                                  onClick={() => openEditStudent(student)}
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  title="Delete student"
-                                  className="text-destructive hover:text-destructive"
-                                  onClick={() => setDeleteStudent(student)}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleViewStudent(student)}
-                                >
-                                  <Eye className="h-4 w-4" />
-                                </Button>
+                                {isPlatformAdmin && showDeleted ? (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Restore student"
+                                    onClick={() => setRestoreStudent(student)}
+                                  >
+                                    <RotateCcw className="h-4 w-4" />
+                                  </Button>
+                                ) : null}
+                                {!isPlatformAdmin && (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      title="Change class"
+                                      onClick={() => {
+                                        setClassChangeStudent(student);
+                                        setNewClass(student.class);
+                                      }}
+                                    >
+                                      <GraduationCap className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      title="Edit student"
+                                      onClick={() => openEditStudent(student)}
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      title="Delete student"
+                                      className="text-destructive hover:text-destructive"
+                                      onClick={() => setDeleteStudent(student)}
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </>
+                                )}
+                                {!showDeleted && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleViewStudent(student)}
+                                  >
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1101,7 +1176,7 @@ export default function StudentsPage() {
                                 {charge.payment_reference ? ` · ${charge.payment_reference}` : ''}
                               </TableCell>
                               <TableCell className="text-right">
-                                {charge.status === 'unpaid' ? (
+                                {!isPlatformAdmin && charge.status === 'unpaid' ? (
                                   <Button size="sm" variant="outline" onClick={() => {
                                     setMarkPaidAssignment(charge);
                                     setMarkPaidNote('');
@@ -1673,6 +1748,21 @@ export default function StudentsPage() {
           variant="destructive"
           loading={actionLoading}
           onConfirm={handleDeleteStudent}
+        />
+
+        <ConfirmDialog
+          open={!!restoreStudent}
+          onOpenChange={(open) => {
+            if (!open) setRestoreStudent(null);
+          }}
+          description={
+            restoreStudent
+              ? `Restore ${restoreStudent.first_name} ${restoreStudent.last_name} (${restoreStudent.registration_id})?`
+              : 'Restore this student?'
+          }
+          confirmLabel="Restore"
+          loading={actionLoading}
+          onConfirm={handleRestoreStudent}
         />
       </DashboardLayout>
     </ProtectedRoute>

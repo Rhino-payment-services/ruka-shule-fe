@@ -54,12 +54,15 @@ export const paymentsAPI = {
       params: { page, page_size: pageSize },
     }),
 
+  fundSettlementEscrow: (amount?: number) =>
+    api.post<ApiSuccessResponse<Settlement>>(
+      '/payments/settlements/fund-escrow',
+      amount != null ? { amount } : {},
+    ),
+
   runSettlement: (amount?: number) =>
     api.post<ApiSuccessResponse<Settlement>>(
       '/payments/settlements/run',
       amount != null ? { amount } : {},
     ),
-
-  retrySettlement: (settlementId: string) =>
-    api.post<ApiSuccessResponse<Settlement>>(`/payments/settlements/${settlementId}/retry`),
 };

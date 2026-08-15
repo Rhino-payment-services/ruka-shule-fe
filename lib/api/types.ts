@@ -123,6 +123,7 @@ export interface Student {
   parent_last_name?: string;
   parent_phone?: string;
   created_at: string;
+  deleted_at?: string;
 }
 
 // Student as returned from the public lookup/payment flow
@@ -318,7 +319,7 @@ export interface Settlement {
   parent_settlement_id?: string;
   amount: number;
   currency: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'escrow_funded';
   retry_count: number;
   failure_reason?: string;
   initiated_by?: string;
@@ -326,6 +327,9 @@ export interface Settlement {
   settled_at?: string;
   completed_at?: string;
   reference: string;
+  /** RDBS escrow-fund transaction id (business → escrow). */
+  escrow_transaction_id?: string;
+  /** RDBS bank-payout transaction id (escrow → bank). */
   transaction_id?: string;
   notes?: string;
   created_at: string;
@@ -346,6 +350,9 @@ export interface SettlementSummary {
   total_collected: number;
   total_settled: number;
   pending_settlements: number;
+  business_wallet_balance?: number;
+  escrow_balance?: number;
+  escrow_wallet_id?: string;
 }
 
 // ---------------------------------------------------------------------------
