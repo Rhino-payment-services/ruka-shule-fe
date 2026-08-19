@@ -180,7 +180,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <div className="flex flex-1 flex-col lg:pl-64">
+      <div className="flex flex-1 flex-col min-w-0 lg:pl-64">
         {/* Header */}
         <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-white/80 backdrop-blur-xl shadow-sm px-4 lg:px-6">
           <Button

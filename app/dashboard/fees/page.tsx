@@ -28,6 +28,8 @@ import { useEffect, useState } from 'react';
 import { schoolsAPI, feesAPI } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { DatePicker } from '@/components/DatePicker';
+import { dueDateToApi, isFutureDueDate } from '@/lib/dates';
 import { toast } from 'sonner';
 import { ListPagination } from '@/components/ListPagination';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
@@ -127,6 +129,10 @@ export default function FeesPage() {
   };
 
   const handleCreate = async (confirmOverrides = false) => {
+    if (formData.due_date && !isFutureDueDate(formData.due_date)) {
+      toast.error('Due date must be after today');
+      return;
+    }
     try {
       setConfirmLoading(true);
       const payload: Record<string, unknown> = {
@@ -142,7 +148,7 @@ export default function FeesPage() {
       if (formData.term) payload.term = formData.term;
       if (formData.class) payload.class = formData.class;
       if (formData.stream) payload.stream = formData.stream;
-      if (formData.due_date) payload.due_date = formData.due_date;
+      if (formData.due_date) payload.due_date = dueDateToApi(formData.due_date);
 
       await feesAPI.create(payload);
       toast.success('Fee created successfully');
@@ -198,6 +204,11 @@ export default function FeesPage() {
 
   const handleUpdate = async (confirmOverrides = false) => {
     if (!editingFee) return;
+    const previousDue = editingFee.due_date?.split('T')[0] || '';
+    if (formData.due_date && formData.due_date !== previousDue && !isFutureDueDate(formData.due_date)) {
+      toast.error('Due date must be after today');
+      return;
+    }
 
     try {
       setConfirmLoading(true);
@@ -216,7 +227,7 @@ export default function FeesPage() {
         payload.stream = formData.stream || null;
       }
       if (formData.due_date !== (editingFee.due_date?.split('T')[0] || '')) {
-        payload.due_date = formData.due_date || null;
+        payload.due_date = formData.due_date ? dueDateToApi(formData.due_date) : null;
       }
       if (confirmOverrides) payload.confirm_overrides = true;
 
@@ -387,6 +398,7 @@ export default function FeesPage() {
                       <TableHead>Due Date</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Lock</TableHead>
+                      <TableHead>Updated</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -413,6 +425,11 @@ export default function FeesPage() {
                           ) : (
                             <Badge variant="outline">Open</Badge>
                           )}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {fee.updated_at
+                            ? new Date(fee.updated_at).toLocaleDateString()
+                            : new Date(fee.created_at).toLocaleDateString()}
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
@@ -464,11 +481,12 @@ export default function FeesPage() {
 
           {/* Create Fee Dialog */}
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-visible">
               <DialogHeader>
                 <DialogTitle>Create New Fee</DialogTitle>
                 <DialogDescription>Add a new fee to your school's fee structure</DialogDescription>
               </DialogHeader>
+              <div className="max-h-[65vh] overflow-y-auto pr-2">
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
                   <Label htmlFor="name">Fee Name *</Label>
@@ -595,13 +613,15 @@ export default function FeesPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="due_date">Due Date (Optional)</Label>
-                  <Input
+                  <DatePicker
                     id="due_date"
-                    type="date"
                     value={formData.due_date}
-                    onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                    onChange={(due_date) => setFormData({ ...formData, due_date })}
+                    placeholder="Select a future due date"
                   />
+                  <p className="text-xs text-muted-foreground">Today and past dates cannot be selected.</p>
                 </div>
+              </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
@@ -616,11 +636,12 @@ export default function FeesPage() {
 
           {/* Edit Fee Dialog */}
           <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-visible">
               <DialogHeader>
                 <DialogTitle>Edit Fee</DialogTitle>
                 <DialogDescription>Update fee details</DialogDescription>
               </DialogHeader>
+              <div className="max-h-[65vh] overflow-y-auto pr-2">
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
                   <Label htmlFor="edit-name">Fee Name *</Label>
@@ -716,13 +737,15 @@ export default function FeesPage() {
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-due_date">Due Date (Optional)</Label>
-                  <Input
+                  <DatePicker
                     id="edit-due_date"
-                    type="date"
                     value={formData.due_date}
-                    onChange={(e) => setFormData({ ...formData, due_date: e.target.value })}
+                    onChange={(due_date) => setFormData({ ...formData, due_date })}
+                    placeholder="Select a future due date"
                   />
+                  <p className="text-xs text-muted-foreground">Today and past dates cannot be selected.</p>
                 </div>
+              </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>

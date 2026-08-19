@@ -98,6 +98,7 @@ interface Payment {
   school_code?: string;
   paid_at?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 interface StudentPaymentSummary {
@@ -911,6 +912,7 @@ export default function PaymentsPage() {
                           <TableHead>Method</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Date</TableHead>
+                          <TableHead>Updated</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -946,6 +948,11 @@ export default function PaymentsPage() {
                             <TableCell>{getStatusBadge(payment.status)}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">
                               {formatDate(payment.paid_at || payment.created_at)}
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {payment.updated_at
+                                ? new Date(payment.updated_at).toLocaleDateString()
+                                : new Date(payment.created_at).toLocaleDateString()}
                             </TableCell>
                           </TableRow>
                         ))}

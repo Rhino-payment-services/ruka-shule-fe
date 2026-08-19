@@ -25,6 +25,61 @@ export type StudentImportRow = {
   parent_phone?: string;
 };
 
+export function normalizeStudentImportRow(student: StudentImportRow): StudentImportRow {
+  const parsedFees =
+    student.school_fees_amount !== undefined && !Number.isNaN(student.school_fees_amount)
+      ? student.school_fees_amount
+      : undefined;
+  const parsedScholarship =
+    student.scholarship_percentage !== undefined && !Number.isNaN(student.scholarship_percentage)
+      ? student.scholarship_percentage
+      : undefined;
+
+  return {
+    first_name: student.first_name.trim(),
+    last_name: student.last_name.trim(),
+    phone: student.phone.trim(),
+    class: normalizeClassLabel(student.class),
+    stream: student.stream?.trim() || undefined,
+    school_fees_amount: parsedFees,
+    scholarship_type: student.scholarship_type?.trim() || undefined,
+    scholarship_percentage: parsedScholarship,
+    parent_first_name: student.parent_first_name?.trim() || undefined,
+    parent_last_name: student.parent_last_name?.trim() || undefined,
+    parent_phone: student.parent_phone?.trim() || undefined,
+  };
+}
+
+export function validateStudentImportRow(student: StudentImportRow): string[] {
+  const normalized = normalizeStudentImportRow(student);
+  const errors: string[] = [];
+
+  if (!normalized.first_name) errors.push('First name is required');
+  if (!normalized.last_name) errors.push('Last name is required');
+  if (!isValidClassLabel(normalized.class)) {
+    errors.push('Class is required and must be 50 characters or fewer');
+  }
+  if (!normalized.phone && !normalized.parent_phone) {
+    errors.push('Student phone or parent phone is required');
+  }
+  if (
+    normalized.school_fees_amount !== undefined &&
+    (Number.isNaN(normalized.school_fees_amount) || normalized.school_fees_amount < 0)
+  ) {
+    errors.push('School fees amount must be a valid positive number');
+  }
+  if (
+    normalized.scholarship_percentage !== undefined &&
+    (Number.isNaN(normalized.scholarship_percentage) ||
+      normalized.scholarship_percentage < 0 ||
+      normalized.scholarship_percentage > 100)
+  ) {
+    errors.push('Scholarship percentage must be between 0 and 100');
+  }
+
+  return errors;
+}
+
 export function mapExcelRowToStudent(row: Record<string, unknown>): StudentImportRow {
   const firstName = String(row['First Name'] || row['first_name'] || row['FirstName'] || row['FIRST_NAME'] || '').trim();
   const lastName = String(row['Last Name'] || row['last_name'] || row['LastName'] || row['LAST_NAME'] || '').trim();
@@ -71,20 +126,24 @@ export function mapExcelRowToStudent(row: Record<string, unknown>): StudentImpor
 }
 
 export function buildStudentCreatePayload(student: StudentImportRow): Record<string, unknown> {
+  const normalized = normalizeStudentImportRow(student);
   const payload: Record<string, unknown> = {
-    first_name: student.first_name,
-    last_name: student.last_name,
-    class: student.class,
+    first_name: normalized.first_name,
+    last_name: normalized.last_name,
+    class: normalized.class,
   };
-  if (student.phone) payload.phone = student.phone;
-  if (student.stream) payload.stream = student.stream;
-  if (student.school_fees_amount !== undefined) payload.school_fees_amount = student.school_fees_amount;
-  if (student.scholarship_type) payload.scholarship_type = student.scholarship_type;
-  if (student.scholarship_percentage !== undefined && !Number.isNaN(student.scholarship_percentage)) {
-    payload.scholarship_percentage = student.scholarship_percentage;
+  if (normalized.phone) payload.phone = normalized.phone;
+  if (normalized.stream) payload.stream = normalized.stream;
+  if (normalized.school_fees_amount !== undefined) payload.school_fees_amount = normalized.school_fees_amount;
+  if (normalized.scholarship_type) payload.scholarship_type = normalized.scholarship_type;
+  if (
+    normalized.scholarship_percentage !== undefined &&
+    !Number.isNaN(normalized.scholarship_percentage)
+  ) {
+    payload.scholarship_percentage = normalized.scholarship_percentage;
   }
-  if (student.parent_first_name) payload.parent_first_name = student.parent_first_name;
-  if (student.parent_last_name) payload.parent_last_name = student.parent_last_name;
-  if (student.parent_phone) payload.parent_phone = student.parent_phone;
+  if (normalized.parent_first_name) payload.parent_first_name = normalized.parent_first_name;
+  if (normalized.parent_last_name) payload.parent_last_name = normalized.parent_last_name;
+  if (normalized.parent_phone) payload.parent_phone = normalized.parent_phone;
   return payload;
 }

@@ -9,11 +9,14 @@ import { getApiErrorMessage } from '@/lib/api/errors';
 import {
   buildStudentCreatePayload,
   mapExcelRowToStudent,
+  normalizeStudentImportRow,
   type StudentImportRow,
+  validateStudentImportRow,
 } from '@/lib/students/import';
-import { Upload, FileSpreadsheet, ArrowLeft, Loader2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, ArrowLeft, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
@@ -39,6 +42,7 @@ interface ImportResult {
   success: number;
   failed: number;
   errors: ImportRowError[];
+  blockedReason?: string;
 }
 
 function formatMatchReasons(raw?: string): string {
@@ -68,6 +72,17 @@ function formatCandidate(c: DuplicateCandidate): string {
   return `${reg} · ${name} · ${klass} · ${phone}${formatMatchReasons(c.match_reason)}`;
 }
 
+function toEditableNumber(value?: number): string {
+  return value !== undefined && !Number.isNaN(value) ? String(value) : '';
+}
+
+function parseOptionalNumber(value: string): number | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const parsed = Number(trimmed);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
 export default function ImportStudentsPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -76,6 +91,36 @@ export default function ImportStudentsPage() {
   const [importing, setImporting] = useState(false);
   const [importConfirmOpen, setImportConfirmOpen] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [draftErrors, setDraftErrors] = useState<Record<number, string[]>>({});
+
+  const validatePreviewRows = (rows: StudentImportRow[]) => {
+    const next: Record<number, string[]> = {};
+    rows.forEach((student, index) => {
+      const errors = validateStudentImportRow(student);
+      if (errors.length > 0) next[index] = errors;
+    });
+    setDraftErrors(next);
+    return next;
+  };
+
+  const updatePreviewRow = (
+    index: number,
+    field: keyof StudentImportRow,
+    value: string | number | undefined,
+  ) => {
+    setPreview((current) => {
+      const next = [...current];
+      const existing = next[index];
+      if (!existing) return current;
+      next[index] = normalizeStudentImportRow({
+        ...existing,
+        [field]: value,
+      });
+      validatePreviewRows(next);
+      return next;
+    });
+    setResult(null);
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -102,16 +147,7 @@ export default function ImportStudentsPage() {
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const jsonData = XLSX.utils.sheet_to_json(firstSheet) as Record<string, unknown>[];
 
-        const students = jsonData
-          .map((row) => mapExcelRowToStudent(row))
-          .filter((student) => {
-            return (
-              student.first_name &&
-              student.last_name &&
-              student.class &&
-              (student.phone || student.parent_phone)
-            );
-          });
+        const students = jsonData.map((row) => normalizeStudentImportRow(mapExcelRowToStudent(row)));
 
         if (students.length === 0) {
           toast.error('No valid student data found', {
@@ -121,8 +157,12 @@ export default function ImportStudentsPage() {
         }
 
         setPreview(students);
+        const invalidRows = validatePreviewRows(students);
         toast.success(`Found ${students.length} students`, {
-          description: 'Review the preview and click Import to proceed.',
+          description:
+            Object.keys(invalidRows).length > 0
+              ? 'Review and fix highlighted rows before importing.'
+              : 'Review the preview and click Import to proceed.',
         });
       } catch {
         toast.error('Failed to parse Excel file', {
@@ -136,6 +176,14 @@ export default function ImportStudentsPage() {
   const handleImport = async () => {
     if (!preview.length) {
       toast.error('No students to import');
+      return;
+    }
+
+    const invalidRows = validatePreviewRows(preview);
+    if (Object.keys(invalidRows).length > 0) {
+      toast.error('Fix the highlighted rows first', {
+        description: 'Each row needs first name, last name, class, and a phone or parent phone.',
+      });
       return;
     }
 
@@ -162,10 +210,23 @@ export default function ImportStudentsPage() {
           };
         };
         let message = getApiErrorMessage(err, 'Failed to import row');
+        const normalizedMessage = message.toLowerCase();
         const candidates =
           axiosErr.response?.status === 409 && Array.isArray(axiosErr.response.data?.candidates)
             ? axiosErr.response.data.candidates
             : undefined;
+        if (normalizedMessage.includes('school context required')) {
+          importResult.failed += preview.length - (i + 1);
+          importResult.blockedReason =
+            'Import blocked: your account is missing school context, so the remaining rows were not attempted. Please log out and back in, or relink this school admin account before retrying.';
+          message =
+            'Import blocked by missing school context on this account. This is not a row-specific problem.';
+          importResult.errors.push({
+            row: i + 2,
+            error: message,
+          });
+          break;
+        }
         if (axiosErr.response?.status === 409) {
           message = `Duplicate skipped: ${message}`;
         }
@@ -181,7 +242,11 @@ export default function ImportStudentsPage() {
     setImporting(false);
     setImportConfirmOpen(false);
 
-    if (importResult.success > 0 && importResult.failed === 0) {
+    if (importResult.blockedReason) {
+      toast.error('Import blocked', {
+        description: 'Your account is missing school context. Remaining rows were not attempted.',
+      });
+    } else if (importResult.success > 0 && importResult.failed === 0) {
       toast.success(`Imported ${importResult.success} students`);
       setTimeout(() => router.push('/dashboard/students'), 1500);
     } else if (importResult.success > 0) {
@@ -196,13 +261,18 @@ export default function ImportStudentsPage() {
       toast.error('No students to import');
       return;
     }
+    const invalidRows = validatePreviewRows(preview);
+    if (Object.keys(invalidRows).length > 0) {
+      toast.error('Fix the highlighted rows first');
+      return;
+    }
     setImportConfirmOpen(true);
   };
 
   return (
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
-        <div className="mx-auto max-w-6xl space-y-6">
+        <div className="space-y-6">
           <div className="flex items-center gap-4">
             <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/students')}>
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -216,7 +286,7 @@ export default function ImportStudentsPage() {
             </div>
           </div>
 
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle>Upload Excel</CardTitle>
               <CardDescription>
@@ -243,7 +313,7 @@ export default function ImportStudentsPage() {
               </div>
 
               {preview.length > 0 && (
-                <div className="space-y-3">
+                <div className="min-w-0 space-y-3">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">
                       Previewing {preview.length} students
@@ -263,49 +333,149 @@ export default function ImportStudentsPage() {
                       )}
                     </Button>
                   </div>
-                  <div className="max-h-80 overflow-auto rounded border text-sm">
-                    <table className="w-full min-w-[960px]">
+                  {Object.keys(draftErrors).length > 0 && (
+                    <p className="text-sm text-amber-700">
+                      Some rows need edits before import. Invalid rows are highlighted below.
+                    </p>
+                  )}
+                  <div className="max-h-[500px] overflow-x-auto overflow-y-auto rounded border text-sm">
+                    <table className="min-w-[1800px]">
                       <thead>
                         <tr className="bg-muted/50 text-left">
-                          <th className="p-2">Name</th>
+                          <th className="p-2">First Name</th>
+                          <th className="p-2">Last Name</th>
                           <th className="p-2">Class</th>
                           <th className="p-2">Stream</th>
                           <th className="p-2">Fees</th>
-                          <th className="p-2">Scholarship</th>
+                          <th className="p-2">Scholarship Type</th>
+                          <th className="p-2">Scholarship %</th>
                           <th className="p-2">Phone</th>
-                          <th className="p-2">Parent</th>
+                          <th className="p-2">Parent First</th>
+                          <th className="p-2">Parent Last</th>
                           <th className="p-2">Parent Phone</th>
+                          <th className="p-2">Validation</th>
+                          <th className="w-10 p-2"></th>
                         </tr>
                       </thead>
                       <tbody>
                         {preview.slice(0, 20).map((s, idx) => (
-                          <tr key={`${s.first_name}-${s.last_name}-${idx}`} className="border-t">
-                            <td className="p-2 whitespace-nowrap">
-                              {s.first_name} {s.last_name}
-                            </td>
-                            <td className="p-2">{s.class}</td>
-                            <td className="p-2">{s.stream || '—'}</td>
+                          <tr key={`${s.first_name}-${s.last_name}-${idx}`} className="border-t align-top">
                             <td className="p-2">
-                              {s.school_fees_amount !== undefined
-                                ? s.school_fees_amount.toLocaleString()
-                                : '—'}
+                              <Input
+                                value={s.first_name}
+                                onChange={(e) => updatePreviewRow(idx, 'first_name', e.target.value)}
+                                className={draftErrors[idx] ? 'border-amber-500' : undefined}
+                              />
                             </td>
                             <td className="p-2">
-                              {s.scholarship_type
-                                ? `${s.scholarship_type}${
-                                    s.scholarship_percentage != null &&
-                                    !Number.isNaN(s.scholarship_percentage)
-                                      ? ` (${s.scholarship_percentage}%)`
-                                      : ''
-                                  }`
-                                : '—'}
+                              <Input
+                                value={s.last_name}
+                                onChange={(e) => updatePreviewRow(idx, 'last_name', e.target.value)}
+                                className={draftErrors[idx] ? 'border-amber-500' : undefined}
+                              />
                             </td>
-                            <td className="p-2 whitespace-nowrap">{s.phone || '—'}</td>
-                            <td className="p-2 whitespace-nowrap">
-                              {[s.parent_first_name, s.parent_last_name].filter(Boolean).join(' ') ||
-                                '—'}
+                            <td className="p-2">
+                              <Input
+                                value={s.class}
+                                onChange={(e) => updatePreviewRow(idx, 'class', e.target.value)}
+                                className={draftErrors[idx] ? 'border-amber-500' : undefined}
+                              />
                             </td>
-                            <td className="p-2 whitespace-nowrap">{s.parent_phone || '—'}</td>
+                            <td className="p-2">
+                              <Input
+                                value={s.stream || ''}
+                                onChange={(e) => updatePreviewRow(idx, 'stream', e.target.value)}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                value={toEditableNumber(s.school_fees_amount)}
+                                onChange={(e) =>
+                                  updatePreviewRow(
+                                    idx,
+                                    'school_fees_amount',
+                                    parseOptionalNumber(e.target.value),
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                value={s.scholarship_type || ''}
+                                onChange={(e) =>
+                                  updatePreviewRow(idx, 'scholarship_type', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                value={toEditableNumber(s.scholarship_percentage)}
+                                onChange={(e) =>
+                                  updatePreviewRow(
+                                    idx,
+                                    'scholarship_percentage',
+                                    parseOptionalNumber(e.target.value),
+                                  )
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                value={s.phone || ''}
+                                onChange={(e) => updatePreviewRow(idx, 'phone', e.target.value)}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                value={s.parent_first_name || ''}
+                                onChange={(e) =>
+                                  updatePreviewRow(idx, 'parent_first_name', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                value={s.parent_last_name || ''}
+                                onChange={(e) =>
+                                  updatePreviewRow(idx, 'parent_last_name', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                value={s.parent_phone || ''}
+                                onChange={(e) =>
+                                  updatePreviewRow(idx, 'parent_phone', e.target.value)
+                                }
+                              />
+                            </td>
+                            <td className="p-2 align-top">
+                              {draftErrors[idx]?.length ? (
+                                <ul className="list-disc pl-4 text-xs text-amber-700">
+                                  {draftErrors[idx].map((error) => (
+                                    <li key={error}>{error}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <span className="text-xs text-emerald-700">Ready</span>
+                              )}
+                            </td>
+                            <td className="w-10 p-2 align-top">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPreview((prev) => prev.filter((_, i) => i !== idx));
+                                }}
+                                className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                title="Remove student"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -319,6 +489,11 @@ export default function ImportStudentsPage() {
                   <p>
                     Success: {result.success} · Failed: {result.failed}
                   </p>
+                  {result.blockedReason && (
+                    <div className="rounded-md border border-red-200 bg-red-50 p-3 text-red-700">
+                      {result.blockedReason}
+                    </div>
+                  )}
                   {result.errors.map((e) => (
                     <div key={`${e.row}-${e.error}`} className="space-y-1 border-t pt-2 first:border-t-0 first:pt-0">
                       <p className="text-red-600">

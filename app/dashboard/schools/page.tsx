@@ -40,6 +40,7 @@ interface SchoolData {
   merchant_status?: string;
   business_wallet_id?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export default function SchoolsPage() {
@@ -192,6 +193,7 @@ export default function SchoolsPage() {
                       <TableHead className="font-semibold text-[#08163d]">Status</TableHead>
                       <TableHead className="font-semibold text-[#08163d]">Merchant Status</TableHead>
                       <TableHead className="font-semibold text-[#08163d]">Wallet ID</TableHead>
+                      <TableHead className="font-semibold text-[#08163d]">Updated</TableHead>
                       <TableHead className="text-right font-semibold text-[#08163d]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -239,6 +241,11 @@ export default function SchoolsPage() {
                           </TableCell>
                           <TableCell>
                             {getMerchantStatusBadge((school as any).merchant_status)}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {school.updated_at
+                              ? new Date(school.updated_at).toLocaleDateString()
+                              : new Date(school.created_at).toLocaleDateString()}
                           </TableCell>
                           <TableCell className="text-right flex items-center justify-end gap-2">
                             {(school as any).merchant_status === 'rejected' && (

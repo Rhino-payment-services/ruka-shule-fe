@@ -28,6 +28,7 @@ interface UserData {
   school_id?: string;
   school_name?: string;
   created_at: string;
+  updated_at?: string;
 }
 
 export default function UsersPage() {
@@ -100,6 +101,7 @@ export default function UsersPage() {
                         <TableHead className="font-semibold">Role</TableHead>
                         <TableHead className="font-semibold">School</TableHead>
                         <TableHead className="font-semibold">Created</TableHead>
+                        <TableHead className="font-semibold">Updated</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -142,6 +144,11 @@ export default function UsersPage() {
                                   day: 'numeric',
                                   year: 'numeric',
                                 })
+                              : '—'}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {u.updated_at
+                              ? new Date(u.updated_at).toLocaleDateString()
                               : '—'}
                           </TableCell>
                         </TableRow>

@@ -71,6 +71,7 @@ interface Student {
   parent_last_name?: string;
   parent_phone?: string;
   created_at: string;
+  updated_at?: string;
   deleted_at?: string;
 }
 
@@ -745,6 +746,7 @@ export default function StudentsPage() {
                           <TableHead>School Fees</TableHead>
                           <TableHead>Class</TableHead>
                           <TableHead>Status</TableHead>
+                          <TableHead>Updated</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -792,6 +794,11 @@ export default function StudentsPage() {
                               >
                                 {student.status}
                               </Badge>
+                            </TableCell>
+                            <TableCell className="text-xs text-muted-foreground">
+                              {student.updated_at
+                                ? new Date(student.updated_at).toLocaleDateString()
+                                : new Date(student.created_at).toLocaleDateString()}
                             </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end gap-1">

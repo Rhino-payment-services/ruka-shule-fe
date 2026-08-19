@@ -34,6 +34,8 @@ interface OneOffCharge {
   currency: string;
   class?: string | null;
   status: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 interface StudentOption {
@@ -412,6 +414,7 @@ export default function OneOffChargesPage() {
                         <TableHead>Amount</TableHead>
                         <TableHead>Class</TableHead>
                         <TableHead>Status</TableHead>
+                        <TableHead>Updated</TableHead>
                         <TableHead>Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -425,6 +428,13 @@ export default function OneOffChargesPage() {
                           <TableCell>{charge.class || 'All'}</TableCell>
                           <TableCell>
                             <Badge>{charge.status}</Badge>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {charge.updated_at
+                              ? new Date(charge.updated_at).toLocaleDateString()
+                              : charge.created_at
+                                ? new Date(charge.created_at).toLocaleDateString()
+                                : '—'}
                           </TableCell>
                           <TableCell>
                             <div className="flex flex-wrap gap-2">
