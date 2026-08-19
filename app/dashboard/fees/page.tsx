@@ -26,8 +26,9 @@ import {
 import { Receipt, Plus, Edit, Trash2, Lock, Unlock } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { schoolsAPI, feesAPI } from '@/lib/api';
-import { getApiErrorMessage } from '@/lib/api/errors';
+import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { ButtonSpinner, LoadingState } from '@/components/LoadingState';
 import { DatePicker } from '@/components/DatePicker';
 import { dueDateToApi, isFutureDueDate } from '@/lib/dates';
 import { toast } from 'sonner';
@@ -121,8 +122,18 @@ export default function FeesPage() {
       const meta = normalizePaginationMeta(res.data, page);
       setTotal(meta.total);
       setTotalPages(meta.totalPages);
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Failed to load fees');
+    } catch (error: unknown) {
+      const schoolContext = await verifySchoolContextIssue(error, () => schoolsAPI.getMySchool());
+      if (schoolContext === 'missing_school_link') {
+        setSchoolSetupRequired(true);
+        setFees([]);
+      } else if (schoolContext === 'unexpected_context') {
+        toast.error(
+          'Your school link exists, but school context could not be verified. Please refresh and try again.',
+        );
+      } else {
+        toast.error(getApiErrorMessage(error, 'Failed to load fees'));
+      }
     } finally {
       setLoading(false);
     }
@@ -372,7 +383,7 @@ export default function FeesPage() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <p className="text-muted-foreground">Loading fees...</p>
+                <LoadingState label="Loading fees…" />
               ) : fees.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Receipt className="mb-4 h-12 w-12 text-muted-foreground" />
@@ -624,11 +635,26 @@ export default function FeesPage() {
               </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                <Button
+                  variant="outline"
+                  disabled={confirmLoading}
+                  onClick={() => setIsCreateDialogOpen(false)}
+                >
                   Cancel
                 </Button>
-                <Button onClick={() => handleCreate()} className="bg-[#08163d] hover:bg-[#0a1f4f] text-white">
-                  Create Fee
+                <Button
+                  onClick={() => handleCreate()}
+                  disabled={confirmLoading}
+                  className="bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+                >
+                  {confirmLoading ? (
+                    <>
+                      <ButtonSpinner />
+                      Creating…
+                    </>
+                  ) : (
+                    'Create Fee'
+                  )}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -748,11 +774,26 @@ export default function FeesPage() {
               </div>
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>
+                <Button
+                  variant="outline"
+                  disabled={confirmLoading}
+                  onClick={() => setIsEditDialogOpen(false)}
+                >
                   Cancel
                 </Button>
-                <Button onClick={() => handleUpdate()} className="bg-[#08163d] hover:bg-[#0a1f4f] text-white">
-                  Update Fee
+                <Button
+                  onClick={() => handleUpdate()}
+                  disabled={confirmLoading}
+                  className="bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+                >
+                  {confirmLoading ? (
+                    <>
+                      <ButtonSpinner />
+                      Saving…
+                    </>
+                  ) : (
+                    'Update Fee'
+                  )}
                 </Button>
               </DialogFooter>
             </DialogContent>

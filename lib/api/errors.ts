@@ -38,6 +38,45 @@ export function getApiErrorMessage(err: unknown, fallback = 'Something went wron
   return fallback;
 }
 
+function getHttpStatus(err: unknown): number | undefined {
+  if (!err || typeof err !== 'object') return undefined;
+  return (err as { response?: { status?: number } }).response?.status;
+}
+
+export function isSchoolContextRequiredError(err: unknown): boolean {
+  return getApiErrorMessage(err, '').toLowerCase().includes('school context required');
+}
+
+export type SchoolContextVerificationResult =
+  | 'not_school_context'
+  | 'missing_school_link'
+  | 'unexpected_context';
+
+export async function verifySchoolContextIssue(
+  err: unknown,
+  verifySchool: () => Promise<unknown>,
+): Promise<SchoolContextVerificationResult> {
+  if (!isSchoolContextRequiredError(err)) {
+    return 'not_school_context';
+  }
+
+  try {
+    await verifySchool();
+    return 'unexpected_context';
+  } catch (verifyErr) {
+    const verifyMessage = getApiErrorMessage(verifyErr, '').toLowerCase();
+    const verifyStatus = getHttpStatus(verifyErr);
+    if (
+      verifyStatus === 404 ||
+      verifyMessage.includes('school context required') ||
+      verifyMessage.includes('school not found')
+    ) {
+      return 'missing_school_link';
+    }
+    return 'unexpected_context';
+  }
+}
+
 /** Map known school-create errors onto form fields when possible. */
 export function mapSchoolCreateFieldErrors(message: string): Record<string, string> {
   const lower = message.toLowerCase();

@@ -28,6 +28,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListPagination } from '@/components/ListPagination';
+import { ButtonSpinner, LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
 
 interface SchoolData {
@@ -58,6 +59,7 @@ export default function PendingApprovalsPage() {
   const [approveDialogOpen, setApproveDialogOpen] = useState(false);
   const [approveSchoolId, setApproveSchoolId] = useState<string | null>(null);
   const [approveReason, setApproveReason] = useState('');
+  const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
     loadSchools();
@@ -93,6 +95,7 @@ export default function PendingApprovalsPage() {
   const submitApprove = async () => {
     if (!approveSchoolId) return;
     try {
+      setActionLoading(true);
       await adminAPI.updateMerchantStatus(approveSchoolId, {
         merchant_status: 'approved',
         reason: approveReason || null,
@@ -103,6 +106,8 @@ export default function PendingApprovalsPage() {
       toast.success('School approved successfully');
     } catch (err) {
       toast.error('Failed to approve school. See console for details.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -115,6 +120,7 @@ export default function PendingApprovalsPage() {
   const submitReject = async () => {
     if (!rejectSchoolId) return;
     try {
+      setActionLoading(true);
       await adminAPI.updateMerchantStatus(rejectSchoolId, { merchant_status: 'rejected', reason: rejectReason || null });
       setRejectDialogOpen(false);
       setRejectSchoolId(null);
@@ -122,6 +128,8 @@ export default function PendingApprovalsPage() {
       toast.success('School rejected');
     } catch (err) {
       toast.error('Failed to reject school. See console for details.');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -191,8 +199,10 @@ export default function PendingApprovalsPage() {
               </div>
               <DialogFooter>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
-                  <Button variant="outline" onClick={submitReject} className="bg-red-600 text-white">Reject</Button>
+                  <Button variant="outline" disabled={actionLoading} onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
+                  <Button variant="outline" disabled={actionLoading} onClick={submitReject} className="bg-red-600 text-white">
+                    {actionLoading ? (<><ButtonSpinner /> Rejecting…</>) : 'Reject'}
+                  </Button>
                 </div>
               </DialogFooter>
             </DialogContent>
@@ -220,8 +230,10 @@ export default function PendingApprovalsPage() {
               </div>
               <DialogFooter>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setApproveDialogOpen(false)}>Cancel</Button>
-                  <Button variant="outline" onClick={submitApprove} className="bg-green-600 text-white">Confirm Approve</Button>
+                  <Button variant="outline" disabled={actionLoading} onClick={() => setApproveDialogOpen(false)}>Cancel</Button>
+                  <Button variant="outline" disabled={actionLoading} onClick={submitApprove} className="bg-green-600 text-white">
+                    {actionLoading ? (<><ButtonSpinner /> Approving…</>) : 'Confirm Approve'}
+                  </Button>
                 </div>
               </DialogFooter>
             </DialogContent>
@@ -241,9 +253,7 @@ export default function PendingApprovalsPage() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-muted-foreground">Loading...</div>
-                </div>
+                <LoadingState label="Loading pending approvals…" />
               ) : schools.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <div className="rounded-full bg-orange-100 p-4 mb-4">

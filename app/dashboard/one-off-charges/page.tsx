@@ -4,7 +4,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useEffect, useState } from 'react';
 import { oneOffChargesAPI, studentsAPI, schoolsAPI } from '@/lib/api';
-import { getApiErrorMessage } from '@/lib/api/errors';
+import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,8 +20,9 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { Plus, Loader2, Pencil, List } from 'lucide-react';
+import { Plus, Pencil, List } from 'lucide-react';
 import { ListPagination } from '@/components/ListPagination';
+import { ButtonSpinner, LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
 
 const formatUgx = (amount: number) => `UGX ${Number(amount || 0).toLocaleString()}`;
@@ -93,6 +94,7 @@ export default function OneOffChargesPage() {
   const [markPaidNote, setMarkPaidNote] = useState('');
   const [markPaidReference, setMarkPaidReference] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     name: '',
     description: '',
@@ -110,7 +112,16 @@ export default function OneOffChargesPage() {
       setCharges(chargesRes.data.data || []);
       setChargePagination(normalizePaginationMeta(chargesRes.data, page));
     } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, 'Failed to load one-off charges'));
+      const schoolContext = await verifySchoolContextIssue(err, () => schoolsAPI.getMySchool());
+      if (schoolContext === 'missing_school_link') {
+        toast.error('This account is not linked to a school yet. Complete school setup before managing additional charges.');
+      } else if (schoolContext === 'unexpected_context') {
+        toast.error(
+          'Your school link exists, but school context could not be verified. Please refresh and try again.',
+        );
+      } else {
+        toast.error(getApiErrorMessage(err, 'Failed to load additional charges'));
+      }
     } finally {
       setLoading(false);
     }
@@ -177,6 +188,7 @@ export default function OneOffChargesPage() {
 
   const handleCreate = async () => {
     try {
+      setSaving(true);
       await oneOffChargesAPI.create({
         name: form.name,
         description: form.description,
@@ -184,12 +196,14 @@ export default function OneOffChargesPage() {
         currency: 'UGX',
         class: form.class || undefined,
       });
-      toast.success('One-off charge created');
+      toast.success('Additional charge created');
       setCreateOpen(false);
       resetForm();
       load();
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Failed to create charge'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -209,6 +223,7 @@ export default function OneOffChargesPage() {
   const handleUpdate = async () => {
     if (!selectedCharge) return;
     try {
+      setSaving(true);
       await oneOffChargesAPI.update(selectedCharge.id, {
         name: form.name,
         description: form.description,
@@ -224,6 +239,8 @@ export default function OneOffChargesPage() {
       load();
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Failed to update charge'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -386,7 +403,12 @@ export default function OneOffChargesPage() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold">One-Off Charges</h1>
+              <h1 className="text-3xl font-bold">
+                Additional Charges
+                <span className="ml-2 text-base font-normal text-muted-foreground">
+                  (One-off Charges)
+                </span>
+              </h1>
               <p className="text-muted-foreground">
                 Registration, uniforms, ID cards, photos, and other non-recurring charges.
               </p>
@@ -404,7 +426,7 @@ export default function OneOffChargesPage() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
+                <LoadingState label="Loading charges…" />
               ) : (
                 <div>
                   <Table>
@@ -476,7 +498,7 @@ export default function OneOffChargesPage() {
             <CardHeader>
               <CardTitle>Student payment history</CardTitle>
               <CardDescription>
-                Check whether a one-off charge has already been paid for a student.
+                Check whether an additional charge has already been paid for a student.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -536,7 +558,7 @@ export default function OneOffChargesPage() {
                           {row.paid_at ? new Date(row.paid_at).toLocaleString() : '-'}
                         </TableCell>
                         <TableCell>
-                          {row.payment_reference || row.external_ref || '-'}
+                          {row.external_ref || '-'}
                         </TableCell>
                         <TableCell>
                           {['unpaid', 'pending'].includes(row.status) ? (
@@ -564,7 +586,7 @@ export default function OneOffChargesPage() {
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create one-off charge</DialogTitle>
+              <DialogTitle>Create additional charge</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
               <div className="space-y-2">
@@ -600,7 +622,9 @@ export default function OneOffChargesPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={handleCreate}>Create</Button>
+              <Button disabled={saving} onClick={handleCreate}>
+                {saving ? (<><ButtonSpinner /> Creating…</>) : 'Create'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -608,7 +632,7 @@ export default function OneOffChargesPage() {
         <Dialog open={editOpen} onOpenChange={setEditOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Edit one-off charge</DialogTitle>
+              <DialogTitle>Edit additional charge</DialogTitle>
             </DialogHeader>
             <div className="space-y-3">
               <div className="space-y-2">
@@ -653,7 +677,9 @@ export default function OneOffChargesPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={handleUpdate}>Save changes</Button>
+              <Button disabled={saving} onClick={handleUpdate}>
+                {saving ? (<><ButtonSpinner /> Saving…</>) : 'Save changes'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -719,9 +745,7 @@ export default function OneOffChargesPage() {
               </div>
               <div className="max-h-72 space-y-2 overflow-auto rounded border p-2">
                 {assignLoading ? (
-                  <div className="flex justify-center py-6">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  </div>
+                  <LoadingState label="Loading students…" className="py-6" size="sm" />
                 ) : students.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">No students found</p>
                 ) : (
@@ -817,8 +841,7 @@ export default function OneOffChargesPage() {
                         <Badge>{row.status}</Badge>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
-                        {row.paid_at ? new Date(row.paid_at).toLocaleString() : '-'}
-                        {row.payment_reference ? ` · ${row.payment_reference}` : row.external_ref ? ` · ${row.external_ref}` : ''}
+                        {row.external_ref || row.payment_note || '-'}
                       </TableCell>
                       <TableCell>
                         {['unpaid', 'pending'].includes(row.status) ? (
@@ -876,7 +899,9 @@ export default function OneOffChargesPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setMarkPaidAssignment(null)}>Cancel</Button>
-              <Button disabled={actionLoading} onClick={handleMarkPaid}>Mark as paid</Button>
+              <Button disabled={actionLoading} onClick={handleMarkPaid}>
+                {actionLoading ? (<><ButtonSpinner /> Saving…</>) : 'Mark as paid'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -886,7 +911,7 @@ export default function OneOffChargesPage() {
           onOpenChange={(open) => {
             if (!open) setWaiveConfirmId(null);
           }}
-          description="Are you sure you want to waive this pending one-off charge? The student will no longer owe this amount."
+          description="Are you sure you want to waive this pending additional charge? The student will no longer owe this amount."
           confirmLabel="Waive"
           variant="destructive"
           loading={actionLoading}

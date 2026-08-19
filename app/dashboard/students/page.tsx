@@ -2,7 +2,7 @@
 
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { oneOffChargesAPI, schoolsAPI, studentsAPI, adminAPI } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -30,8 +30,9 @@ import {
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
 import { paymentsAPI } from '@/lib/api';
-import { getApiErrorMessage } from '@/lib/api/errors';
+import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { LoadingState } from '@/components/LoadingState';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   Dialog,
@@ -210,10 +211,21 @@ export default function StudentsPage() {
       setStudents(studentsData);
       setTotalStudents(meta.total);
       setTotalPages(meta.totalPages);
-    } catch (error: any) {
-      toast.error('Failed to fetch students', {
-        description: error.response?.data?.error || error.message || 'Unknown error',
-      });
+    } catch (error: unknown) {
+      const schoolContext =
+        isPlatformAdmin
+          ? 'not_school_context'
+          : await verifySchoolContextIssue(error, () => schoolsAPI.getMySchool());
+      if (schoolContext === 'missing_school_link') {
+        setSchoolSetupRequired(true);
+        setStudents([]);
+      } else if (schoolContext === 'unexpected_context') {
+        toast.error('Your school link exists, but school context could not be verified. Please refresh and try again.');
+      } else {
+        toast.error('Failed to fetch students', {
+          description: getApiErrorMessage(error, 'Unknown error'),
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -326,7 +338,7 @@ export default function StudentsPage() {
         setOneOffCharges(oneOffResult.value.data.data || []);
       } else {
         setOneOffCharges([]);
-        toast.error(getApiErrorMessage(oneOffResult.reason, 'Failed to load one-off charges'));
+        toast.error(getApiErrorMessage(oneOffResult.reason, 'Failed to load additional charges'));
       }
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Failed to load student payment details'));
@@ -407,9 +419,9 @@ export default function StudentsPage() {
       setMarkPaidAssignment(null);
       setMarkPaidNote('');
       setMarkPaidReference('');
-      toast.success('One-off charge marked as paid');
+      toast.success('Additional charge marked as paid');
     } catch (error: unknown) {
-      toast.error(getApiErrorMessage(error, 'Failed to mark one-off charge as paid'));
+      toast.error(getApiErrorMessage(error, 'Failed to mark additional charge as paid'));
     } finally {
       setActionLoading(false);
     }
@@ -569,6 +581,50 @@ export default function StudentsPage() {
     }
   };
 
+  const combinedPaymentItems = useMemo(() => {
+    const feeItems = Array.isArray(paymentSummary?.fees)
+      ? paymentSummary.fees.map((fee: any) => ({
+          id: `fee-${fee.fee_id || fee.fee_name}`,
+          name: fee.fee_name || 'Fee',
+          kind:
+            fee.fee_type === 'school_fees'
+              ? 'School Fee'
+              : fee.fee_type === 'other_fees'
+                ? 'Other Fee'
+                : 'Fee',
+          amount: Number(fee.amount || 0),
+          paid: Number(fee.paid || 0),
+          outstanding: Number(fee.outstanding || 0),
+          status: fee.is_paid ? 'paid' : Number(fee.outstanding || 0) > 0 ? 'unpaid' : 'clear',
+          details: null as string | null,
+          actionCharge: null as any,
+        }))
+      : [];
+
+    const oneOffItems = Array.isArray(oneOffCharges)
+      ? oneOffCharges.map((charge: any) => ({
+          id: `oneoff-${charge.id}`,
+          name: charge.charge_name || 'Additional charge',
+          kind: 'Additional Charge',
+          amount: Number(charge.amount || 0),
+          paid: charge.status === 'paid' ? Number(charge.amount || 0) : 0,
+          outstanding: charge.status === 'unpaid' ? Number(charge.amount || 0) : 0,
+          status: charge.status || 'unpaid',
+          details: charge.external_ref
+            ? String(charge.external_ref)
+            : charge.payment_note
+              ? String(charge.payment_note)
+              : null,
+          actionCharge: charge,
+        }))
+      : [];
+
+    return [...feeItems, ...oneOffItems].sort((a, b) => {
+      if (b.outstanding !== a.outstanding) return b.outstanding - a.outstanding;
+      return a.name.localeCompare(b.name);
+    });
+  }, [oneOffCharges, paymentSummary]);
+
   return (
     <ProtectedRoute allowedRoles={['admin', 'school_admin']}>
       <DashboardLayout>
@@ -702,9 +758,7 @@ export default function StudentsPage() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                </div>
+                <LoadingState label="Loading students…" />
               ) : students.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <Users className="mb-4 h-12 w-12 text-muted-foreground" />
@@ -742,7 +796,6 @@ export default function StudentsPage() {
                         <TableRow>
                           <TableHead>Registration ID</TableHead>
                           <TableHead>Name</TableHead>
-                          <TableHead>Phone</TableHead>
                           <TableHead>School Fees</TableHead>
                           <TableHead>Class</TableHead>
                           <TableHead>Status</TableHead>
@@ -759,7 +812,6 @@ export default function StudentsPage() {
                             <TableCell>
                               {student.first_name} {student.last_name}
                             </TableCell>
-                            <TableCell>{student.phone}</TableCell>
                             <TableCell>
                               {student.resolved_school_fees !== undefined && student.resolved_school_fees !== null ? (
                                 <span className="font-medium">
@@ -1043,25 +1095,52 @@ export default function StudentsPage() {
                     </div>
                   ) : paymentSummary ? (
                     <div className="space-y-4">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                         <div className="bg-slate-50 rounded-lg p-4">
                           <label className="text-xs font-medium text-muted-foreground">
                             School Fees
                           </label>
                           <p className="text-lg font-semibold mt-1">
                             {paymentSummary.currency || 'UGX'}{' '}
-                            {(paymentSummary.school_fees_amount || 0).toLocaleString()}
+                            {(
+                              paymentSummary.school_fee_total ??
+                              (Array.isArray(paymentSummary.fees)
+                                ? paymentSummary.fees
+                                    .filter((f: { fee_type?: string }) => f.fee_type === 'school_fees')
+                                    .reduce((sum: number, f: { amount?: number }) => sum + (f.amount || 0), 0)
+                                : undefined) ??
+                              paymentSummary.school_fees_amount ??
+                              0
+                            ).toLocaleString()}
                           </p>
                         </div>
-                        <div className="bg-muted/50 rounded-lg p-4">
+                        <div className="bg-slate-50 rounded-lg p-4">
                           <label className="text-xs font-medium text-muted-foreground">
-                            Total Fees
+                            Other Fees
                           </label>
                           <p className="text-lg font-semibold mt-1">
                             {paymentSummary.currency || 'UGX'}{' '}
-                            {paymentSummary.total_fees?.toLocaleString() || '0'}
+                            {(
+                              paymentSummary.other_fee_total ??
+                              (Array.isArray(paymentSummary.fees)
+                                ? paymentSummary.fees
+                                    .filter((f: { fee_type?: string }) => f.fee_type === 'other_fees')
+                                    .reduce((sum: number, f: { amount?: number }) => sum + (f.amount || 0), 0)
+                                : 0)
+                            ).toLocaleString()}
                           </p>
                         </div>
+                        {paymentSummary.one_off_outstanding !== undefined && (
+                          <div className="bg-rose-50 rounded-lg p-4">
+                            <label className="text-xs font-medium text-muted-foreground">
+                              Additional Charges
+                            </label>
+                            <p className="text-lg font-semibold text-rose-700 mt-1">
+                              {paymentSummary.currency || 'UGX'}{' '}
+                              {paymentSummary.one_off_outstanding.toLocaleString()}
+                            </p>
+                          </div>
+                        )}
                         <div className="bg-green-50 rounded-lg p-4">
                           <label className="text-xs font-medium text-muted-foreground">
                             Total Paid
@@ -1080,122 +1159,102 @@ export default function StudentsPage() {
                             {paymentSummary.outstanding?.toLocaleString() || '0'}
                           </p>
                         </div>
-                        {paymentSummary.one_off_outstanding !== undefined && (
-                          <div className="bg-rose-50 rounded-lg p-4">
-                            <label className="text-xs font-medium text-muted-foreground">
-                              One-off Outstanding
-                            </label>
-                            <p className="text-lg font-semibold text-rose-700 mt-1">
-                              {paymentSummary.currency || 'UGX'}{' '}
-                              {paymentSummary.one_off_outstanding.toLocaleString()}
-                            </p>
-                          </div>
-                        )}
-                        <div className="bg-blue-50 rounded-lg p-4">
-                          <label className="text-xs font-medium text-muted-foreground">
-                            Payment Status
-                          </label>
-                          <div className="mt-1">
-                            <Badge
-                              variant={
-                                paymentSummary.payment_status === 'full'
-                                  ? 'default'
-                                  : paymentSummary.payment_status === 'partial'
-                                    ? 'secondary'
-                                    : 'destructive'
-                              }
-                              className="text-xs"
-                            >
-                              {paymentSummary.payment_status === 'full' && (
-                                <CheckCircle2 className="mr-1 h-3 w-3" />
-                              )}
-                              {paymentSummary.payment_status === 'partial' && (
-                                <Clock className="mr-1 h-3 w-3" />
-                              )}
-                              {paymentSummary.payment_status === 'outstanding' && (
-                                <XCircle className="mr-1 h-3 w-3" />
-                              )}
-                              {paymentSummary.payment_status || 'outstanding'}
-                            </Badge>
-                          </div>
-                        </div>
                       </div>
                       {paymentSummary.last_payment_at && (
                         <div className="text-sm text-muted-foreground">
                           Last payment: {new Date(paymentSummary.last_payment_at).toLocaleString()}
                         </div>
                       )}
-                      {Array.isArray(paymentSummary.fees) && paymentSummary.fees.length > 0 && (
+                      {combinedPaymentItems.length > 0 && (
                         <div className="rounded-lg border bg-white p-4">
                           <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                            Fee Breakdown
+                            Balance Breakdown
                           </h4>
-                          <div className="space-y-2">
-                            {paymentSummary.fees.map((fee: any) => (
-                              <div key={`${fee.fee_id || fee.fee_name}-${fee.fee_type || 'fee'}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-                                <div>
-                                  <p className="font-medium">
-                                    {fee.fee_name}
-                                    {fee.fee_type === 'school_fees' ? ' (School Fees)' : fee.fee_type ? ' (Other Fee)' : ''}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    Paid: UGX {(fee.paid || 0).toLocaleString()} · Outstanding: UGX {(fee.outstanding || 0).toLocaleString()}
-                                  </p>
-                                </div>
-                                <div className="text-right font-semibold">
-                                  UGX {(fee.amount || 0).toLocaleString()}
-                                </div>
-                              </div>
-                            ))}
+                          <div className="rounded-lg border overflow-hidden">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Item</TableHead>
+                                  <TableHead>Type</TableHead>
+                                  <TableHead>Amount</TableHead>
+                                  <TableHead>Paid</TableHead>
+                                  <TableHead>Outstanding</TableHead>
+                                  <TableHead>Status</TableHead>
+                                  <TableHead>Details</TableHead>
+                                  <TableHead className="text-right">Actions</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {combinedPaymentItems.map((item) => (
+                                  <TableRow key={item.id}>
+                                    <TableCell className="font-medium">{item.name}</TableCell>
+                                    <TableCell>
+                                      <Badge
+                                        variant={
+                                          item.kind === 'Additional Charge'
+                                            ? 'secondary'
+                                            : item.kind === 'Other Fee'
+                                              ? 'outline'
+                                              : 'default'
+                                        }
+                                      >
+                                        {item.kind}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell>UGX {item.amount.toLocaleString()}</TableCell>
+                                    <TableCell className="text-green-700">
+                                      UGX {item.paid.toLocaleString()}
+                                    </TableCell>
+                                    <TableCell className="text-red-700">
+                                      UGX {item.outstanding.toLocaleString()}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge
+                                        variant={
+                                          item.status === 'paid'
+                                            ? 'default'
+                                            : item.status === 'waived' || item.status === 'cancelled'
+                                              ? 'secondary'
+                                              : item.outstanding > 0
+                                                ? 'outline'
+                                                : 'secondary'
+                                        }
+                                      >
+                                        {item.status}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-xs text-muted-foreground">
+                                      {item.details || '-'}
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                      {!isPlatformAdmin &&
+                                      item.kind === 'Additional Charge' &&
+                                      item.actionCharge?.status === 'unpaid' ? (
+                                        <Button
+                                          size="sm"
+                                          variant="outline"
+                                          onClick={() => {
+                                            setMarkPaidAssignment(item.actionCharge);
+                                            setMarkPaidNote('');
+                                            setMarkPaidReference('');
+                                          }}
+                                        >
+                                          Mark as paid
+                                        </Button>
+                                      ) : (
+                                        '-'
+                                      )}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
                           </div>
                         </div>
                       )}
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">No payment data available</p>
-                  )}
-                </div>
-
-                <div className="border-t pt-4">
-                  <h3 className="text-lg font-semibold mb-4">One-off charges</h3>
-                  {oneOffCharges.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No one-off charges assigned.</p>
-                  ) : (
-                    <div className="rounded-lg border overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Charge</TableHead>
-                            <TableHead>Amount</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Payment details</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {oneOffCharges.map((charge) => (
-                            <TableRow key={charge.id}>
-                              <TableCell className="font-medium">{charge.charge_name}</TableCell>
-                              <TableCell>{charge.currency || 'UGX'} {Number(charge.amount || 0).toLocaleString()}</TableCell>
-                              <TableCell><Badge variant={charge.status === 'paid' ? 'default' : charge.status === 'waived' ? 'secondary' : 'outline'}>{charge.status}</Badge></TableCell>
-                              <TableCell className="text-xs text-muted-foreground">
-                                {charge.paid_at ? new Date(charge.paid_at).toLocaleString() : '-'}
-                                {charge.payment_reference ? ` · ${charge.payment_reference}` : ''}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {!isPlatformAdmin && charge.status === 'unpaid' ? (
-                                  <Button size="sm" variant="outline" onClick={() => {
-                                    setMarkPaidAssignment(charge);
-                                    setMarkPaidNote('');
-                                    setMarkPaidReference('');
-                                  }}>Mark as paid</Button>
-                                ) : '-'}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
                   )}
                 </div>
 
@@ -1450,7 +1509,7 @@ export default function StudentsPage() {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Mark one-off charge as paid</DialogTitle>
+              <DialogTitle>Mark additional charge as paid</DialogTitle>
               <DialogDescription>
                 Confirm the offline payment for {markPaidAssignment?.charge_name}. This marks the full assigned amount as paid.
               </DialogDescription>
@@ -1467,7 +1526,16 @@ export default function StudentsPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setMarkPaidAssignment(null)}>Cancel</Button>
-              <Button disabled={actionLoading} onClick={handleMarkOneOffPaid}>Mark as paid</Button>
+              <Button disabled={actionLoading} onClick={handleMarkOneOffPaid}>
+                {actionLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  'Mark as paid'
+                )}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -1725,8 +1793,16 @@ export default function StudentsPage() {
                   }
                   void submitEdit();
                 }}
+                disabled={actionLoading}
               >
-                Save changes
+                {actionLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving…
+                  </>
+                ) : (
+                  'Save changes'
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
