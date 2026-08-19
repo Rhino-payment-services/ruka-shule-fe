@@ -28,6 +28,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListPagination } from '@/components/ListPagination';
+import { LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
 
 interface SchoolData {
@@ -180,9 +181,7 @@ export default function SchoolsPage() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-muted-foreground">Loading schools...</div>
-                </div>
+                <LoadingState label="Loading schools…" />
               ) : (
                 <Table>
                   <TableHeader>

@@ -8,10 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Settings, Loader2, UserRound } from 'lucide-react';
+import { Settings, UserRound } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { authAPI, schoolsAPI } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { ButtonSpinner, LoadingState } from '@/components/LoadingState';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
@@ -241,7 +242,7 @@ export default function SettingsPage() {
             </CardHeader>
             <CardContent className="grid gap-2 text-sm md:grid-cols-2">
               {loading && !adminProfile ? (
-                <p className="text-muted-foreground">Loading account...</p>
+                <LoadingState label="Loading account…" className="py-6 md:col-span-2" size="sm" />
               ) : (
                 <>
                   <p>
@@ -318,7 +319,7 @@ export default function SettingsPage() {
                 </CardHeader>
                 <CardContent className="grid gap-2 text-sm md:grid-cols-2">
                   {loading ? (
-                    <p className="text-muted-foreground">Loading profile...</p>
+                    <LoadingState label="Loading profile…" className="py-6 md:col-span-2" size="sm" />
                   ) : (
                     <>
                       <p><span className="text-muted-foreground">School:</span> {school?.name || '—'} ({school?.code || '—'})</p>
@@ -443,7 +444,14 @@ export default function SettingsPage() {
 
                   <div className="flex justify-end">
                     <Button onClick={openSaveConfirm} disabled={saving || loading}>
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Settings'}
+                      {saving ? (
+                        <>
+                          <ButtonSpinner />
+                          Saving…
+                        </>
+                      ) : (
+                        'Save Settings'
+                      )}
                     </Button>
                   </div>
                 </CardContent>
