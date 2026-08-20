@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
+import { ButtonSpinner } from '@/components/LoadingState';
 import {
   Dialog,
   DialogContent,
@@ -64,7 +65,14 @@ export function ConfirmDialog({
             disabled={loading}
             onClick={handleConfirm}
           >
-            {loading ? 'Please wait…' : confirmLabel}
+            {loading ? (
+              <>
+                <ButtonSpinner />
+                Please wait…
+              </>
+            ) : (
+              confirmLabel
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

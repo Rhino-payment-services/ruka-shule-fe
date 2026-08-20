@@ -87,7 +87,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       roles: ['school_admin'],
     },
     {
-      name: 'One-Off Charges',
+      name: 'Additional Charges',
       icon: Receipt,
       href: '/dashboard/one-off-charges',
       roles: ['school_admin'],

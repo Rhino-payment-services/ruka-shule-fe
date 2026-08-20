@@ -18,6 +18,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListPagination } from '@/components/ListPagination';
+import { LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
 
 interface Payment {
@@ -91,9 +92,7 @@ export default function PlatformPaymentsPage() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="text-muted-foreground">Loading payments...</div>
-                </div>
+                <LoadingState label="Loading payments…" />
               ) : payments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                   <CreditCard className="h-12 w-12 text-muted-foreground mb-4" />

@@ -1,6 +1,7 @@
 'use client';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { LoadingState } from '@/components/LoadingState';
 import { useEffect, useRef } from 'react';
 
 export function ProtectedRoute({
@@ -36,7 +37,7 @@ export function ProtectedRoute({
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
-        <div className="text-lg font-medium text-gray-900">Loading...</div>
+        <LoadingState label="Loading…" size="lg" />
       </div>
     );
   }
@@ -44,7 +45,7 @@ export function ProtectedRoute({
   if (!user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
-        <div className="text-lg font-medium text-gray-900">Redirecting...</div>
+        <LoadingState label="Redirecting…" size="lg" />
       </div>
     );
   }
@@ -52,7 +53,7 @@ export function ProtectedRoute({
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
-        <div className="text-lg font-medium text-gray-900">Redirecting...</div>
+        <LoadingState label="Redirecting…" size="lg" />
       </div>
     );
   }

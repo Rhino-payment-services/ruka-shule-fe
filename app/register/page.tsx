@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RukapayLogo } from '@/components/RukapayLogo';
+import { LoadingState } from '@/components/LoadingState';
 import { schoolsAPI, authAPI, getApiErrorMessage, mapSchoolCreateFieldErrors } from '@/lib/api';
 
 type RegistrationStep = 'personal' | 'contact' | 'password' | 'school';
@@ -377,9 +378,7 @@ export default function RegisterPage() {
   if (authLoading || (user && !accountCreated)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
-        <div className="text-lg font-medium text-gray-900">
-          {user ? 'Redirecting...' : 'Loading...'}
-        </div>
+        <LoadingState label={user ? 'Redirecting…' : 'Loading…'} size="lg" />
       </div>
     );
   }

@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { LoadingState } from '@/components/LoadingState';
 import { toast } from 'sonner';
 
 interface SchoolData {
@@ -78,7 +79,7 @@ export default function DashboardPage() {
   if (authLoading || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-white">
-        <div className="text-lg font-medium text-gray-900">Loading...</div>
+        <LoadingState label="Loading…" size="lg" />
       </div>
     );
   }
@@ -247,6 +248,10 @@ function AdminDashboard({
   recentSchools?: Array<{ id: string; name: string; code: string; created_at?: string }>;
   pendingApprovalsCount?: number;
 }) {
+  if (loading) {
+    return <LoadingState label="Loading dashboard…" className="py-24" size="lg" />;
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -419,6 +424,10 @@ function SchoolAdminDashboard({
   recentPayments?: Array<{ reference: string; amount: number; currency: string; status: string; student_name?: string; created_at: string }>;
   schoolSetupRequired?: boolean;
 }) {
+  if (loading) {
+    return <LoadingState label="Loading dashboard…" className="py-24" size="lg" />;
+  }
+
   return (
     <div className="space-y-6">
       {schoolSetupRequired && (

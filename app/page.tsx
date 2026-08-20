@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { RukapayLogo } from '@/components/RukapayLogo';
-import { Sparkles, ArrowRight } from 'lucide-react';
+import { Sparkles, ArrowRight, Loader2 } from 'lucide-react';
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -22,7 +22,10 @@ export default function Home() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#08163d]">
-        <div className="text-white text-lg">Loading...</div>
+        <div className="flex flex-col items-center gap-3" role="status" aria-live="polite">
+          <Loader2 className="h-10 w-10 animate-spin text-white" />
+          <p className="text-sm text-white/80">Loading…</p>
+        </div>
       </div>
     );
   }

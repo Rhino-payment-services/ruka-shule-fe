@@ -6,10 +6,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { CreditCard, Search, CheckCircle, XCircle, Clock, Loader2, Wallet } from 'lucide-react';
+import { LoadingState } from '@/components/LoadingState';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
 import { paymentsAPI, studentsAPI, schoolsAPI, API_BASE_URL } from '@/lib/api';
-import { getApiErrorMessage } from '@/lib/api/errors';
+import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
 import { useAuth } from '@/contexts/AuthContext';
 import { normalizeUgandaPhoneForStorage } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -48,6 +48,7 @@ interface OneOffChargeForPayment {
   is_paid: boolean;
   paid_at?: string;
   payment_reference?: string;
+  external_ref?: string;
 }
 
 interface SchoolProfile {
@@ -202,7 +203,16 @@ export default function PaymentsPage() {
       setTotalPayments(total !== undefined ? total : paymentsData.length);
       setTotalPages(normalizePaginationMeta(response.data).totalPages);
     } catch (err: unknown) {
-      toast.error(getApiErrorMessage(err, 'Failed to load payments'));
+      const schoolContext = await verifySchoolContextIssue(err, () => schoolsAPI.getMySchool());
+      if (schoolContext === 'missing_school_link') {
+        setSchoolSetupRequired(true);
+      } else if (schoolContext === 'unexpected_context') {
+        toast.error(
+          'Your school link exists, but school context could not be verified. Please refresh and try again.',
+        );
+      } else {
+        toast.error(getApiErrorMessage(err, 'Failed to load payments'));
+      }
     } finally {
       setLoading(false);
     }
@@ -311,7 +321,7 @@ export default function PaymentsPage() {
     }
     if (amount > selectedItem.outstanding || (selectedOneOff && Math.abs(amount - selectedOneOff.outstanding) > 0.01)) {
       toast.error(selectedOneOff
-        ? `One-off charges must be paid in full: UGX ${selectedOneOff.outstanding.toLocaleString()}`
+        ? `Additional charges must be paid in full: UGX ${selectedOneOff.outstanding.toLocaleString()}`
         : `Amount cannot exceed UGX ${selectedFee!.outstanding.toLocaleString()}`);
       return;
     }
@@ -332,7 +342,7 @@ export default function PaymentsPage() {
         currency: 'UGX',
         payment_method: 'MOBILE_MONEY',
         phone_number: formattedPhone,
-        description: selectedOneOff ? `One-off charge: ${selectedOneOff.name}` : `School fees: ${selectedFee!.name}`,
+        description: selectedOneOff ? `Additional charge: ${selectedOneOff.name}` : `School fees: ${selectedFee!.name}`,
       };
       if (selectedOneOff) {
         paymentPayload.student_one_off_charge_id = selectedOneOff.id;
@@ -474,11 +484,6 @@ export default function PaymentsPage() {
               </div>
             )}
           </div>
-          <div className="flex justify-end">
-            <Button asChild variant="outline" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50">
-              <Link href="/dashboard/settlements">Go to Settlements</Link>
-            </Button>
-          </div>
 
           {/* Collect Payment Card */}
           <Card className="border-2 border-emerald-200 bg-linear-to-br from-white to-emerald-50">
@@ -558,20 +563,20 @@ export default function PaymentsPage() {
                         UGX {(studentLookupData.payment_summary.carry_forward_balance || 0).toLocaleString()}
                       </span>
                     </div>
+                    {studentLookupData.payment_summary.one_off_outstanding !== undefined && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Additional Charges</span>
+                        <span className="font-semibold text-red-600">
+                          UGX {studentLookupData.payment_summary.one_off_outstanding.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-muted-foreground">Total outstanding</span>
                       <span className="font-semibold text-red-600">
                         UGX {studentLookupData.payment_summary.total_outstanding.toLocaleString()}
                       </span>
                     </div>
-                    {studentLookupData.payment_summary.one_off_outstanding !== undefined && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">One-off outstanding</span>
-                        <span className="font-semibold text-red-600">
-                          UGX {studentLookupData.payment_summary.one_off_outstanding.toLocaleString()}
-                        </span>
-                      </div>
-                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -624,7 +629,7 @@ export default function PaymentsPage() {
 
                   {Array.isArray(studentLookupData.available_one_off_charges) && studentLookupData.available_one_off_charges.filter((charge) => charge.status === 'unpaid' && charge.outstanding > 0).length > 0 && (
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">One-off charges (full amount required)</label>
+                      <label className="text-sm font-medium">Additional charges (full amount required)</label>
                       <div className="grid gap-2">
                         {studentLookupData.available_one_off_charges
                           .filter((charge) => charge.status === 'unpaid' && charge.outstanding > 0)
@@ -651,11 +656,11 @@ export default function PaymentsPage() {
 
                   {Array.isArray(studentLookupData.one_off_charges) && studentLookupData.one_off_charges.some((charge) => ['paid', 'waived', 'pending'].includes(charge.status)) && (
                     <div className="rounded-lg border bg-muted/30 p-3">
-                      <h4 className="mb-2 text-sm font-semibold">One-off charge history</h4>
+                      <h4 className="mb-2 text-sm font-semibold">Additional charge history</h4>
                       <div className="space-y-2">
                         {studentLookupData.one_off_charges.filter((charge) => ['paid', 'waived', 'pending'].includes(charge.status)).map((charge) => (
                           <div key={`history-${charge.id}`} className="flex items-center justify-between text-sm">
-                            <span>{charge.name}{charge.payment_reference ? ` · ${charge.payment_reference}` : ''}</span>
+                            <span>{charge.name}{charge.external_ref ? ` · ${charge.external_ref}` : ''}</span>
                             <Badge variant={charge.status === 'paid' ? 'default' : 'secondary'}>{charge.status}</Badge>
                           </div>
                         ))}
@@ -680,7 +685,7 @@ export default function PaymentsPage() {
                           />
                           <p className="text-xs text-muted-foreground">
                             {selectedOneOff
-                              ? `One-off charge: full amount of UGX ${selectedOneOff.outstanding.toLocaleString()} is required`
+                              ? `Additional charge: full amount of UGX ${selectedOneOff.outstanding.toLocaleString()} is required`
                               : selectedFee?.is_locked
                               ? `Locked fee: full outstanding amount required, UGX ${selectedFee.outstanding.toLocaleString()}`
                               : `Enter the amount to send. Max outstanding: UGX ${(selectedFee?.outstanding ?? 0).toLocaleString()}`}
@@ -891,9 +896,7 @@ export default function PaymentsPage() {
             </CardHeader>
             <CardContent>
               {loading ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
+                <LoadingState label="Loading payments…" />
               ) : payments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <CreditCard className="mb-4 h-12 w-12 text-muted-foreground" />

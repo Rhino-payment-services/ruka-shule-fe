@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { paymentsAPI, schoolsAPI } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { LoadingState } from '@/components/LoadingState';
 import { Loader2, RefreshCcw, Landmark } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
@@ -450,7 +451,11 @@ export default function SettlementsPage() {
                 </TableHeader>
                 <TableBody>
                   {loading ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-8">Loading...</TableCell></TableRow>
+                    <TableRow>
+                      <TableCell colSpan={5} className="p-0">
+                        <LoadingState label="Loading settlements…" className="py-8" />
+                      </TableCell>
+                    </TableRow>
                   ) : settlements.length === 0 ? (
                     <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No settlements yet.</TableCell></TableRow>
                   ) : (

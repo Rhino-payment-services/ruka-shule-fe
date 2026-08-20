@@ -14,7 +14,9 @@ import { Download, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { ListPagination } from '@/components/ListPagination';
+import { LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
+import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
 
 type OverviewStatus = 'all' | 'paid' | 'partial' | 'unpaid';
 
@@ -24,6 +26,8 @@ interface OverviewStudentRow {
   student_name: string;
   class: string;
   total_fees: number;
+  school_fee_total?: number;
+  other_fee_total?: number;
   fee_total?: number;
   one_off_total?: number;
   total_paid: number;
@@ -31,6 +35,7 @@ interface OverviewStudentRow {
   outstanding: number;
   fee_outstanding?: number;
   one_off_outstanding?: number;
+  due_type?: 'fees' | 'one_off' | 'both' | 'none';
   payment_status: 'full' | 'partial' | 'outstanding';
   last_payment_at?: string;
 }
@@ -43,6 +48,13 @@ interface OverviewResponse {
   total_expected: number;
   total_collected: number;
   total_outstanding: number;
+  total_school_fees?: number;
+  total_other_fees?: number;
+  total_fee_outstanding?: number;
+  total_one_off_outstanding?: number;
+  students_with_fee_outstanding?: number;
+  students_with_one_off_outstanding?: number;
+  students_with_both_balances?: number;
   page: number;
   page_size: number;
   total_pages: number;
@@ -77,8 +89,18 @@ export default function FeesOverviewPage() {
       const meta = normalizePaginationMeta(data || {}, nextPage);
       setOverview(data);
       setPage(meta.page);
-    } catch (error: any) {
-      toast.error(error?.response?.data?.error || 'Failed to load fees overview');
+    } catch (error: unknown) {
+      const schoolContext = await verifySchoolContextIssue(error, () => schoolsAPI.getMySchool());
+      if (schoolContext === 'missing_school_link') {
+        setSchoolSetupRequired(true);
+        setOverview(null);
+      } else if (schoolContext === 'unexpected_context') {
+        toast.error(
+          'Your school link exists, but school context could not be verified. Please refresh and try again.',
+        );
+      } else {
+        toast.error(getApiErrorMessage(error, 'Failed to load fees overview'));
+      }
     } finally {
       setLoading(false);
     }
@@ -119,24 +141,28 @@ export default function FeesOverviewPage() {
       'Registration ID',
       'Student Name',
       'Class',
-      'Total Fees',
+      'School Fees',
+      'Other Fees',
       'Fee Outstanding',
-      'One-off Outstanding',
+      'Additional Charges',
       'Total Paid',
       'Carry Forward',
       'Outstanding',
+      'Due Type',
       'Status',
     ];
     const rows = overview.students.map((row) => [
       row.registration_id,
       row.student_name,
       row.class,
-      row.total_fees.toFixed(2),
+      (row.school_fee_total || 0).toFixed(2),
+      (row.other_fee_total || 0).toFixed(2),
       (row.fee_outstanding || 0).toFixed(2),
       (row.one_off_outstanding || 0).toFixed(2),
       row.total_paid.toFixed(2),
       row.carry_forward_balance.toFixed(2),
       row.outstanding.toFixed(2),
+      row.due_type || 'none',
       row.payment_status,
     ]);
 
@@ -159,6 +185,13 @@ export default function FeesOverviewPage() {
     if (value === 'full') return <Badge className="bg-green-500">Paid</Badge>;
     if (value === 'partial') return <Badge className="bg-yellow-500">Partial</Badge>;
     return <Badge className="bg-red-500">Unpaid</Badge>;
+  };
+
+  const dueTypeBadge = (value?: OverviewStudentRow['due_type']) => {
+    if (value === 'both') return <Badge variant="destructive">Both</Badge>;
+    if (value === 'fees') return <Badge variant="secondary">Fees</Badge>;
+    if (value === 'one_off') return <Badge className="bg-rose-500">Additional</Badge>;
+    return <Badge variant="outline">Clear</Badge>;
   };
 
   const classes = useMemo(() => {
@@ -245,35 +278,64 @@ export default function FeesOverviewPage() {
             </CardContent>
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-4">
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Students</p><p className="text-2xl font-bold">{overview?.total_students || 0}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Collected</p><p className="text-2xl font-bold text-green-600">{formatCurrency(overview?.total_collected || 0)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Outstanding</p><p className="text-2xl font-bold text-red-600">{formatCurrency(overview?.total_outstanding || 0)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Expected</p><p className="text-2xl font-bold">{formatCurrency(overview?.total_expected || 0)}</p></CardContent></Card>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Students</p><p className="text-2xl font-bold">{loading ? '—' : (overview?.total_students || 0)}</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Collected</p><p className="text-2xl font-bold text-green-600">{loading ? '—' : formatCurrency(overview?.total_collected || 0)}</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">School Fees</p><p className="text-2xl font-bold">{loading ? '—' : formatCurrency(overview?.total_school_fees || 0)}</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Other Fees</p><p className="text-2xl font-bold">{loading ? '—' : formatCurrency(overview?.total_other_fees || 0)}</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Fee Outstanding</p><p className="text-2xl font-bold text-amber-600">{loading ? '—' : formatCurrency(overview?.total_fee_outstanding || 0)}</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Additional Charges</p><p className="text-2xl font-bold text-rose-600">{loading ? '—' : formatCurrency(overview?.total_one_off_outstanding || 0)}</p></CardContent></Card>
+            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Outstanding</p><p className="text-2xl font-bold text-red-600">{loading ? '—' : formatCurrency(overview?.total_outstanding || 0)}</p></CardContent></Card>
           </div>
 
           <Card>
             <CardHeader>
               <CardTitle>Student Breakdown</CardTitle>
-              <CardDescription>Drill down to student-level balances</CardDescription>
+              <CardDescription>
+                Track fee balances, additional charges, and students who owe both in one place
+              </CardDescription>
             </CardHeader>
             <CardContent>
+              {loading ? (
+                <LoadingState label="Loading fees overview…" />
+              ) : (
+                <>
+              <div className="mb-4 flex flex-wrap gap-2 text-sm">
+                <Badge variant="secondary">
+                  Fees due: {overview?.students_with_fee_outstanding || 0}
+                </Badge>
+                <Badge className="bg-rose-500">
+                  Additional due: {overview?.students_with_one_off_outstanding || 0}
+                </Badge>
+                <Badge variant="destructive">
+                  Both due: {overview?.students_with_both_balances || 0}
+                </Badge>
+              </div>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Student</TableHead>
                     <TableHead>Class</TableHead>
-                    <TableHead>Fees</TableHead>
+                    <TableHead>School Fees</TableHead>
+                    <TableHead>Other Fees</TableHead>
                     <TableHead>Fee outstanding</TableHead>
-                    <TableHead>One-off outstanding</TableHead>
+                    <TableHead>Additional Charges</TableHead>
                     <TableHead>Paid</TableHead>
                     <TableHead>Carry-Forward</TableHead>
                     <TableHead>Outstanding</TableHead>
+                    <TableHead>Due Type</TableHead>
                     <TableHead>Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {(overview?.students || []).map((row) => (
+                  {(overview?.students || []).length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
+                        No students found for these filters
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    (overview?.students || []).map((row) => (
                     <TableRow key={row.student_id}>
                       <TableCell>
                         <div>
@@ -282,15 +344,18 @@ export default function FeesOverviewPage() {
                         </div>
                       </TableCell>
                       <TableCell>{row.class}</TableCell>
-                      <TableCell>{formatCurrency(row.total_fees)}</TableCell>
+                      <TableCell>{formatCurrency(row.school_fee_total || 0)}</TableCell>
+                      <TableCell>{formatCurrency(row.other_fee_total || 0)}</TableCell>
                       <TableCell>{formatCurrency(row.fee_outstanding || 0)}</TableCell>
                       <TableCell className="text-red-700">{formatCurrency(row.one_off_outstanding || 0)}</TableCell>
                       <TableCell className="text-green-700">{formatCurrency(row.total_paid)}</TableCell>
                       <TableCell>{formatCurrency(row.carry_forward_balance)}</TableCell>
                       <TableCell className="text-red-700">{formatCurrency(row.outstanding)}</TableCell>
+                      <TableCell>{dueTypeBadge(row.due_type)}</TableCell>
                       <TableCell>{statusBadge(row.payment_status)}</TableCell>
                     </TableRow>
-                  ))}
+                  ))
+                  )}
                 </TableBody>
               </Table>
               <ListPagination
@@ -301,6 +366,8 @@ export default function FeesOverviewPage() {
                 loading={loading}
                 onPageChange={(nextPage) => void loadOverview(nextPage)}
               />
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

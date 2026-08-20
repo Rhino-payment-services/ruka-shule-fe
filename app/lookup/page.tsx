@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, School, User, GraduationCap, ArrowRight, ArrowLeft, DollarSign, CheckCircle2, Wallet, Loader2 } from 'lucide-react';
-import { studentsAPI, schoolsAPI, feesAPI, paymentsAPI } from '@/lib/api';
+import { Search, School, User, GraduationCap, ArrowRight, ArrowLeft, CheckCircle2, Wallet, Loader2 } from 'lucide-react';
+import { studentsAPI, schoolsAPI, paymentsAPI } from '@/lib/api';
 import type { PublicSchoolLookupResponse } from '@/lib/api';
 import { normalizeUgandaPhoneForStorage } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -34,19 +34,6 @@ interface Student {
   school_code?: string;
 }
 
-interface Fee {
-  id: string;
-  name: string;
-  amount: number;
-  currency: string;
-  fee_type: string;
-  class?: string | null;
-  academic_year: string;
-  term?: string | null;
-  stream?: string | null;
-  due_date?: string | null;
-}
-
 interface FeeForPayment {
   id: string;
   name: string;
@@ -70,6 +57,7 @@ interface OneOffChargeForPayment {
   is_paid: boolean;
   paid_at?: string;
   payment_reference?: string;
+  external_ref?: string;
   payment_method?: string;
 }
 
@@ -79,32 +67,20 @@ interface StudentLookupData {
   available_fees: FeeForPayment[];
   available_one_off_charges?: OneOffChargeForPayment[];
   one_off_charges?: OneOffChargeForPayment[];
-  payment_summary: { total_fees: number; total_paid: number; total_outstanding: number; fee_total?: number; one_off_total?: number; fee_outstanding?: number; one_off_outstanding?: number; school_fees_amount?: number; payment_status: string };
+  payment_summary: {
+    total_fees: number;
+    total_paid: number;
+    total_outstanding: number;
+    fee_total?: number;
+    one_off_total?: number;
+    fee_outstanding?: number;
+    one_off_outstanding?: number;
+    school_fees_amount?: number;
+    school_fee_total?: number;
+    other_fee_total?: number;
+    payment_status: string;
+  };
 }
-
-// All valid class values
-const VALID_CLASSES = [
-  // Kindergarten
-  'Kindergarten',
-  // Primary School
-  'P1', 'P2', 'P3', 'P4', 'P5', 'P6', 'P7',
-  // Secondary/High School
-  'S1', 'S2', 'S3', 'S4', 'S5', 'S6',
-  // Cambridge International System
-  'Cambridge Year 1', 'Cambridge Year 2', 'Cambridge Year 3', 'Cambridge Year 4',
-  'Cambridge Year 5', 'Cambridge Year 6', 'Cambridge Year 7', 'Cambridge Year 8',
-  'Cambridge Year 9', 'Cambridge Year 10', 'Cambridge Year 11', 'Cambridge Year 12',
-  'Cambridge Year 13', 'IGCSE', 'AS Level', 'A Level',
-  // International Baccalaureate (IB)
-  'IB PYP 1', 'IB PYP 2', 'IB PYP 3', 'IB PYP 4', 'IB PYP 5',
-  'IB MYP 1', 'IB MYP 2', 'IB MYP 3', 'IB MYP 4', 'IB MYP 5',
-  'IB DP 1', 'IB DP 2',
-  // University/College
-  'University Year 1', 'University Year 2', 'University Year 3', 'University Year 4', 'University Year 5',
-];
-
-// Valid terms
-const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 
 type Step = 'school' | 'student';
 
@@ -112,12 +88,9 @@ export default function LookupPage() {
   const [step, setStep] = useState<Step>('school');
   const [schoolIdentifier, setSchoolIdentifier] = useState('');
   const [selectedClass, setSelectedClass] = useState('');
-  const [selectedTerm, setSelectedTerm] = useState('');
   const [studentId, setStudentId] = useState('');
   
   const [school, setSchool] = useState<PublicSchoolLookupResponse | null>(null);
-  const [fees, setFees] = useState<Fee[]>([]);
-  const [allFees, setAllFees] = useState<Fee[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   
   const [loading, setLoading] = useState(false);
@@ -141,13 +114,30 @@ export default function LookupPage() {
     }
   }, []);
 
+  const schoolClasses = school?.classes || [];
+
+  const resetToSchoolEntry = () => {
+    setStep('school');
+    setSchool(null);
+    setSelectedClass('');
+    setStudentId('');
+    setStudents([]);
+    setStudentLookupData(null);
+    setSelectedFee(null);
+    setSelectedOneOff(null);
+    setPaymentAmount('');
+    setPaymentPhone('');
+    setPaymentReference(null);
+    setError('');
+  };
+
   const handleSchoolLookup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     setSchool(null);
-    setFees([]);
     setStudents([]);
+    setSelectedClass('');
 
     try {
       if (!schoolIdentifier.trim()) {
@@ -156,15 +146,9 @@ export default function LookupPage() {
         return;
       }
 
-      // Lookup school
       const schoolResponse = await schoolsAPI.lookup(schoolIdentifier.trim());
       const schoolData = schoolResponse.data.data;
       setSchool(schoolData);
-
-      // If class is selected, fetch fees
-      if (selectedClass) {
-        await fetchFees(schoolData.id, selectedClass);
-      }
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: string } } };
       setError(axiosError.response?.data?.error || 'School not found. Please check the school code or merchant ID.');
@@ -173,47 +157,9 @@ export default function LookupPage() {
     }
   };
 
-  const fetchFees = async (schoolId: string, className: string, term?: string) => {
-    try {
-      const feesResponse = await feesAPI.getBySchoolAndClass(schoolId, className);
-      const fetchedFees = feesResponse.data.data || [];
-      setAllFees(fetchedFees);
-      
-      // Filter by term if selected
-      if (term) {
-        const filteredFees = fetchedFees.filter((fee: Fee) => 
-          fee.term === term || !fee.term // Include fees without term (annual fees)
-        );
-        setFees(filteredFees);
-      } else {
-        setFees(fetchedFees);
-      }
-    } catch {
-      setFees([]);
-      setAllFees([]);
-    }
-  };
-
-  const handleClassChange = async (className: string) => {
+  const handleClassChange = (className: string) => {
     setSelectedClass(className);
-    setSelectedTerm(''); // Reset term when class changes
-    if (school && className) {
-      await fetchFees(school.id, className);
-    }
-  };
-
-  const handleTermChange = (term: string) => {
-    setSelectedTerm(term);
-    // Filter fees by term
-    if (term) {
-      const filteredFees = allFees.filter((fee: Fee) => 
-        fee.term === term || !fee.term // Include fees without term (annual fees)
-      );
-      setFees(filteredFees);
-    } else {
-      // Show all fees if no term selected
-      setFees(allFees);
-    }
+    setError('');
   };
 
   const handleProceedToStudentSearch = () => {
@@ -221,8 +167,8 @@ export default function LookupPage() {
       setError('Please lookup the school first');
       return;
     }
-    if (!selectedClass) {
-      setError('Please select a class to view fees');
+    if (schoolClasses.length > 0 && !selectedClass) {
+      setError('Please select a class');
       return;
     }
     setStep('student');
@@ -234,7 +180,6 @@ export default function LookupPage() {
     setError('');
     setLoading(true);
     setStudents([]);
-    // Clear previous payment flow so user can pay for newly searched student
     setStudentLookupData(null);
     setSelectedFee(null);
     setSelectedOneOff(null);
@@ -244,14 +189,14 @@ export default function LookupPage() {
     try {
       if (!studentId.trim()) {
         setError('Please enter a student ID');
-          setLoading(false);
-          return;
-        }
+        setLoading(false);
+        return;
+      }
 
       if (!school) {
         setError('School information is missing. Please go back and lookup the school again.');
-          setLoading(false);
-          return;
+        setLoading(false);
+        return;
       }
 
       const response = await studentsAPI.lookup({ 
@@ -261,7 +206,6 @@ export default function LookupPage() {
 
       const foundStudents = response.data.data || [];
       
-      // Filter by selected class if available
       const filteredStudents = selectedClass 
         ? foundStudents.filter((s: Student) => s.class === selectedClass)
         : foundStudents;
@@ -269,7 +213,14 @@ export default function LookupPage() {
       setStudents(filteredStudents);
       
       if (filteredStudents.length === 0) {
-        setError('No students found. Please check the student ID and try again.');
+        setError(
+          selectedClass
+            ? `No student found with that ID in ${selectedClass}. Check the ID or class.`
+            : 'No students found. Please check the student ID and try again.',
+        );
+      } else {
+        // Load payable fees immediately so the visitor sees all balances.
+        await loadPaymentDetails(filteredStudents[0]);
       }
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: string } } };
@@ -280,17 +231,33 @@ export default function LookupPage() {
   };
 
   const handleBack = () => {
+    setError('');
+    // Payment panel → student search results
+    if (studentLookupData) {
+      setStudentLookupData(null);
+      setSelectedFee(null);
+      setSelectedOneOff(null);
+      setPaymentAmount('');
+      setPaymentReference(null);
+      return;
+    }
+    // Student search → school/class step
     if (step === 'student') {
       setStep('school');
       setStudents([]);
-      setStudentLookupData(null);
+      setStudentId('');
       setSelectedFee(null);
+      setSelectedOneOff(null);
       setPaymentReference(null);
-      setError('');
+      return;
+    }
+    // School found / class select → school code entry
+    if (school) {
+      resetToSchoolEntry();
     }
   };
 
-  const handlePayFees = async (student: Student) => {
+  const loadPaymentDetails = async (student: Student) => {
     if (!school) return;
     try {
       setLookupPaymentLoading(true);
@@ -299,17 +266,22 @@ export default function LookupPage() {
       const data = res.data.data;
       setStudentLookupData(data);
       setPaymentPhone(data?.student?.phone || student.phone || '');
-      // Let the user pick a fee and type the amount — do not auto-fill.
       setSelectedFee(null);
       setSelectedOneOff(null);
       setPaymentAmount('');
-      toast.success('Ready to pay');
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { error?: string } } };
       toast.error(axiosErr.response?.data?.error || 'Failed to load payment details');
       setStudentLookupData(null);
     } finally {
       setLookupPaymentLoading(false);
+    }
+  };
+
+  const handlePayFees = async (student: Student) => {
+    await loadPaymentDetails(student);
+    if (!lookupPaymentLoading) {
+      toast.success('Ready to pay');
     }
   };
 
@@ -330,7 +302,7 @@ export default function LookupPage() {
     }
     if (amount > selectedItem.outstanding || (selectedOneOff && Math.abs(amount - selectedOneOff.outstanding) > 0.01)) {
       toast.error(selectedOneOff
-        ? `One-off charges must be paid in full: UGX ${selectedOneOff.outstanding.toLocaleString()}`
+        ? `Additional charges must be paid in full: UGX ${selectedOneOff.outstanding.toLocaleString()}`
         : `Amount cannot exceed UGX ${selectedFee!.outstanding.toLocaleString()}`);
       return;
     }
@@ -351,7 +323,7 @@ export default function LookupPage() {
         currency: 'UGX',
         payment_method: 'MOBILE_MONEY',
         phone_number: formattedPhone,
-        description: selectedOneOff ? `One-off charge: ${selectedOneOff.name}` : `School fees: ${selectedFee!.name}`,
+        description: selectedOneOff ? `Additional charge: ${selectedOneOff.name}` : `School fees: ${selectedFee!.name}`,
       };
       if (selectedOneOff) {
         paymentPayload.student_one_off_charge_id = selectedOneOff.id;
@@ -407,17 +379,6 @@ export default function LookupPage() {
     Number.isFinite(enteredAmount) &&
     enteredAmount > (selectedOneOff || selectedFee)!.outstanding;
 
-  const resetPaymentFlow = () => {
-    setStudentLookupData(null);
-    setSelectedFee(null);
-    setPaymentAmount('');
-    setPaymentReference(null);
-  };
-
-  const calculateTotalFees = () => {
-    return fees.reduce((total, fee) => total + fee.amount, 0);
-  };
-
   return (
     <div className="min-h-screen bg-[#08163d]">
       <div className="container mx-auto px-4 py-8">
@@ -458,7 +419,7 @@ export default function LookupPage() {
               </CardTitle>
               <CardDescription>
                 {step === 'school' 
-                  ? 'Enter school code or merchant ID, then select a class to view fees'
+                  ? 'Enter school code or merchant ID, then select a class at that school'
                   : 'Enter student ID to find the student'}
               </CardDescription>
             </CardHeader>
@@ -466,6 +427,7 @@ export default function LookupPage() {
               {step === 'school' ? (
                 <>
                   {/* School Lookup Form */}
+                  {!school ? (
                   <form onSubmit={handleSchoolLookup} className="space-y-4">
                     <div className="space-y-2">
                       <Label htmlFor="school_identifier">School Code or Merchant ID</Label>
@@ -503,10 +465,18 @@ export default function LookupPage() {
                       )}
                     </Button>
                   </form>
+                  ) : (
+                    <div className="space-y-4">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        onClick={handleBack}
+                        className="-ml-2"
+                      >
+                        <ArrowLeft className="mr-2 h-4 w-4" />
+                        Back
+                      </Button>
 
-                  {/* School Info */}
-                  {school && (
-                    <div className="mt-6 space-y-4">
                       <Card className="border-2 border-green-200 bg-green-50">
                         <CardContent className="pt-6">
                           <div className="flex items-start gap-3">
@@ -522,109 +492,43 @@ export default function LookupPage() {
                         </CardContent>
                       </Card>
 
-                      {/* Class and Term Selectors */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="class">Select Class</Label>
-                          <Select value={selectedClass} onValueChange={handleClassChange}>
-                            <SelectTrigger id="class" className="w-full">
-                              <SelectValue placeholder="Select a class" />
-                            </SelectTrigger>
-                            <SelectContent className="max-h-75">
-                              {VALID_CLASSES.map((className) => (
-                                <SelectItem key={className} value={className}>
-                                  {className}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground">
-                            Select the class to view applicable fees
-                          </p>
-                        </div>
-                        
-                        <div className="space-y-2">
-                          <Label htmlFor="term">Select Term</Label>
-                          <Select 
-                            value={selectedTerm || 'all_terms'} 
-                            onValueChange={(value) => handleTermChange(value === 'all_terms' ? '' : value)}
-                            disabled={!selectedClass}
-                          >
-                            <SelectTrigger id="term" className="w-full">
-                              <SelectValue placeholder="Select a term" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="all_terms">All Terms</SelectItem>
-                              {TERMS.map((term) => (
-                                <SelectItem key={term} value={term}>
-                                  {term}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <p className="text-xs text-muted-foreground">
-                            Filter fees by term (optional)
-                          </p>
-                        </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="class">Select Class</Label>
+                        {schoolClasses.length === 0 ? (
+                          <Card className="border-2 border-amber-200 bg-amber-50">
+                            <CardContent className="pt-4">
+                              <p className="text-sm text-amber-900">
+                                No classes found for this school yet. Students may not have been added.
+                              </p>
+                            </CardContent>
+                          </Card>
+                        ) : (
+                          <>
+                            <Select value={selectedClass} onValueChange={handleClassChange}>
+                              <SelectTrigger id="class" className="w-full">
+                                <SelectValue placeholder="Select a class" />
+                              </SelectTrigger>
+                              <SelectContent className="max-h-75">
+                                {schoolClasses.map((className) => (
+                                  <SelectItem key={className} value={className}>
+                                    {className}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <p className="text-xs text-muted-foreground">
+                              Only classes that exist at this school are listed
+                            </p>
+                          </>
+                        )}
                       </div>
 
-                      {/* Fees Display */}
-                      {selectedClass && fees.length > 0 && (
-                        <Card className="border-2 border-primary/20">
-                          <CardHeader>
-                            <CardTitle className="text-lg">
-                              Fees for {selectedClass}
-                              {selectedTerm && ` - ${selectedTerm}`}
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <div className="space-y-3">
-                              {fees.map((fee) => (
-                                <div key={fee.id} className="flex items-center justify-between rounded-lg border p-3">
-                                  <div>
-                                    <p className="font-medium">{fee.name}</p>
-                                    <p className="text-sm text-muted-foreground">
-                                      {fee.academic_year}{fee.term ? ` • ${fee.term}` : ' • Annual'}
-                                      {fee.due_date && ` • Due: ${new Date(fee.due_date).toLocaleDateString()}`}
-                                    </p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="font-semibold">
-                                      {fee.currency} {fee.amount.toLocaleString()}
-                                    </p>
-                                    <Badge variant="outline" className="text-xs">
-                                      {fee.fee_type === 'school_fees' ? 'School Fees' : 'Other'}
-                                    </Badge>
-                                  </div>
-                                </div>
-                              ))}
-                              <div className="mt-4 flex items-center justify-between border-t pt-3">
-                                <span className="font-semibold">Total Fees:</span>
-                                <span className="text-lg font-bold text-primary">
-                                  UGX {calculateTotalFees().toLocaleString()}
-                                </span>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      )}
-
-                      {selectedClass && fees.length === 0 && (
-                        <Card className="border-2 border-yellow-200 bg-yellow-50">
-                          <CardContent className="pt-6">
-                            <p className="text-sm text-yellow-800">
-                              No fees found for {selectedClass}. Fees may not be set up yet for this class.
-                            </p>
-                          </CardContent>
-                        </Card>
-                      )}
-
-                      {/* Proceed Button */}
-                      {school && selectedClass && (
+                      {(schoolClasses.length === 0 || selectedClass) && (
                         <Button 
                           onClick={handleProceedToStudentSearch}
                           className="w-full"
                           size="lg"
+                          disabled={schoolClasses.length > 0 && !selectedClass}
                         >
                           Continue to Student Search
                           <ArrowRight className="ml-2 h-4 w-4" />
@@ -640,17 +544,18 @@ export default function LookupPage() {
                     <Button
                       variant="ghost"
                       onClick={handleBack}
-                      className="mb-4"
                     >
                       <ArrowLeft className="mr-2 h-4 w-4" />
-                      Back to School & Class
+                      Back
                     </Button>
-              </div>
+                  </div>
 
                   {school && (
                     <div className="mb-4 rounded-lg bg-muted p-3">
                       <p className="text-sm font-medium">{school.name}</p>
-                      <p className="text-xs text-muted-foreground">Class: {selectedClass}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {selectedClass ? `Class: ${selectedClass}` : 'All classes'}
+                      </p>
                     </div>
                   )}
 
@@ -692,20 +597,46 @@ export default function LookupPage() {
                   {/* Payment form (when visitor proceeds to pay) */}
               {studentLookupData ? (
                 <div className="mt-6 space-y-4 rounded-lg border-2 border-emerald-200 bg-emerald-50/50 p-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="font-semibold text-lg">
                       {studentLookupData.student.full_name} — {studentLookupData.student.class}
                     </h3>
-                    <Button variant="ghost" size="sm" onClick={resetPaymentFlow}>
-                      Change student
+                    <Button variant="ghost" size="sm" onClick={handleBack}>
+                      <ArrowLeft className="mr-1 h-4 w-4" />
+                      Back
                     </Button>
                   </div>
                   <div className="grid gap-2 text-sm">
-                    {studentLookupData.student.school_fees_amount !== undefined && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">School Fees</span>
+                      <span className="font-semibold text-emerald-700">
+                        UGX {(
+                          studentLookupData.payment_summary.school_fee_total ??
+                          studentLookupData.available_fees
+                            ?.filter((f) => f.fee_type === 'school_fees')
+                            .reduce((sum, f) => sum + (f.amount || 0), 0) ??
+                          studentLookupData.student.school_fees_amount ??
+                          0
+                        ).toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Other Fees</span>
+                      <span className="font-semibold">
+                        UGX {(
+                          studentLookupData.payment_summary.other_fee_total ??
+                          studentLookupData.available_fees
+                            ?.filter((f) => f.fee_type === 'other_fees')
+                            .reduce((sum, f) => sum + (f.amount || 0), 0) ??
+                          0
+                        ).toLocaleString()}
+                      </span>
+                    </div>
+                    {studentLookupData.payment_summary.one_off_outstanding !== undefined && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">School Fees</span>
-                        <span className="font-semibold text-emerald-700">
-                          UGX {studentLookupData.student.school_fees_amount.toLocaleString()}
+                        <span className="text-muted-foreground">Additional Charges</span>
+                        <span className="font-semibold text-red-600">
+                          UGX {studentLookupData.payment_summary.one_off_outstanding.toLocaleString()}
                         </span>
                       </div>
                     )}
@@ -715,23 +646,17 @@ export default function LookupPage() {
                         UGX {studentLookupData.payment_summary.total_outstanding.toLocaleString()}
                       </span>
                     </div>
-                    {studentLookupData.payment_summary.one_off_outstanding !== undefined && (
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">One-off outstanding</span>
-                        <span className="font-semibold text-red-600">
-                          UGX {studentLookupData.payment_summary.one_off_outstanding.toLocaleString()}
-                        </span>
-                      </div>
-                    )}
                   </div>
 
-                  {Array.isArray(studentLookupData.available_fees) && studentLookupData.available_fees.length > 0 && (
+                  {(Array.isArray(studentLookupData.available_fees) && studentLookupData.available_fees.length > 0) ||
+                  (Array.isArray(studentLookupData.available_one_off_charges) &&
+                    studentLookupData.available_one_off_charges.some((c) => c.status === 'unpaid' && c.outstanding > 0)) ? (
                     <div className="rounded-lg border border-emerald-200 bg-white p-4">
                       <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                        Fee Breakdown
+                        Student balances
                       </h4>
                       <div className="space-y-2">
-                        {studentLookupData.available_fees.map((fee) => (
+                        {(studentLookupData.available_fees || []).map((fee) => (
                           <div key={`summary-${fee.id}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
                             <div>
                               <p className="font-medium">
@@ -742,13 +667,35 @@ export default function LookupPage() {
                                 Paid: UGX {(fee.total_paid || 0).toLocaleString()} · Outstanding: UGX {(fee.outstanding || 0).toLocaleString()}
                               </p>
                             </div>
-                            <div className="text-right font-semibold">
-                              UGX {(fee.amount || 0).toLocaleString()}
+                            <div className="text-right">
+                              <p className="font-semibold">UGX {(fee.amount || 0).toLocaleString()}</p>
+                              <Badge variant="outline" className="text-xs">
+                                {fee.is_paid ? 'Paid' : 'Due'}
+                              </Badge>
                             </div>
                           </div>
                         ))}
+                        {(studentLookupData.available_one_off_charges || [])
+                          .filter((c) => c.status === 'unpaid' && c.outstanding > 0)
+                          .map((charge) => (
+                            <div key={`ao-${charge.id}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                              <div>
+                                <p className="font-medium">{charge.name} (Additional Charge)</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Outstanding: UGX {(charge.outstanding || 0).toLocaleString()}
+                                </p>
+                              </div>
+                              <div className="text-right font-semibold">
+                                UGX {(charge.amount || 0).toLocaleString()}
+                              </div>
+                            </div>
+                          ))}
                       </div>
                     </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No fee balances found for this student yet.
+                    </p>
                   )}
 
                   <div className="space-y-2">
@@ -806,7 +753,7 @@ export default function LookupPage() {
 
                   {Array.isArray(studentLookupData.available_one_off_charges) && studentLookupData.available_one_off_charges.filter((charge) => charge.status === 'unpaid' && charge.outstanding > 0).length > 0 && (
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">One-off charges (full amount required)</label>
+                      <label className="text-sm font-medium">Additional charges (full amount required)</label>
                       <div className="grid gap-2">
                         {studentLookupData.available_one_off_charges
                           .filter((charge) => charge.status === 'unpaid' && charge.outstanding > 0)
@@ -836,22 +783,6 @@ export default function LookupPage() {
                     </div>
                   )}
 
-                  {Array.isArray(studentLookupData.one_off_charges) && studentLookupData.one_off_charges.some((charge) => ['paid', 'waived', 'pending'].includes(charge.status)) && (
-                    <div className="rounded-lg border bg-white p-4">
-                      <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground">One-off charge history</h4>
-                      <div className="space-y-2">
-                        {studentLookupData.one_off_charges
-                          .filter((charge) => ['paid', 'waived', 'pending'].includes(charge.status))
-                          .map((charge) => (
-                            <div key={`history-${charge.id}`} className="flex items-center justify-between rounded border px-3 py-2 text-sm">
-                              <div><p className="font-medium">{charge.name}</p><p className="text-muted-foreground">{charge.payment_reference || charge.paid_at || 'No payment reference'}</p></div>
-                              <Badge variant={charge.status === 'paid' ? 'default' : 'secondary'}>{charge.status}</Badge>
-                            </div>
-                          ))}
-                      </div>
-                    </div>
-                  )}
-
                   {(selectedFee || selectedOneOff) && (
                     <div className="space-y-3 border-t pt-4">
                       <div className="grid gap-2 sm:grid-cols-2">
@@ -869,7 +800,7 @@ export default function LookupPage() {
                           />
                           <p className="text-xs text-muted-foreground">
                             {selectedOneOff
-                              ? `One-off charge: full amount of UGX ${selectedOneOff.outstanding.toLocaleString()} is required`
+                              ? `Additional charge: full amount of UGX ${selectedOneOff.outstanding.toLocaleString()} is required`
                               : selectedFee?.is_locked
                               ? `Locked fee: full outstanding amount required, UGX ${selectedFee.outstanding.toLocaleString()}`
                               : `Enter the amount to send. Max outstanding: UGX ${(selectedFee?.outstanding ?? 0).toLocaleString()}`}
@@ -947,13 +878,13 @@ export default function LookupPage() {
                                 <School className="h-4 w-4 text-muted-foreground" />
                                 <span><strong>School:</strong> {student.school_name}</span>
                               </div>
-                              {student.school_fees_amount !== undefined && (
-                                <div className="flex items-center gap-2">
-                                  <DollarSign className="h-4 w-4 text-muted-foreground" />
-                                  <span><strong>School Fees:</strong> UGX {student.school_fees_amount.toLocaleString()}</span>
-                                </div>
-                              )}
                             </div>
+                            {lookupPaymentLoading && !studentLookupData && (
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Loading student balances…
+                              </div>
+                            )}
                             <Button
                               onClick={() => handlePayFees(student)}
                               disabled={lookupPaymentLoading}
@@ -964,7 +895,7 @@ export default function LookupPage() {
                               ) : (
                                 <Wallet className="h-4 w-4 mr-2" />
                               )}
-                              Pay Fees
+                              {studentLookupData ? 'Refresh balances' : 'Pay Fees'}
                             </Button>
                           </div>
                         </CardContent>

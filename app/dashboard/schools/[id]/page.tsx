@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useRouter, useParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { LoadingState } from '@/components/LoadingState';
 
 interface SchoolData {
   id: string;
@@ -93,7 +94,7 @@ export default function SchoolDetailsPage() {
       <ProtectedRoute allowedRoles={['admin']}>
         <DashboardLayout>
           <div className="flex items-center justify-center py-24">
-            <div className="text-muted-foreground">Loading school details...</div>
+            <LoadingState label="Loading school details…" />
           </div>
         </DashboardLayout>
       </ProtectedRoute>

@@ -4,8 +4,8 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { studentsAPI } from '@/lib/api';
-import { getApiErrorMessage } from '@/lib/api/errors';
+import { schoolsAPI, studentsAPI } from '@/lib/api';
+import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
 import {
   buildStudentCreatePayload,
   mapExcelRowToStudent,
@@ -215,12 +215,17 @@ export default function ImportStudentsPage() {
           axiosErr.response?.status === 409 && Array.isArray(axiosErr.response.data?.candidates)
             ? axiosErr.response.data.candidates
             : undefined;
+        const schoolContext = await verifySchoolContextIssue(err, () => schoolsAPI.getMySchool());
         if (normalizedMessage.includes('school context required')) {
           importResult.failed += preview.length - (i + 1);
           importResult.blockedReason =
-            'Import blocked: your account is missing school context, so the remaining rows were not attempted. Please log out and back in, or relink this school admin account before retrying.';
+            schoolContext === 'missing_school_link'
+              ? 'Import blocked: this account is not linked to a school yet, so the remaining rows were not attempted. Complete school setup or relink the school admin account before retrying.'
+              : 'Import blocked: school context could not be verified for this account, so the remaining rows were not attempted. Refresh your session and retry. If the problem persists, contact support.';
           message =
-            'Import blocked by missing school context on this account. This is not a row-specific problem.';
+            schoolContext === 'missing_school_link'
+              ? 'Import blocked by missing school context on this account. This is not a row-specific problem.'
+              : 'Import blocked because school context could not be verified for this account. This is not a row-specific problem.';
           importResult.errors.push({
             row: i + 2,
             error: message,

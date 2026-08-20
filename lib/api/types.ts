@@ -93,6 +93,7 @@ export interface PublicSchool {
   merchant_rejection_reason?: string;
   merchant_status_note?: string;
   status?: string;
+  classes?: string[];
   wallet?: WalletInfo;
   created_at?: string;
 }
@@ -230,6 +231,8 @@ export interface PaymentSummary {
   class: string;
   total_fees: number;
   fee_total?: number;
+  school_fee_total?: number;
+  other_fee_total?: number;
   one_off_total?: number;
   total_paid: number;
   outstanding: number;
@@ -259,6 +262,8 @@ export interface TermPaymentStatus {
 
 export interface StudentPaymentSummary {
   school_fees_amount?: number;
+  school_fee_total?: number;
+  other_fee_total?: number;
   total_fees: number;
   fee_total?: number;
   one_off_total?: number;
@@ -297,6 +302,7 @@ export interface OneOffChargeForPayment {
   paid_at?: string;
   payment_id?: string;
   payment_reference?: string;
+  external_ref?: string;
   payment_method?: string;
 }
 
