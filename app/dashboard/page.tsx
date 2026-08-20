@@ -21,6 +21,7 @@ interface SchoolData {
   merchant_code?: string;
   merchant_status?: string;
   business_wallet_id?: string;
+  wallet_status?: 'ok' | 'pending_merchant' | 'rdbs_unreachable' | 'missing';
   wallet?: {
     id: string;
     currency: string;
@@ -515,13 +516,34 @@ function SchoolAdminDashboard({
                   <Wallet className="h-6 w-6 text-yellow-600" />
                   <div className="flex-1">
                     <p className="text-sm font-medium text-yellow-900">Wallet Balance</p>
-                    {schoolData.merchant_code ? (
+                    {schoolData.wallet_status === 'rdbs_unreachable' ? (
+                      <>
+                        <p className="text-lg text-yellow-700">Payment system temporarily unreachable</p>
+                        <p className="text-xs text-yellow-600 mt-1">
+                          Your school is still linked. Wallet balance will show again when the payment
+                          system is back.
+                        </p>
+                      </>
+                    ) : schoolData.wallet_status === 'pending_merchant' ||
+                      schoolData.merchant_status === 'pending_onboarding' ? (
+                      <>
+                        <p className="text-lg text-yellow-700">Wallet not ready yet</p>
+                        <p className="text-xs text-yellow-600 mt-1">
+                          Merchant onboarding in progress. Wallet will be available after approval.
+                        </p>
+                      </>
+                    ) : schoolData.wallet_status === 'missing' ? (
+                      <>
+                        <p className="text-lg text-yellow-700">Wallet not found for this school</p>
+                        <p className="text-xs text-yellow-600 mt-1">
+                          Contact support if this persists — do not recreate the school unless asked.
+                        </p>
+                      </>
+                    ) : schoolData.merchant_code ? (
                       <>
                         <p className="text-lg text-yellow-700">Wallet information unavailable</p>
                         <p className="text-xs text-yellow-600 mt-1">
-                          {schoolData.merchant_status === 'pending_onboarding'
-                            ? 'Merchant onboarding in progress. Wallet will be available after approval.'
-                            : 'Unable to fetch wallet balance from payment system. Please contact support if this persists.'}
+                          Unable to load wallet details right now. Please try again shortly.
                         </p>
                       </>
                     ) : (

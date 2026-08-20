@@ -49,6 +49,13 @@ export interface WalletInfo {
   is_active: boolean;
 }
 
+/** Distinguishes RDBS outage vs pending merchant vs truly missing wallet. */
+export type WalletStatus =
+  | 'ok'
+  | 'pending_merchant'
+  | 'rdbs_unreachable'
+  | 'missing';
+
 export interface School {
   id: string;
   name: string;
@@ -76,6 +83,7 @@ export interface School {
   settlement_min_threshold?: number;
   last_settlement_at?: string;
   wallet?: WalletInfo;
+  wallet_status?: WalletStatus;
   created_at: string;
 }
 
@@ -95,6 +103,7 @@ export interface PublicSchool {
   status?: string;
   classes?: string[];
   wallet?: WalletInfo;
+  wallet_status?: WalletStatus;
   created_at?: string;
 }
 
