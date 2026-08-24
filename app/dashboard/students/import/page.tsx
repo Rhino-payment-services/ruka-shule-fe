@@ -350,6 +350,7 @@ export default function ImportStudentsPage() {
                           <th className="p-2">First Name</th>
                           <th className="p-2">Last Name</th>
                           <th className="p-2">Class</th>
+                          <th className="p-2">Gender</th>
                           <th className="p-2">Stream</th>
                           <th className="p-2">Fees</th>
                           <th className="p-2">Scholarship Type</th>
@@ -384,6 +385,13 @@ export default function ImportStudentsPage() {
                                 value={s.class}
                                 onChange={(e) => updatePreviewRow(idx, 'class', e.target.value)}
                                 className={draftErrors[idx] ? 'border-amber-500' : undefined}
+                              />
+                            </td>
+                            <td className="p-2">
+                              <Input
+                                value={s.gender || ''}
+                                onChange={(e) => updatePreviewRow(idx, 'gender', e.target.value)}
+                                placeholder="Male/Female"
                               />
                             </td>
                             <td className="p-2">

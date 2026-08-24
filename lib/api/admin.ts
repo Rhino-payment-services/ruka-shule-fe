@@ -19,6 +19,8 @@ export const adminAPI = {
     page = 1,
     pageSize = 10,
     search?: string,
+    className?: string,
+    gender?: string,
   ) =>
     api.get<ApiPaginatedResponse<Student>>('/admin/students/deleted', {
       params: {
@@ -26,6 +28,8 @@ export const adminAPI = {
         page,
         page_size: pageSize,
         ...(search?.trim() ? { search: search.trim() } : {}),
+        ...(className?.trim() ? { class: className.trim() } : {}),
+        ...(gender?.trim() ? { gender: gender.trim() } : {}),
       },
     }),
 

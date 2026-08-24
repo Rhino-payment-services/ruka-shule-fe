@@ -46,6 +46,7 @@ interface Fee {
   term?: string | null;
   class?: string | null;
   stream?: string | null;
+  gender?: string | null;
   due_date?: string | null;
   status: 'active' | 'inactive';
   is_locked: boolean;
@@ -87,6 +88,7 @@ export default function FeesPage() {
     term: '',
     class: '',
     stream: '',
+    gender: '',
     due_date: '',
   });
 
@@ -159,6 +161,7 @@ export default function FeesPage() {
       if (formData.term) payload.term = formData.term;
       if (formData.class) payload.class = formData.class;
       if (formData.stream) payload.stream = formData.stream;
+      if (formData.gender) payload.gender = formData.gender;
       if (formData.due_date) payload.due_date = dueDateToApi(formData.due_date);
 
       await feesAPI.create(payload);
@@ -208,6 +211,7 @@ export default function FeesPage() {
       term: fee.term || '',
       class: fee.class || '',
       stream: fee.stream || '',
+      gender: fee.gender || '',
       due_date: fee.due_date ? fee.due_date.split('T')[0] : '',
     });
     setIsEditDialogOpen(true);
@@ -236,6 +240,9 @@ export default function FeesPage() {
       }
       if (formData.stream !== (editingFee.stream || '')) {
         payload.stream = formData.stream || null;
+      }
+      if (formData.gender !== (editingFee.gender || '')) {
+        payload.gender = formData.gender || null;
       }
       if (formData.due_date !== (editingFee.due_date?.split('T')[0] || '')) {
         payload.due_date = formData.due_date ? dueDateToApi(formData.due_date) : null;
@@ -319,6 +326,7 @@ export default function FeesPage() {
       term: '',
       class: '',
       stream: '',
+      gender: '',
       due_date: '',
     });
   };
@@ -406,6 +414,7 @@ export default function FeesPage() {
                       <TableHead>Term</TableHead>
                       <TableHead>Class</TableHead>
                       <TableHead>Stream</TableHead>
+                      <TableHead>Gender</TableHead>
                       <TableHead>Due Date</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Lock</TableHead>
@@ -426,6 +435,7 @@ export default function FeesPage() {
                         <TableCell>{fee.term || <span className="text-muted-foreground">All Terms</span>}</TableCell>
                         <TableCell>{fee.class || <span className="text-muted-foreground">All</span>}</TableCell>
                         <TableCell>{fee.stream || <span className="text-muted-foreground">All</span>}</TableCell>
+                        <TableCell>{fee.gender || <span className="text-muted-foreground">All</span>}</TableCell>
                         <TableCell>
                           {fee.due_date ? new Date(fee.due_date).toLocaleDateString() : 'N/A'}
                         </TableCell>
@@ -623,6 +633,25 @@ export default function FeesPage() {
                   </div>
                 </div>
                 <div className="grid gap-2">
+                  <Label htmlFor="gender">Gender (Optional)</Label>
+                  <Select
+                    value={formData.gender || 'all_genders'}
+                    onValueChange={(value) => setFormData({ ...formData, gender: value === 'all_genders' ? '' : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All genders" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all_genders">All genders</SelectItem>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Limit this fee to boys, girls, or both
+                  </p>
+                </div>
+                <div className="grid gap-2">
                   <Label htmlFor="due_date">Due Date (Optional)</Label>
                   <DatePicker
                     id="due_date"
@@ -760,6 +789,22 @@ export default function FeesPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-gender">Gender (Optional)</Label>
+                  <Select
+                    value={formData.gender || 'all_genders'}
+                    onValueChange={(value) => setFormData({ ...formData, gender: value === 'all_genders' ? '' : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All genders" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all_genders">All genders</SelectItem>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-due_date">Due Date (Optional)</Label>

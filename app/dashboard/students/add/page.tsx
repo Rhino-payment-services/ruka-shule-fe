@@ -22,6 +22,7 @@ import {
 import { toast } from 'sonner';
 
 const STREAMS = ['General', 'Arts', 'Sciences', 'Business', 'Technical'];
+const GENDERS = ['Male', 'Female'];
 
 const SCHOLARSHIP_TYPES = ['Full', 'Partial', 'Merit', 'Need-based', 'Sports'];
 
@@ -33,6 +34,7 @@ export default function AddStudentPage() {
     last_name: '',
     phone: '',
     class: '',
+    gender: '',
     stream: '',
     school_fees_amount: '',
     scholarship_type: '',
@@ -77,6 +79,9 @@ export default function AddStudentPage() {
       // Stream/Subject combination (mainly for secondary school)
       if (formData.stream) {
         payload.stream = formData.stream;
+      }
+      if (formData.gender) {
+        payload.gender = formData.gender;
       }
 
       // School fees amount
@@ -313,6 +318,27 @@ export default function AddStudentPage() {
                 <div className="border-t pt-6">
                   <h3 className="text-lg font-semibold mb-4">Academic Details (Optional)</h3>
                   <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="gender">Gender</Label>
+                      <Select
+                        value={formData.gender || 'none'}
+                        onValueChange={(value) =>
+                          handleChange({ target: { name: 'gender', value: value === 'none' ? '' : value } })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select gender (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Not specified</SelectItem>
+                          {GENDERS.map((gender) => (
+                            <SelectItem key={gender} value={gender}>
+                              {gender}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <div className="space-y-2">
                       <Label htmlFor="stream">Stream/Subject Combination</Label>
                       <Select

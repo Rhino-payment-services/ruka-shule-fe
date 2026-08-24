@@ -11,6 +11,7 @@ export const studentsAPI = {
     schoolId?: string,
     search?: string,
     className?: string,
+    gender?: string,
   ) =>
     api.get<ApiPaginatedResponse<Student>>('/students', {
       params: {
@@ -19,6 +20,7 @@ export const studentsAPI = {
         ...(schoolId ? { school_id: schoolId } : {}),
         ...(search?.trim() ? { search: search.trim() } : {}),
         ...(className?.trim() ? { class: className.trim() } : {}),
+        ...(gender?.trim() ? { gender: gender.trim() } : {}),
       },
     }),
 

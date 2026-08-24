@@ -84,6 +84,7 @@ export interface School {
   last_settlement_at?: string;
   wallet?: WalletInfo;
   wallet_status?: WalletStatus;
+  classes?: string[];
   created_at: string;
 }
 
@@ -111,6 +112,8 @@ export interface PublicSchool {
 // Students
 // ---------------------------------------------------------------------------
 
+export type StudentGender = 'Male' | 'Female';
+
 export interface Student {
   id: string;
   registration_id: string;
@@ -118,6 +121,7 @@ export interface Student {
   last_name: string;
   phone: string;
   class: string;
+  gender?: string;
   stream?: string;
   status: string;
   school_id: string;
@@ -144,6 +148,7 @@ export interface StudentPaymentInfo {
   first_name: string;
   last_name: string;
   class: string;
+  gender?: string;
   stream?: string;
   phone: string;
   school_id: string;
@@ -170,6 +175,7 @@ export interface Fee {
   term?: string | null | undefined;
   class?: string | null | undefined;
   stream?: string | null | undefined;
+  gender?: string | null | undefined;
   due_date?: string | null | undefined;
   status: 'active' | 'inactive';
   is_locked: boolean;
@@ -189,6 +195,7 @@ export interface FeeForPayment {
   term?: string;
   class?: string;
   stream?: string;
+  gender?: string;
   due_date?: string;
   total_paid: number;
   outstanding: number;

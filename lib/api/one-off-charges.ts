@@ -8,6 +8,7 @@ export interface OneOffCharge {
   amount: number;
   currency: string;
   class?: string | null;
+  gender?: string | null;
   status: string;
   school_id: string;
   created_at: string;
@@ -20,6 +21,7 @@ export interface StudentOneOffCharge {
   student_id: string;
   student_name?: string;
   registration_id?: string;
+  gender?: string;
   amount: number;
   currency: string;
   status: string;
