@@ -34,6 +34,7 @@ interface OneOffCharge {
   amount: number;
   currency: string;
   class?: string | null;
+  gender?: string | null;
   status: string;
   created_at?: string;
   updated_at?: string;
@@ -45,6 +46,7 @@ interface StudentOption {
   first_name: string;
   last_name: string;
   class: string;
+  gender?: string;
 }
 
 interface StudentCharge {
@@ -57,6 +59,7 @@ interface StudentCharge {
   status: string;
   registration_id?: string;
   student_name?: string;
+  gender?: string;
   paid_at?: string;
   payment_reference?: string;
   payment_note?: string;
@@ -74,6 +77,7 @@ export default function OneOffChargesPage() {
   const [chargePagination, setChargePagination] = useState(normalizePaginationMeta({}));
   const [studentSearch, setStudentSearch] = useState('');
   const debouncedStudentSearch = useDebouncedValue(studentSearch);
+  const [assignGenderFilter, setAssignGenderFilter] = useState('');
   const [assignPage, setAssignPage] = useState(1);
   const [assignPagination, setAssignPagination] = useState(normalizePaginationMeta({}));
   const [assignLoading, setAssignLoading] = useState(false);
@@ -101,6 +105,7 @@ export default function OneOffChargesPage() {
     amount: '',
     currency: 'UGX',
     class: '',
+    gender: '',
     status: 'active',
   });
 
@@ -142,6 +147,7 @@ export default function OneOffChargesPage() {
           undefined,
           debouncedStudentSearch || undefined,
           selectedCharge?.class || undefined,
+          assignGenderFilter || selectedCharge?.gender || undefined,
         );
         setStudents(response.data.data || []);
         setAssignPagination(normalizePaginationMeta(response.data, assignPage));
@@ -152,11 +158,11 @@ export default function OneOffChargesPage() {
       }
     };
     void loadAssignStudents();
-  }, [assignOpen, assignPage, debouncedStudentSearch, selectedCharge?.class]);
+  }, [assignOpen, assignPage, debouncedStudentSearch, selectedCharge?.class, selectedCharge?.gender, assignGenderFilter]);
 
   useEffect(() => {
     setAssignPage(1);
-  }, [debouncedStudentSearch, selectedCharge?.class]);
+  }, [debouncedStudentSearch, selectedCharge?.class, selectedCharge?.gender, assignGenderFilter]);
 
   useEffect(() => {
     const loadHistoryStudents = async () => {
@@ -182,6 +188,7 @@ export default function OneOffChargesPage() {
       amount: '',
       currency: 'UGX',
       class: '',
+      gender: '',
       status: 'active',
     });
   };
@@ -195,6 +202,7 @@ export default function OneOffChargesPage() {
         amount: parseFloat(form.amount),
         currency: 'UGX',
         class: form.class || undefined,
+        gender: form.gender || undefined,
       });
       toast.success('Additional charge created');
       setCreateOpen(false);
@@ -215,6 +223,7 @@ export default function OneOffChargesPage() {
       amount: String(charge.amount),
       currency: 'UGX',
       class: charge.class || '',
+      gender: charge.gender || '',
       status: charge.status || 'active',
     });
     setEditOpen(true);
@@ -230,6 +239,7 @@ export default function OneOffChargesPage() {
         amount: parseFloat(form.amount),
         currency: 'UGX',
         class: form.class || null,
+        gender: form.gender || null,
         status: form.status,
       });
       toast.success('Charge updated');
@@ -247,6 +257,7 @@ export default function OneOffChargesPage() {
   const openAssign = async (charge: OneOffCharge) => {
     setSelectedCharge(charge);
     setSelectedStudentIds([]);
+    setAssignGenderFilter(charge.gender || '');
     setStudentSearch('');
     setAssignPage(1);
     setAssignOpen(true);
@@ -435,6 +446,7 @@ export default function OneOffChargesPage() {
                         <TableHead>Name</TableHead>
                         <TableHead>Amount</TableHead>
                         <TableHead>Class</TableHead>
+                        <TableHead>Gender</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Updated</TableHead>
                         <TableHead>Actions</TableHead>
@@ -448,6 +460,7 @@ export default function OneOffChargesPage() {
                             {formatUgx(charge.amount)}
                           </TableCell>
                           <TableCell>{charge.class || 'All'}</TableCell>
+                          <TableCell>{charge.gender || 'All'}</TableCell>
                           <TableCell>
                             <Badge>{charge.status}</Badge>
                           </TableCell>
@@ -614,6 +627,18 @@ export default function OneOffChargesPage() {
                 />
               </div>
               <div className="space-y-2">
+                <Label>Gender (optional)</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={form.gender}
+                  onChange={(e) => setForm({ ...form, gender: e.target.value })}
+                >
+                  <option value="">All genders</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
+              <div className="space-y-2">
                 <Label>Description</Label>
                 <Input
                   value={form.description}
@@ -656,6 +681,18 @@ export default function OneOffChargesPage() {
                   value={form.class}
                   onChange={(e) => setForm({ ...form, class: e.target.value })}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Gender (optional)</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={form.gender}
+                  onChange={(e) => setForm({ ...form, gender: e.target.value })}
+                >
+                  <option value="">All genders</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
               </div>
               <div className="space-y-2">
                 <Label>Description</Label>
@@ -704,11 +741,30 @@ export default function OneOffChargesPage() {
                   Showing students in class <span className="font-medium">{selectedCharge.class}</span>
                 </p>
               ) : null}
+              {selectedCharge?.gender ? (
+                <p className="text-sm text-muted-foreground">
+                  Charge targets <span className="font-medium">{selectedCharge.gender}</span> students
+                </p>
+              ) : null}
               <Input
                 value={studentSearch}
                 onChange={(e) => setStudentSearch(e.target.value)}
                 placeholder="Search by name, registration ID, or phone..."
               />
+              <div className="space-y-2">
+                <Label>Filter by gender</Label>
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={assignGenderFilter || 'all'}
+                  onChange={(e) =>
+                    setAssignGenderFilter(e.target.value === 'all' ? '' : e.target.value)
+                  }
+                >
+                  <option value="all">All genders</option>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+              </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
                   type="button"
@@ -772,7 +828,8 @@ export default function OneOffChargesPage() {
                           }}
                         />
                         <span>
-                          {s.registration_id} — {s.first_name} {s.last_name} ({s.class})
+                          {s.registration_id} — {s.first_name} {s.last_name} ({s.class}
+                          {s.gender ? `, ${s.gender}` : ''})
                           {alreadyAssigned ? (
                             <span className="ml-2 text-xs">(already assigned)</span>
                           ) : null}

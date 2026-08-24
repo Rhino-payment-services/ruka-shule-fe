@@ -5,7 +5,6 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -20,11 +19,28 @@ import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
 
 type OverviewStatus = 'all' | 'paid' | 'partial' | 'unpaid';
 
+/** First academic year shipped with this product; options grow with the calendar. */
+const ACADEMIC_YEAR_START = 2026;
+
+function currentAcademicYear(): number {
+  return Math.max(new Date().getFullYear(), ACADEMIC_YEAR_START);
+}
+
+function academicYearOptionsFrom(startYear: number): string[] {
+  const end = currentAcademicYear();
+  const years: string[] = [];
+  for (let year = end; year >= startYear; year -= 1) {
+    years.push(String(year));
+  }
+  return years;
+}
+
 interface OverviewStudentRow {
   student_id: string;
   registration_id: string;
   student_name: string;
   class: string;
+  gender?: string;
   total_fees: number;
   school_fee_total?: number;
   other_fee_total?: number;
@@ -66,12 +82,19 @@ export default function FeesOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
   const [schoolChecked, setSchoolChecked] = useState(false);
-  const [academicYear, setAcademicYear] = useState(new Date().getFullYear().toString());
+  const [academicYear, setAcademicYear] = useState(() => String(currentAcademicYear()));
   const [term, setTerm] = useState<string>('all');
   const [className, setClassName] = useState<string>('');
+  const [gender, setGender] = useState<string>('');
   const [status, setStatus] = useState<OverviewStatus>('all');
   const [page, setPage] = useState(1);
   const [overview, setOverview] = useState<OverviewResponse | null>(null);
+  const [schoolClasses, setSchoolClasses] = useState<string[]>([]);
+
+  const academicYearOptions = useMemo(
+    () => academicYearOptionsFrom(ACADEMIC_YEAR_START),
+    [],
+  );
 
   const loadOverview = async (nextPage = page) => {
     if (schoolSetupRequired) return;
@@ -81,6 +104,7 @@ export default function FeesOverviewPage() {
         academic_year: academicYear || undefined,
         term: term === 'all' ? undefined : term,
         class: className || undefined,
+        gender: gender || undefined,
         status,
         page: nextPage,
         page_size: DEFAULT_PAGE_SIZE,
@@ -109,7 +133,11 @@ export default function FeesOverviewPage() {
   useEffect(() => {
     const checkSchool = async () => {
       try {
-        await schoolsAPI.getMySchool();
+        const res = await schoolsAPI.getMySchool();
+        const classes = res.data.data?.classes;
+        if (Array.isArray(classes)) {
+          setSchoolClasses([...classes].sort());
+        }
       } catch (error: any) {
         if (error?.response?.status === 404) {
           setSchoolSetupRequired(true);
@@ -141,6 +169,7 @@ export default function FeesOverviewPage() {
       'Registration ID',
       'Student Name',
       'Class',
+      'Gender',
       'School Fees',
       'Other Fees',
       'Fee Outstanding',
@@ -155,6 +184,7 @@ export default function FeesOverviewPage() {
       row.registration_id,
       row.student_name,
       row.class,
+      row.gender || '',
       (row.school_fee_total || 0).toFixed(2),
       (row.other_fee_total || 0).toFixed(2),
       (row.fee_outstanding || 0).toFixed(2),
@@ -195,9 +225,10 @@ export default function FeesOverviewPage() {
   };
 
   const classes = useMemo(() => {
+    if (schoolClasses.length > 0) return schoolClasses;
     if (!overview) return [];
     return Array.from(new Set(overview.students.map((s) => s.class))).sort();
-  }, [overview]);
+  }, [overview, schoolClasses]);
 
   const applyFilters = async () => {
     setPage(1);
@@ -241,10 +272,20 @@ export default function FeesOverviewPage() {
           <Card>
             <CardHeader>
               <CardTitle>Filters</CardTitle>
-              <CardDescription>Filter by academic year, term, class, and payment status</CardDescription>
+              <CardDescription>Filter by academic year, term, class, gender, and payment status</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-5">
-              <Input placeholder="Academic year" value={academicYear} onChange={(e) => setAcademicYear(e.target.value)} />
+            <CardContent className="grid gap-3 md:grid-cols-6">
+              <Select
+                value={academicYear}
+                onValueChange={setAcademicYear}
+              >
+                <SelectTrigger><SelectValue placeholder="Academic year" /></SelectTrigger>
+                <SelectContent>
+                  {academicYearOptions.map((year) => (
+                    <SelectItem key={year} value={year}>{year}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Select value={term} onValueChange={setTerm}>
                 <SelectTrigger><SelectValue placeholder="Term" /></SelectTrigger>
                 <SelectContent>
@@ -261,6 +302,14 @@ export default function FeesOverviewPage() {
                   {classes.map((cls) => (
                     <SelectItem key={cls} value={cls}>{cls}</SelectItem>
                   ))}
+                </SelectContent>
+              </Select>
+              <Select value={gender || 'all'} onValueChange={(v) => setGender(v === 'all' ? '' : v)}>
+                <SelectTrigger><SelectValue placeholder="Gender" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All genders</SelectItem>
+                  <SelectItem value="Male">Male</SelectItem>
+                  <SelectItem value="Female">Female</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={status} onValueChange={(v) => setStatus(v as OverviewStatus)}>
@@ -316,6 +365,7 @@ export default function FeesOverviewPage() {
                   <TableRow>
                     <TableHead>Student</TableHead>
                     <TableHead>Class</TableHead>
+                    <TableHead>Gender</TableHead>
                     <TableHead>School Fees</TableHead>
                     <TableHead>Other Fees</TableHead>
                     <TableHead>Fee outstanding</TableHead>
@@ -332,6 +382,7 @@ export default function FeesOverviewPage() {
                     <TableRow>
                       <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
                         No students found for these filters
+                        {academicYear ? ` (no fee activity for ${academicYear})` : ''}
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -344,6 +395,7 @@ export default function FeesOverviewPage() {
                         </div>
                       </TableCell>
                       <TableCell>{row.class}</TableCell>
+                      <TableCell>{row.gender || '—'}</TableCell>
                       <TableCell>{formatCurrency(row.school_fee_total || 0)}</TableCell>
                       <TableCell>{formatCurrency(row.other_fee_total || 0)}</TableCell>
                       <TableCell>{formatCurrency(row.fee_outstanding || 0)}</TableCell>

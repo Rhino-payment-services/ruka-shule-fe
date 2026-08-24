@@ -64,6 +64,7 @@ interface Student {
   total_fees_due?: number;
   fee_source?: string;
   class: string;
+  gender?: string;
   stream?: string;
   scholarship_type?: string;
   scholarship_percentage?: number;
@@ -83,6 +84,7 @@ interface SchoolOption {
 }
 
 const STREAMS = ['General', 'Arts', 'Sciences', 'Business', 'Technical'];
+const GENDERS = ['Male', 'Female'];
 const SCHOLARSHIP_TYPES = ['Full', 'Partial', 'Merit', 'Need-based', 'Sports'];
 
 export default function StudentsPage() {
@@ -98,6 +100,7 @@ export default function StudentsPage() {
   const [showDeleted, setShowDeleted] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebouncedValue(searchTerm);
+  const [genderFilter, setGenderFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalStudents, setTotalStudents] = useState(0);
@@ -128,6 +131,7 @@ export default function StudentsPage() {
     last_name: '',
     phone: '',
     class: '',
+    gender: '',
     stream: '',
     school_fees_amount: '',
     scholarship_type: '',
@@ -176,11 +180,11 @@ export default function StudentsPage() {
       return;
     }
     fetchStudents();
-  }, [currentPage, schoolChecked, schoolSetupRequired, selectedSchoolId, isPlatformAdmin, debouncedSearch, showDeleted]);
+  }, [currentPage, schoolChecked, schoolSetupRequired, selectedSchoolId, isPlatformAdmin, debouncedSearch, genderFilter, showDeleted]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, showDeleted]);
+  }, [debouncedSearch, genderFilter, showDeleted]);
 
   const fetchStudents = async () => {
     if (schoolSetupRequired) return;
@@ -194,12 +198,16 @@ export default function StudentsPage() {
               currentPage,
               DEFAULT_PAGE_SIZE,
               debouncedSearch || undefined,
+              undefined,
+              genderFilter || undefined,
             )
           : await studentsAPI.list(
               currentPage,
               DEFAULT_PAGE_SIZE,
               isPlatformAdmin ? selectedSchoolId : undefined,
               debouncedSearch || undefined,
+              undefined,
+              genderFilter || undefined,
             );
       const body = response.data;
       const studentsData: Student[] = Array.isArray(body?.data)
@@ -238,6 +246,7 @@ export default function StudentsPage() {
         'Last Name': 'Doe',
         'Phone': '+256700123456',
         'Class': 'Nursery',
+        'Gender': 'Male',
         'Stream': 'General',
         'School Fees Amount': '350000',
         'Scholarship Type': '',
@@ -251,6 +260,7 @@ export default function StudentsPage() {
         'Last Name': 'Smith',
         'Phone': '+256700123458',
         'Class': 'KG1',
+        'Gender': 'Female',
         'Stream': 'General',
         'School Fees Amount': '250000',
         'Scholarship Type': 'Merit',
@@ -264,6 +274,7 @@ export default function StudentsPage() {
         'Last Name': 'Johnson',
         'Phone': '+256700123460',
         'Class': 'S6',
+        'Gender': 'Male',
         'Stream': 'Arts',
         'School Fees Amount': '500000',
         'Scholarship Type': '',
@@ -281,6 +292,7 @@ export default function StudentsPage() {
       { wch: 12 },
       { wch: 15 },
       { wch: 10 },
+      { wch: 10 },
       { wch: 12 },
       { wch: 18 },
       { wch: 16 },
@@ -297,6 +309,7 @@ export default function StudentsPage() {
       ['Last Name', 'Yes', 'Student last name'],
       ['Phone', 'Yes*', 'Student phone, or leave blank if Parent Phone is provided'],
       ['Class', 'Yes', 'Free text (e.g. P1, KG1, Nursery)'],
+      ['Gender', 'No', 'Male or Female'],
       ['Stream', 'No', 'General, Arts, Sciences, Business, Technical'],
       ['School Fees Amount', 'No', 'Per-student override. Leave blank to use class fee'],
       ['Scholarship Type', 'No', 'Full, Partial, Merit, Need-based, Sports'],
@@ -443,6 +456,7 @@ export default function StudentsPage() {
         last_name: data.last_name || '',
         phone: data.phone || '',
         class: data.class || '',
+        gender: data.gender || '',
         stream: data.stream || '',
         school_fees_amount:
           data.school_fees_amount !== undefined && data.school_fees_amount !== null
@@ -470,6 +484,9 @@ export default function StudentsPage() {
     if (editForm.last_name !== editStudent.last_name) payload.last_name = editForm.last_name;
     if ((editForm.phone || '') !== (editStudent.phone || '')) payload.phone = editForm.phone || '';
     if (editForm.class !== editStudent.class) payload.class = editForm.class;
+    if ((editForm.gender || '') !== (editStudent.gender || '')) {
+      payload.gender = editForm.gender || '';
+    }
     if ((editForm.stream || '') !== (editStudent.stream || '')) {
       payload.stream = editForm.stream || '';
     }
@@ -521,6 +538,7 @@ export default function StudentsPage() {
         : '';
     return (
       editForm.class !== editStudent.class ||
+      (editForm.gender || '') !== (editStudent.gender || '') ||
       (editForm.stream || '') !== (editStudent.stream || '') ||
       editForm.school_fees_amount !== originalFees ||
       (editForm.scholarship_type || '') !== (editStudent.scholarship_type || '') ||
@@ -744,6 +762,22 @@ export default function StudentsPage() {
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Select
+                    value={genderFilter || 'all'}
+                    onValueChange={(value) => setGenderFilter(value === 'all' ? '' : value)}
+                  >
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="All genders" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All genders</SelectItem>
+                      {GENDERS.map((gender) => (
+                        <SelectItem key={gender} value={gender}>
+                          {gender}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
@@ -798,6 +832,7 @@ export default function StudentsPage() {
                           <TableHead>Name</TableHead>
                           <TableHead>School Fees</TableHead>
                           <TableHead>Class</TableHead>
+                          <TableHead>Gender</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Updated</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
@@ -837,6 +872,13 @@ export default function StudentsPage() {
                             </TableCell>
                             <TableCell>
                               <Badge variant="outline">{student.class}</Badge>
+                            </TableCell>
+                            <TableCell>
+                              {student.gender ? (
+                                <Badge variant="outline">{student.gender}</Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               <Badge
@@ -1000,6 +1042,14 @@ export default function StudentsPage() {
                         <Badge variant="outline">{selectedStudent.class}</Badge>
                       </div>
                     </div>
+                    {selectedStudent.gender && (
+                      <div>
+                        <label className="text-sm font-medium text-muted-foreground">Gender</label>
+                        <div className="mt-1">
+                          <Badge variant="outline">{selectedStudent.gender}</Badge>
+                        </div>
+                      </div>
+                    )}
                     {selectedStudent.stream && (
                       <div>
                         <label className="text-sm font-medium text-muted-foreground">Stream</label>
@@ -1671,6 +1721,27 @@ export default function StudentsPage() {
                     value={editForm.class}
                     onChange={(e) => setEditForm({ ...editForm, class: e.target.value })}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Gender</Label>
+                  <Select
+                    value={editForm.gender || 'none'}
+                    onValueChange={(value) =>
+                      setEditForm({ ...editForm, gender: value === 'none' ? '' : value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Gender" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not specified</SelectItem>
+                      {GENDERS.map((gender) => (
+                        <SelectItem key={gender} value={gender}>
+                          {gender}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>Stream</Label>

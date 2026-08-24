@@ -29,6 +29,7 @@ interface Student {
   phone: string;
   school_fees_amount?: number;
   class: string;
+  gender?: string | null;
   stream?: string | null;
   school_name?: string;
   school_code?: string;
@@ -62,7 +63,7 @@ interface OneOffChargeForPayment {
 }
 
 interface StudentLookupData {
-  student: { id: string; registration_id: string; full_name: string; class: string; phone: string; school_fees_amount?: number };
+  student: { id: string; registration_id: string; full_name: string; class: string; gender?: string; phone: string; school_fees_amount?: number };
   school: { code: string; name: string };
   available_fees: FeeForPayment[];
   available_one_off_charges?: OneOffChargeForPayment[];
@@ -600,6 +601,9 @@ export default function LookupPage() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h3 className="font-semibold text-lg">
                       {studentLookupData.student.full_name} — {studentLookupData.student.class}
+                      {studentLookupData.student.gender
+                        ? ` (${studentLookupData.student.gender})`
+                        : ''}
                     </h3>
                     <Button variant="ghost" size="sm" onClick={handleBack}>
                       <ArrowLeft className="mr-1 h-4 w-4" />
@@ -868,6 +872,12 @@ export default function LookupPage() {
                                 <School className="h-4 w-4 text-muted-foreground" />
                                 <span><strong>Class:</strong> {student.class}</span>
                               </div>
+                              {student.gender && (
+                                <div className="flex items-center gap-2">
+                                  <School className="h-4 w-4 text-muted-foreground" />
+                                  <span><strong>Gender:</strong> {student.gender}</span>
+                                </div>
+                              )}
                               {student.stream && (
                                 <div className="flex items-center gap-2">
                                   <School className="h-4 w-4 text-muted-foreground" />

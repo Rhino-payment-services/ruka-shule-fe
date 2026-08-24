@@ -2,6 +2,9 @@
 
 export const MAX_CLASS_LENGTH = 50;
 
+export const STUDENT_GENDERS = ['Male', 'Female'] as const;
+export type StudentGenderValue = (typeof STUDENT_GENDERS)[number];
+
 export function normalizeClassLabel(value: string): string {
   return value.trim();
 }
@@ -11,11 +14,25 @@ export function isValidClassLabel(value: string): boolean {
   return normalized.length > 0 && normalized.length <= MAX_CLASS_LENGTH;
 }
 
+export function normalizeStudentGender(value?: string | null): StudentGenderValue | undefined {
+  const raw = (value || '').trim().toLowerCase();
+  if (!raw) return undefined;
+  if (raw === 'male' || raw === 'm' || raw === 'boy' || raw === 'boys') return 'Male';
+  if (raw === 'female' || raw === 'f' || raw === 'girl' || raw === 'girls') return 'Female';
+  return undefined;
+}
+
+export function isValidStudentGender(value?: string | null): boolean {
+  if (!value || !String(value).trim()) return true;
+  return normalizeStudentGender(value) !== undefined;
+}
+
 export type StudentImportRow = {
   first_name: string;
   last_name: string;
   phone: string;
   class: string;
+  gender?: string;
   stream?: string;
   school_fees_amount?: number;
   scholarship_type?: string;
@@ -40,6 +57,7 @@ export function normalizeStudentImportRow(student: StudentImportRow): StudentImp
     last_name: student.last_name.trim(),
     phone: student.phone.trim(),
     class: normalizeClassLabel(student.class),
+    gender: normalizeStudentGender(student.gender),
     stream: student.stream?.trim() || undefined,
     school_fees_amount: parsedFees,
     scholarship_type: student.scholarship_type?.trim() || undefined,
@@ -61,6 +79,9 @@ export function validateStudentImportRow(student: StudentImportRow): string[] {
   }
   if (!normalized.phone && !normalized.parent_phone) {
     errors.push('Student phone or parent phone is required');
+  }
+  if (student.gender && String(student.gender).trim() && !normalized.gender) {
+    errors.push('Gender must be Male or Female');
   }
   if (
     normalized.school_fees_amount !== undefined &&
@@ -85,6 +106,7 @@ export function mapExcelRowToStudent(row: Record<string, unknown>): StudentImpor
   const lastName = String(row['Last Name'] || row['last_name'] || row['LastName'] || row['LAST_NAME'] || '').trim();
   const phone = String(row['Phone'] || row['phone'] || row['PHONE'] || '').trim();
   const className = String(row['Class'] || row['class'] || row['CLASS'] || '').trim();
+  const gender = row['Gender'] || row['gender'] || row['GENDER'] || row['Sex'] || row['sex'];
   const stream = row['Stream'] || row['stream'] || row['STREAM'] || row['Subject Combination'];
   const scholarshipType = row['Scholarship Type'] || row['scholarship_type'] || row['ScholarshipType'];
   const scholarshipPercentage =
@@ -112,6 +134,7 @@ export function mapExcelRowToStudent(row: Record<string, unknown>): StudentImpor
     last_name: lastName,
     phone,
     class: className,
+    gender: gender ? String(gender).trim() : undefined,
     stream: stream ? String(stream).trim() : undefined,
     school_fees_amount: parsedFees !== undefined && !Number.isNaN(parsedFees) ? parsedFees : undefined,
     scholarship_type: scholarshipType ? String(scholarshipType).trim() : undefined,
@@ -133,6 +156,7 @@ export function buildStudentCreatePayload(student: StudentImportRow): Record<str
     class: normalized.class,
   };
   if (normalized.phone) payload.phone = normalized.phone;
+  if (normalized.gender) payload.gender = normalized.gender;
   if (normalized.stream) payload.stream = normalized.stream;
   if (normalized.school_fees_amount !== undefined) payload.school_fees_amount = normalized.school_fees_amount;
   if (normalized.scholarship_type) payload.scholarship_type = normalized.scholarship_type;

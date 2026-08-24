@@ -63,6 +63,7 @@ interface StudentLookupData {
     registration_id: string;
     full_name: string;
     class: string;
+    gender?: string;
     phone: string;
     school_fees_amount?: number;
   };
@@ -539,6 +540,9 @@ export default function PaymentsPage() {
                     <div>
                       <h3 className="font-semibold">
                         {studentLookupData.student.full_name} — {studentLookupData.student.class}
+                        {studentLookupData.student.gender
+                          ? ` (${studentLookupData.student.gender})`
+                          : ''}
                       </h3>
                       {studentLookupData.school?.name && (
                         <p className="text-xs text-muted-foreground mt-0.5">{studentLookupData.school.name}</p>
