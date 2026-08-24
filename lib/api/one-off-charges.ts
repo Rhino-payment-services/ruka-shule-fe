@@ -61,4 +61,6 @@ export const oneOffChargesAPI = {
       `/one-off-charges/assignments/${assignmentId}/mark-paid`,
       data || {}
     ),
+  delete: (id: string) =>
+    api.delete<ApiSuccessResponse<{ deleted: boolean }>>(`/one-off-charges/${id}`),
 };

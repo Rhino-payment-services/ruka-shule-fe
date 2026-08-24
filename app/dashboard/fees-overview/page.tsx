@@ -224,15 +224,21 @@ export default function FeesOverviewPage() {
     return <Badge variant="outline">Clear</Badge>;
   };
 
-  const classes = useMemo(() => {
-    if (schoolClasses.length > 0) return schoolClasses;
-    if (!overview) return [];
-    return Array.from(new Set(overview.students.map((s) => s.class))).sort();
-  }, [overview, schoolClasses]);
+  const classes = schoolClasses;
 
   const applyFilters = async () => {
     setPage(1);
     await loadOverview(1);
+  };
+
+  const handleClassChange = (value: string) => {
+    setClassName(value === 'all' ? '' : value);
+    setPage(1);
+  };
+
+  const handleGenderChange = (value: string) => {
+    setGender(value === 'all' ? '' : value);
+    setPage(1);
   };
 
   return (
@@ -295,7 +301,7 @@ export default function FeesOverviewPage() {
                   <SelectItem value="Term 3">Term 3</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={className || 'all'} onValueChange={(v) => setClassName(v === 'all' ? '' : v)}>
+              <Select value={className || 'all'} onValueChange={handleClassChange}>
                 <SelectTrigger><SelectValue placeholder="Class" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All classes</SelectItem>
@@ -304,7 +310,7 @@ export default function FeesOverviewPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <Select value={gender || 'all'} onValueChange={(v) => setGender(v === 'all' ? '' : v)}>
+              <Select value={gender || 'all'} onValueChange={handleGenderChange}>
                 <SelectTrigger><SelectValue placeholder="Gender" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All genders</SelectItem>

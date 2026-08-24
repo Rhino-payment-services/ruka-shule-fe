@@ -101,6 +101,8 @@ export default function StudentsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearch = useDebouncedValue(searchTerm);
   const [genderFilter, setGenderFilter] = useState('');
+  const [classFilter, setClassFilter] = useState('');
+  const [schoolClasses, setSchoolClasses] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalStudents, setTotalStudents] = useState(0);
@@ -154,7 +156,11 @@ export default function StudentsPage() {
           setSchools(res.data.data || []);
           setSchoolSetupRequired(false);
         } else {
-          await schoolsAPI.getMySchool();
+          const res = await schoolsAPI.getMySchool();
+          const classes = res.data.data?.classes;
+          if (Array.isArray(classes)) {
+            setSchoolClasses([...classes].sort());
+          }
         }
       } catch (error: any) {
         if (!isPlatformAdmin && error?.response?.status === 404) {
@@ -170,6 +176,28 @@ export default function StudentsPage() {
   }, [user, isPlatformAdmin]);
 
   useEffect(() => {
+    if (!isPlatformAdmin || !selectedSchoolId) {
+      if (!isPlatformAdmin) return;
+      setSchoolClasses([]);
+      return;
+    }
+    const loadSchoolClasses = async () => {
+      try {
+        const res = await schoolsAPI.get(selectedSchoolId);
+        const classes = res.data.data?.classes;
+        if (Array.isArray(classes)) {
+          setSchoolClasses([...classes].sort());
+        } else {
+          setSchoolClasses([]);
+        }
+      } catch {
+        setSchoolClasses([]);
+      }
+    };
+    void loadSchoolClasses();
+  }, [isPlatformAdmin, selectedSchoolId]);
+
+  useEffect(() => {
     if (!schoolChecked || schoolSetupRequired) {
       setLoading(false);
       return;
@@ -180,11 +208,11 @@ export default function StudentsPage() {
       return;
     }
     fetchStudents();
-  }, [currentPage, schoolChecked, schoolSetupRequired, selectedSchoolId, isPlatformAdmin, debouncedSearch, genderFilter, showDeleted]);
+  }, [currentPage, schoolChecked, schoolSetupRequired, selectedSchoolId, isPlatformAdmin, debouncedSearch, genderFilter, classFilter, showDeleted]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, genderFilter, showDeleted]);
+  }, [debouncedSearch, genderFilter, classFilter, showDeleted]);
 
   const fetchStudents = async () => {
     if (schoolSetupRequired) return;
@@ -198,7 +226,7 @@ export default function StudentsPage() {
               currentPage,
               DEFAULT_PAGE_SIZE,
               debouncedSearch || undefined,
-              undefined,
+              classFilter || undefined,
               genderFilter || undefined,
             )
           : await studentsAPI.list(
@@ -206,7 +234,7 @@ export default function StudentsPage() {
               DEFAULT_PAGE_SIZE,
               isPlatformAdmin ? selectedSchoolId : undefined,
               debouncedSearch || undefined,
-              undefined,
+              classFilter || undefined,
               genderFilter || undefined,
             );
       const body = response.data;
@@ -762,6 +790,22 @@ export default function StudentsPage() {
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
+                  <Select
+                    value={classFilter || 'all'}
+                    onValueChange={(value) => setClassFilter(value === 'all' ? '' : value)}
+                  >
+                    <SelectTrigger className="w-40">
+                      <SelectValue placeholder="All classes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All classes</SelectItem>
+                      {schoolClasses.map((cls) => (
+                        <SelectItem key={cls} value={cls}>
+                          {cls}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Select
                     value={genderFilter || 'all'}
                     onValueChange={(value) => setGenderFilter(value === 'all' ? '' : value)}

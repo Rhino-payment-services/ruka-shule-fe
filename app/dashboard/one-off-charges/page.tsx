@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { Plus, Pencil, List } from 'lucide-react';
+import { Plus, Pencil, List, Trash2 } from 'lucide-react';
 import { ListPagination } from '@/components/ListPagination';
 import { ButtonSpinner, LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
@@ -94,6 +94,7 @@ export default function OneOffChargesPage() {
   const [historyStudentId, setHistoryStudentId] = useState('');
   const [assignConfirmOpen, setAssignConfirmOpen] = useState(false);
   const [waiveConfirmId, setWaiveConfirmId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [markPaidAssignment, setMarkPaidAssignment] = useState<StudentCharge | null>(null);
   const [markPaidNote, setMarkPaidNote] = useState('');
   const [markPaidReference, setMarkPaidReference] = useState('');
@@ -251,6 +252,20 @@ export default function OneOffChargesPage() {
       toast.error(getApiErrorMessage(err, 'Failed to update charge'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      setActionLoading(true);
+      await oneOffChargesAPI.delete(id);
+      toast.success('Additional charge deleted');
+      setDeleteConfirmId(null);
+      load();
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Failed to delete charge'));
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -487,6 +502,15 @@ export default function OneOffChargesPage() {
                               <Button size="sm" variant="outline" onClick={() => openAssignments(charge)}>
                                 <List className="mr-1 h-3 w-3" />
                                 Assignments
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => setDeleteConfirmId(charge.id)}
+                              >
+                                <Trash2 className="mr-1 h-3 w-3" />
+                                Delete
                               </Button>
                             </div>
                           </TableCell>
@@ -974,6 +998,20 @@ export default function OneOffChargesPage() {
           loading={actionLoading}
           onConfirm={async () => {
             if (waiveConfirmId) await handleWaive(waiveConfirmId);
+          }}
+        />
+
+        <ConfirmDialog
+          open={!!deleteConfirmId}
+          onOpenChange={(open) => {
+            if (!open) setDeleteConfirmId(null);
+          }}
+          description="Are you sure you want to delete this additional charge? This cannot be undone. Deletion is blocked if students are assigned or have paid."
+          confirmLabel="Delete"
+          variant="destructive"
+          loading={actionLoading}
+          onConfirm={async () => {
+            if (deleteConfirmId) await handleDelete(deleteConfirmId);
           }}
         />
       </DashboardLayout>
