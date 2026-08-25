@@ -58,12 +58,25 @@ interface Fee {
 const STREAMS = ['General', 'Arts', 'Sciences', 'Business', 'Technical'];
 const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 const BILLING_FREQUENCIES = ['daily', 'weekly', 'monthly', 'termly', 'annual', 'one_off'] as const;
+const MONTHS_PER_TERM = 3;
+const MONTHS_PER_YEAR = 12;
+
+function monthlyAccrualHint(amount: string, billingFrequency: string, term: string) {
+  if (billingFrequency !== 'monthly') return null;
+  const parsed = parseFloat(amount);
+  if (Number.isNaN(parsed) || parsed <= 0) return null;
+  const months = term.trim() ? MONTHS_PER_TERM : MONTHS_PER_YEAR;
+  const total = parsed * months;
+  const period = term.trim() ? `${term.trim()} (3 months)` : 'full year (12 months)';
+  return `Total due for ${period}: UGX ${total.toLocaleString()} (${months} × UGX ${parsed.toLocaleString()})`;
+}
 
 export default function FeesPage() {
   const [fees, setFees] = useState<Fee[]>([]);
   const [loading, setLoading] = useState(true);
   const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
   const [schoolChecked, setSchoolChecked] = useState(false);
+  const [schoolClasses, setSchoolClasses] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -95,7 +108,13 @@ export default function FeesPage() {
   useEffect(() => {
     const checkSchool = async () => {
       try {
-        await schoolsAPI.getMySchool();
+        const res = await schoolsAPI.getMySchool();
+        const classes = res.data.data?.classes;
+        if (Array.isArray(classes)) {
+          setSchoolClasses([...classes].sort());
+        } else {
+          setSchoolClasses([]);
+        }
       } catch (error: any) {
         if (error?.response?.status === 404) {
           setSchoolSetupRequired(true);
@@ -237,6 +256,9 @@ export default function FeesPage() {
       }
       if (formData.term !== (editingFee.term || '')) {
         payload.term = formData.term || null;
+      }
+      if (formData.class !== (editingFee.class || '')) {
+        payload.class = formData.class || null;
       }
       if (formData.stream !== (editingFee.stream || '')) {
         payload.stream = formData.stream || null;
@@ -519,7 +541,9 @@ export default function FeesPage() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="amount">Amount (UGX) *</Label>
+                  <Label htmlFor="amount">
+                    {formData.billing_frequency === 'monthly' ? 'Amount per month (UGX) *' : 'Amount (UGX) *'}
+                  </Label>
                   <Input
                     id="amount"
                     type="number"
@@ -527,6 +551,11 @@ export default function FeesPage() {
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   />
+                  {monthlyAccrualHint(formData.amount, formData.billing_frequency, formData.term) && (
+                    <p className="text-xs text-muted-foreground">
+                      {monthlyAccrualHint(formData.amount, formData.billing_frequency, formData.term)}
+                    </p>
+                  )}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="fee_type">Fee Type *</Label>
@@ -599,14 +628,29 @@ export default function FeesPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="class">Class (Optional)</Label>
-                    <Input
-                      id="class"
-                      placeholder="e.g., P1, KG1, Nursery"
-                      value={formData.class}
-                      onChange={(e) => setFormData({ ...formData, class: e.target.value })}
-                    />
+                    <Select
+                      value={formData.class || 'all_classes'}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, class: value === 'all_classes' ? '' : value })
+                      }
+                    >
+                      <SelectTrigger id="class">
+                        <SelectValue placeholder="All classes" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all_classes">All classes</SelectItem>
+                        {schoolClasses.map((cls) => (
+                          <SelectItem key={cls} value={cls}>
+                            {cls}
+                          </SelectItem>
+                        ))}
+                        {formData.class && !schoolClasses.includes(formData.class) ? (
+                          <SelectItem value={formData.class}>{formData.class}</SelectItem>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
                     <p className="text-xs text-muted-foreground">
-                      Leave empty if fee applies to all classes
+                      Leave as All if fee applies to every class
                     </p>
                   </div>
                   <div className="grid gap-2">
@@ -707,13 +751,20 @@ export default function FeesPage() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="edit-amount">Amount (UGX) *</Label>
+                  <Label htmlFor="edit-amount">
+                    {formData.billing_frequency === 'monthly' ? 'Amount per month (UGX) *' : 'Amount (UGX) *'}
+                  </Label>
                   <Input
                     id="edit-amount"
                     type="number"
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   />
+                  {monthlyAccrualHint(formData.amount, formData.billing_frequency, formData.term) && (
+                    <p className="text-xs text-muted-foreground">
+                      {monthlyAccrualHint(formData.amount, formData.billing_frequency, formData.term)}
+                    </p>
+                  )}
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-fee_type">Fee Type *</Label>
@@ -771,24 +822,48 @@ export default function FeesPage() {
                     </Select>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="edit-stream">Stream (Optional)</Label>
+                    <Label htmlFor="edit-class">Class (Optional)</Label>
                     <Select
-                      value={formData.stream || 'all_streams'}
-                      onValueChange={(value) => setFormData({ ...formData, stream: value === 'all_streams' ? '' : value })}
+                      value={formData.class || 'all_classes'}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, class: value === 'all_classes' ? '' : value })
+                      }
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Streams" />
+                      <SelectTrigger id="edit-class">
+                        <SelectValue placeholder="All classes" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all_streams">All Streams</SelectItem>
-                        {STREAMS.map((stream) => (
-                          <SelectItem key={stream} value={stream}>
-                            {stream}
+                        <SelectItem value="all_classes">All classes</SelectItem>
+                        {schoolClasses.map((cls) => (
+                          <SelectItem key={cls} value={cls}>
+                            {cls}
                           </SelectItem>
                         ))}
+                        {formData.class && !schoolClasses.includes(formData.class) ? (
+                          <SelectItem value={formData.class}>{formData.class}</SelectItem>
+                        ) : null}
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-stream">Stream (Optional)</Label>
+                  <Select
+                    value={formData.stream || 'all_streams'}
+                    onValueChange={(value) => setFormData({ ...formData, stream: value === 'all_streams' ? '' : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Streams" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all_streams">All Streams</SelectItem>
+                      {STREAMS.map((stream) => (
+                        <SelectItem key={stream} value={stream}>
+                          {stream}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-gender">Gender (Optional)</Label>

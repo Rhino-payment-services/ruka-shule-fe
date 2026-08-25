@@ -20,7 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { Plus, Pencil, List } from 'lucide-react';
+import { Plus, Pencil, List, Trash2 } from 'lucide-react';
 import { ListPagination } from '@/components/ListPagination';
 import { ButtonSpinner, LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
@@ -78,11 +78,14 @@ export default function OneOffChargesPage() {
   const [studentSearch, setStudentSearch] = useState('');
   const debouncedStudentSearch = useDebouncedValue(studentSearch);
   const [assignGenderFilter, setAssignGenderFilter] = useState('');
+  const [assignClassFilter, setAssignClassFilter] = useState('');
+  const [schoolClasses, setSchoolClasses] = useState<string[]>([]);
   const [assignPage, setAssignPage] = useState(1);
   const [assignPagination, setAssignPagination] = useState(normalizePaginationMeta({}));
   const [assignLoading, setAssignLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState('');
   const debouncedHistorySearch = useDebouncedValue(historySearch);
+  const [historyClassFilter, setHistoryClassFilter] = useState('');
   const [historyStudents, setHistoryStudents] = useState<StudentOption[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -94,6 +97,7 @@ export default function OneOffChargesPage() {
   const [historyStudentId, setHistoryStudentId] = useState('');
   const [assignConfirmOpen, setAssignConfirmOpen] = useState(false);
   const [waiveConfirmId, setWaiveConfirmId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [markPaidAssignment, setMarkPaidAssignment] = useState<StudentCharge | null>(null);
   const [markPaidNote, setMarkPaidNote] = useState('');
   const [markPaidReference, setMarkPaidReference] = useState('');
@@ -112,7 +116,13 @@ export default function OneOffChargesPage() {
   const load = async () => {
     try {
       setLoading(true);
-      await schoolsAPI.getMySchool();
+      const schoolRes = await schoolsAPI.getMySchool();
+      const classes = schoolRes.data.data?.classes;
+      if (Array.isArray(classes)) {
+        setSchoolClasses([...classes].sort());
+      } else {
+        setSchoolClasses([]);
+      }
       const chargesRes = await oneOffChargesAPI.list(page, DEFAULT_PAGE_SIZE);
       setCharges(chargesRes.data.data || []);
       setChargePagination(normalizePaginationMeta(chargesRes.data, page));
@@ -146,7 +156,7 @@ export default function OneOffChargesPage() {
           DEFAULT_PAGE_SIZE,
           undefined,
           debouncedStudentSearch || undefined,
-          selectedCharge?.class || undefined,
+          assignClassFilter || selectedCharge?.class || undefined,
           assignGenderFilter || selectedCharge?.gender || undefined,
         );
         setStudents(response.data.data || []);
@@ -158,20 +168,25 @@ export default function OneOffChargesPage() {
       }
     };
     void loadAssignStudents();
-  }, [assignOpen, assignPage, debouncedStudentSearch, selectedCharge?.class, selectedCharge?.gender, assignGenderFilter]);
+  }, [assignOpen, assignPage, debouncedStudentSearch, selectedCharge?.class, selectedCharge?.gender, assignClassFilter, assignGenderFilter]);
 
   useEffect(() => {
     setAssignPage(1);
-  }, [debouncedStudentSearch, selectedCharge?.class, selectedCharge?.gender, assignGenderFilter]);
+  }, [debouncedStudentSearch, selectedCharge?.class, selectedCharge?.gender, assignClassFilter, assignGenderFilter]);
 
   useEffect(() => {
+    if (!historyClassFilter) {
+      setHistoryStudents([]);
+      return;
+    }
     const loadHistoryStudents = async () => {
       try {
         const response = await studentsAPI.list(
           1,
-          DEFAULT_PAGE_SIZE,
+          100,
           undefined,
           debouncedHistorySearch || undefined,
+          historyClassFilter,
         );
         setHistoryStudents(response.data.data || []);
       } catch (err: unknown) {
@@ -179,7 +194,15 @@ export default function OneOffChargesPage() {
       }
     };
     void loadHistoryStudents();
-  }, [debouncedHistorySearch]);
+  }, [debouncedHistorySearch, historyClassFilter]);
+
+  const handleHistoryClassChange = (value: string) => {
+    const nextClass = value === 'all' ? '' : value;
+    setHistoryClassFilter(nextClass);
+    setHistoryStudentId('');
+    setHistory([]);
+    setHistorySearch('');
+  };
 
   const resetForm = () => {
     setForm({
@@ -254,9 +277,24 @@ export default function OneOffChargesPage() {
     }
   };
 
+  const handleDelete = async (id: string) => {
+    try {
+      setActionLoading(true);
+      await oneOffChargesAPI.delete(id);
+      toast.success('Additional charge deleted');
+      setDeleteConfirmId(null);
+      load();
+    } catch (err: unknown) {
+      toast.error(getApiErrorMessage(err, 'Failed to delete charge'));
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const openAssign = async (charge: OneOffCharge) => {
     setSelectedCharge(charge);
     setSelectedStudentIds([]);
+    setAssignClassFilter(charge.class || '');
     setAssignGenderFilter(charge.gender || '');
     setStudentSearch('');
     setAssignPage(1);
@@ -488,6 +526,15 @@ export default function OneOffChargesPage() {
                                 <List className="mr-1 h-3 w-3" />
                                 Assignments
                               </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => setDeleteConfirmId(charge.id)}
+                              >
+                                <Trash2 className="mr-1 h-3 w-3" />
+                                Delete
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -515,25 +562,56 @@ export default function OneOffChargesPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="max-w-md space-y-2">
-                <Label>Student</Label>
-                <Input
-                  value={historySearch}
-                  onChange={(e) => setHistorySearch(e.target.value)}
-                  placeholder="Search students..."
-                />
-                <select
-                  className="w-full rounded border px-3 py-2 text-sm"
-                  value={historyStudentId}
-                  onChange={(e) => loadHistory(e.target.value)}
-                >
-                  <option value="">Select student</option>
-                  {historyStudents.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.registration_id} — {s.first_name} {s.last_name} ({s.class})
-                    </option>
-                  ))}
-                </select>
+              <div className="max-w-md space-y-3">
+                <div className="space-y-2">
+                  <Label>Class</Label>
+                  <select
+                    className="w-full rounded border px-3 py-2 text-sm"
+                    value={historyClassFilter || 'all'}
+                    onChange={(e) => handleHistoryClassChange(e.target.value)}
+                  >
+                    <option value="all">Select a class</option>
+                    {schoolClasses.map((cls) => (
+                      <option key={cls} value={cls}>
+                        {cls}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {historyClassFilter ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Student</Label>
+                      <Input
+                        value={historySearch}
+                        onChange={(e) => setHistorySearch(e.target.value)}
+                        placeholder="Search students in this class..."
+                      />
+                      <select
+                        className="w-full rounded border px-3 py-2 text-sm"
+                        value={historyStudentId}
+                        onChange={(e) => loadHistory(e.target.value)}
+                      >
+                        <option value="">Select student</option>
+                        {historyStudents.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.registration_id} — {s.first_name} {s.last_name}
+                          </option>
+                        ))}
+                      </select>
+                      {historyStudents.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          No students found in {historyClassFilter}
+                          {historySearch ? ' for this search' : ''}.
+                        </p>
+                      ) : null}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Choose a class first to narrow the student list.
+                  </p>
+                )}
               </div>
               {history.length > 0 && (
                 <Table>
@@ -620,11 +698,23 @@ export default function OneOffChargesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Class (optional)</Label>
-                <Input
-                  value={form.class}
-                  onChange={(e) => setForm({ ...form, class: e.target.value })}
-                  placeholder="KG1"
-                />
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={form.class || 'all'}
+                  onChange={(e) =>
+                    setForm({ ...form, class: e.target.value === 'all' ? '' : e.target.value })
+                  }
+                >
+                  <option value="all">All classes</option>
+                  {schoolClasses.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                  {form.class && !schoolClasses.includes(form.class) ? (
+                    <option value={form.class}>{form.class}</option>
+                  ) : null}
+                </select>
               </div>
               <div className="space-y-2">
                 <Label>Gender (optional)</Label>
@@ -677,10 +767,23 @@ export default function OneOffChargesPage() {
               </div>
               <div className="space-y-2">
                 <Label>Class (optional)</Label>
-                <Input
-                  value={form.class}
-                  onChange={(e) => setForm({ ...form, class: e.target.value })}
-                />
+                <select
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={form.class || 'all'}
+                  onChange={(e) =>
+                    setForm({ ...form, class: e.target.value === 'all' ? '' : e.target.value })
+                  }
+                >
+                  <option value="all">All classes</option>
+                  {schoolClasses.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                  {form.class && !schoolClasses.includes(form.class) ? (
+                    <option value={form.class}>{form.class}</option>
+                  ) : null}
+                </select>
               </div>
               <div className="space-y-2">
                 <Label>Gender (optional)</Label>
@@ -727,6 +830,8 @@ export default function OneOffChargesPage() {
             setAssignOpen(open);
             if (!open) {
               setStudentSearch('');
+              setAssignClassFilter('');
+              setAssignGenderFilter('');
               setAssignPage(1);
             }
           }}
@@ -738,7 +843,7 @@ export default function OneOffChargesPage() {
             <div className="space-y-3">
               {selectedCharge?.class ? (
                 <p className="text-sm text-muted-foreground">
-                  Showing students in class <span className="font-medium">{selectedCharge.class}</span>
+                  Charge is scoped to class <span className="font-medium">{selectedCharge.class}</span>
                 </p>
               ) : null}
               {selectedCharge?.gender ? (
@@ -751,19 +856,43 @@ export default function OneOffChargesPage() {
                 onChange={(e) => setStudentSearch(e.target.value)}
                 placeholder="Search by name, registration ID, or phone..."
               />
-              <div className="space-y-2">
-                <Label>Filter by gender</Label>
-                <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                  value={assignGenderFilter || 'all'}
-                  onChange={(e) =>
-                    setAssignGenderFilter(e.target.value === 'all' ? '' : e.target.value)
-                  }
-                >
-                  <option value="all">All genders</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                </select>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Filter by class</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={assignClassFilter || 'all'}
+                    disabled={!!selectedCharge?.class}
+                    onChange={(e) =>
+                      setAssignClassFilter(e.target.value === 'all' ? '' : e.target.value)
+                    }
+                  >
+                    <option value="all">All classes</option>
+                    {schoolClasses.map((cls) => (
+                      <option key={cls} value={cls}>
+                        {cls}
+                      </option>
+                    ))}
+                    {assignClassFilter && !schoolClasses.includes(assignClassFilter) ? (
+                      <option value={assignClassFilter}>{assignClassFilter}</option>
+                    ) : null}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Filter by gender</Label>
+                  <select
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={assignGenderFilter || 'all'}
+                    disabled={!!selectedCharge?.gender}
+                    onChange={(e) =>
+                      setAssignGenderFilter(e.target.value === 'all' ? '' : e.target.value)
+                    }
+                  >
+                    <option value="all">All genders</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <Button
@@ -974,6 +1103,20 @@ export default function OneOffChargesPage() {
           loading={actionLoading}
           onConfirm={async () => {
             if (waiveConfirmId) await handleWaive(waiveConfirmId);
+          }}
+        />
+
+        <ConfirmDialog
+          open={!!deleteConfirmId}
+          onOpenChange={(open) => {
+            if (!open) setDeleteConfirmId(null);
+          }}
+          description="Are you sure you want to delete this additional charge? This cannot be undone. Deletion is blocked if students are assigned or have paid."
+          confirmLabel="Delete"
+          variant="destructive"
+          loading={actionLoading}
+          onConfirm={async () => {
+            if (deleteConfirmId) await handleDelete(deleteConfirmId);
           }}
         />
       </DashboardLayout>
