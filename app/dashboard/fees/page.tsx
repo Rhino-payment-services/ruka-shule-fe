@@ -76,6 +76,7 @@ export default function FeesPage() {
   const [loading, setLoading] = useState(true);
   const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
   const [schoolChecked, setSchoolChecked] = useState(false);
+  const [schoolClasses, setSchoolClasses] = useState<string[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -107,7 +108,13 @@ export default function FeesPage() {
   useEffect(() => {
     const checkSchool = async () => {
       try {
-        await schoolsAPI.getMySchool();
+        const res = await schoolsAPI.getMySchool();
+        const classes = res.data.data?.classes;
+        if (Array.isArray(classes)) {
+          setSchoolClasses([...classes].sort());
+        } else {
+          setSchoolClasses([]);
+        }
       } catch (error: any) {
         if (error?.response?.status === 404) {
           setSchoolSetupRequired(true);
@@ -249,6 +256,9 @@ export default function FeesPage() {
       }
       if (formData.term !== (editingFee.term || '')) {
         payload.term = formData.term || null;
+      }
+      if (formData.class !== (editingFee.class || '')) {
+        payload.class = formData.class || null;
       }
       if (formData.stream !== (editingFee.stream || '')) {
         payload.stream = formData.stream || null;
@@ -618,14 +628,29 @@ export default function FeesPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label htmlFor="class">Class (Optional)</Label>
-                    <Input
-                      id="class"
-                      placeholder="e.g., P1, KG1, Nursery"
-                      value={formData.class}
-                      onChange={(e) => setFormData({ ...formData, class: e.target.value })}
-                    />
+                    <Select
+                      value={formData.class || 'all_classes'}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, class: value === 'all_classes' ? '' : value })
+                      }
+                    >
+                      <SelectTrigger id="class">
+                        <SelectValue placeholder="All classes" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all_classes">All classes</SelectItem>
+                        {schoolClasses.map((cls) => (
+                          <SelectItem key={cls} value={cls}>
+                            {cls}
+                          </SelectItem>
+                        ))}
+                        {formData.class && !schoolClasses.includes(formData.class) ? (
+                          <SelectItem value={formData.class}>{formData.class}</SelectItem>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
                     <p className="text-xs text-muted-foreground">
-                      Leave empty if fee applies to all classes
+                      Leave as All if fee applies to every class
                     </p>
                   </div>
                   <div className="grid gap-2">
@@ -797,24 +822,48 @@ export default function FeesPage() {
                     </Select>
                   </div>
                   <div className="grid gap-2">
-                    <Label htmlFor="edit-stream">Stream (Optional)</Label>
+                    <Label htmlFor="edit-class">Class (Optional)</Label>
                     <Select
-                      value={formData.stream || 'all_streams'}
-                      onValueChange={(value) => setFormData({ ...formData, stream: value === 'all_streams' ? '' : value })}
+                      value={formData.class || 'all_classes'}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, class: value === 'all_classes' ? '' : value })
+                      }
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="All Streams" />
+                      <SelectTrigger id="edit-class">
+                        <SelectValue placeholder="All classes" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all_streams">All Streams</SelectItem>
-                        {STREAMS.map((stream) => (
-                          <SelectItem key={stream} value={stream}>
-                            {stream}
+                        <SelectItem value="all_classes">All classes</SelectItem>
+                        {schoolClasses.map((cls) => (
+                          <SelectItem key={cls} value={cls}>
+                            {cls}
                           </SelectItem>
                         ))}
+                        {formData.class && !schoolClasses.includes(formData.class) ? (
+                          <SelectItem value={formData.class}>{formData.class}</SelectItem>
+                        ) : null}
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="edit-stream">Stream (Optional)</Label>
+                  <Select
+                    value={formData.stream || 'all_streams'}
+                    onValueChange={(value) => setFormData({ ...formData, stream: value === 'all_streams' ? '' : value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="All Streams" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all_streams">All Streams</SelectItem>
+                      {STREAMS.map((stream) => (
+                        <SelectItem key={stream} value={stream}>
+                          {stream}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="edit-gender">Gender (Optional)</Label>
