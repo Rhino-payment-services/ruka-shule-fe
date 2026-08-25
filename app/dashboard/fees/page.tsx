@@ -58,19 +58,6 @@ interface Fee {
 const STREAMS = ['General', 'Arts', 'Sciences', 'Business', 'Technical'];
 const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 const BILLING_FREQUENCIES = ['daily', 'weekly', 'monthly', 'termly', 'annual', 'one_off'] as const;
-const MONTHS_PER_TERM = 3;
-const MONTHS_PER_YEAR = 12;
-
-function monthlyAccrualHint(amount: string, billingFrequency: string, term: string) {
-  if (billingFrequency !== 'monthly') return null;
-  const parsed = parseFloat(amount);
-  if (Number.isNaN(parsed) || parsed <= 0) return null;
-  const months = term.trim() ? MONTHS_PER_TERM : MONTHS_PER_YEAR;
-  const total = parsed * months;
-  const period = term.trim() ? `${term.trim()} (3 months)` : 'full year (12 months)';
-  return `Total due for ${period}: UGX ${total.toLocaleString()} (${months} × UGX ${parsed.toLocaleString()})`;
-}
-
 export default function FeesPage() {
   const [fees, setFees] = useState<Fee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -551,9 +538,9 @@ export default function FeesPage() {
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   />
-                  {monthlyAccrualHint(formData.amount, formData.billing_frequency, formData.term) && (
+                  {formData.billing_frequency === 'monthly' && (
                     <p className="text-xs text-muted-foreground">
-                      {monthlyAccrualHint(formData.amount, formData.billing_frequency, formData.term)}
+                      Charged as one month (the amount entered above).
                     </p>
                   )}
                 </div>
@@ -760,9 +747,9 @@ export default function FeesPage() {
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   />
-                  {monthlyAccrualHint(formData.amount, formData.billing_frequency, formData.term) && (
+                  {formData.billing_frequency === 'monthly' && (
                     <p className="text-xs text-muted-foreground">
-                      {monthlyAccrualHint(formData.amount, formData.billing_frequency, formData.term)}
+                      Charged as one month (the amount entered above).
                     </p>
                   )}
                 </div>
