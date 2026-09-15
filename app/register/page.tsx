@@ -3,15 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { Mail, Lock, Phone, Eye, EyeOff, Sparkles, User, School, ChevronRight, ChevronLeft, CreditCard } from 'lucide-react';
+import { Mail, Lock, Phone, Eye, EyeOff, User, School, ChevronRight, ChevronLeft, CreditCard, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { RukapayLogo } from '@/components/RukapayLogo';
-import { LoadingState } from '@/components/LoadingState';
+import { AuthBrandHeader, AuthSplitLayout } from '@/components/landing/AuthSplitLayout';
 import { schoolsAPI, authAPI, getApiErrorMessage, mapSchoolCreateFieldErrors } from '@/lib/api';
 
 type RegistrationStep = 'personal' | 'contact' | 'password' | 'school';
@@ -376,77 +374,63 @@ export default function RegisterPage() {
   const isLastStep = currentStepIndex === steps.length - 1;
 
   if (authLoading || (user && !accountCreated)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
-        <LoadingState label={user ? 'Redirecting…' : 'Loading…'} size="lg" />
-      </div>
-    );
+    return <AuthSplitLayout loading loadingLabel={user ? 'Redirecting…' : 'Loading…'}>{null}</AuthSplitLayout>;
   }
 
   return (
-    <div className="flex min-h-screen overflow-hidden">
-      {/* Left Panel - Register Form */}
-      <div className="flex w-full flex-col items-center justify-center bg-white px-6 py-12 md:w-1/2 md:px-12">
-        <div className="w-full max-w-md animate-in fade-in slide-in-from-left-4 duration-500">
-          {/* Logo */}
-          <div className="mb-8">
-            <RukapayLogo size="lg" className="mb-6 text-[#08163d]" />
-            <h1 className="mb-2 text-4xl font-bold tracking-tight text-gray-900">
-              Get Started
-            </h1>
-            <p className="text-muted-foreground text-lg">
-              Welcome to Ruka Shule - Let's create your account
-            </p>
-          </div>
+    <AuthSplitLayout>
+      <AuthBrandHeader
+        title="Get Started"
+        subtitle="Welcome to Ruka Shule — let's create your account"
+      />
 
-          {/* Progress Steps */}
-          <div className="flex items-center justify-between border-b pb-4 mb-6 gap-2">
-            {steps.map((step, index) => {
-              const isActive = currentStep === step.id;
-              const isCompleted = currentStepIndex > index;
-              const isAccessible = index === 0 || currentStepIndex >= index - 1;
+      <div className="mb-6 flex items-center justify-between gap-2 border-b border-slate-100 pb-4">
+        {steps.map((step, index) => {
+          const isActive = currentStep === step.id;
+          const isCompleted = currentStepIndex > index;
+          const isAccessible = index === 0 || currentStepIndex >= index - 1;
 
-              return (
-                <button
-                  key={step.id}
-                  type="button"
-                  onClick={() => isAccessible && setCurrentStep(step.id)}
-                  disabled={!isAccessible || loading}
-                  className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg transition-all text-xs whitespace-nowrap flex-1 min-w-0 ${
-                    isActive
-                      ? 'bg-[#08163d] text-white'
-                      : isCompleted
-                      ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                      : isAccessible
-                      ? 'bg-muted text-muted-foreground hover:bg-muted/80'
-                      : 'bg-muted/50 text-muted-foreground cursor-not-allowed'
-                  }`}
-                >
-                  {step.icon}
-                  <span className="font-medium truncate">{step.title}</span>
-                </button>
-              );
-            })}
-          </div>
+          return (
+            <button
+              key={step.id}
+              type="button"
+              onClick={() => isAccessible && setCurrentStep(step.id)}
+              disabled={!isAccessible || loading}
+              className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2 py-2 text-xs transition-all sm:px-3 ${
+                isActive
+                  ? 'bg-[#08163d] text-white'
+                  : isCompleted
+                    ? 'bg-[#FFF4C2] text-[#08163d] hover:bg-[#FFE58A]'
+                    : isAccessible
+                      ? 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                      : 'cursor-not-allowed bg-slate-50 text-slate-400'
+              }`}
+            >
+              {step.icon}
+              <span className="truncate font-medium">{step.title}</span>
+            </button>
+          );
+        })}
+      </div>
 
-          {/* Form Card */}
-          <Card className="border-0 shadow-xl shadow-primary/5">
-            <CardHeader className="space-y-1 pb-4 px-0">
-              <CardTitle className="text-2xl">{steps.find(s => s.id === currentStep)?.title}</CardTitle>
-              <CardDescription>
-                {currentStep === 'personal' && 'Tell us about yourself'}
-                {currentStep === 'contact' && 'How can we reach you?'}
-                {currentStep === 'password' && 'Create a secure password'}
-                {currentStep === 'school' && 'Enter your school information'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="px-0">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight text-[#08163d]">
+          {steps.find((s) => s.id === currentStep)?.title}
+        </h2>
+        <p className="mt-1 text-sm text-slate-500">
+          {currentStep === 'personal' && 'Tell us about yourself'}
+          {currentStep === 'contact' && 'How can we reach you?'}
+          {currentStep === 'password' && 'Create a secure password'}
+          {currentStep === 'school' && 'Enter your school information'}
+        </p>
+      </div>
+      <div className="mt-5">
               <form onSubmit={handleSubmit} className="space-y-5">
                 {error && (
-                  <div className="rounded-lg bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive animate-in fade-in slide-in-from-top-2 space-y-2">
+                  <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700 space-y-2">
                     <p>{error}</p>
                     {accountCreated && (
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-slate-600">
                         Your login works. Fix the school details above and retry, or{' '}
                         <button
                           type="button"
@@ -473,7 +457,7 @@ export default function RegisterPage() {
                         onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
                         placeholder="John"
                         required
-                        className="h-10 border-2 w-full"
+                        className="h-11 rounded-xl border-slate-200 w-full"
                       />
                     </div>
                     <div className="space-y-2">
@@ -485,7 +469,7 @@ export default function RegisterPage() {
                         onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
                         placeholder="Doe"
                         required
-                        className="h-10 border-2 w-full"
+                        className="h-11 rounded-xl border-slate-200 w-full"
                       />
                     </div>
                   </div>
@@ -514,7 +498,7 @@ export default function RegisterPage() {
                           }}
                           placeholder="admin@school.com"
                           required
-                          className={`pl-10 h-10 border-2 transition-all focus:ring-2 focus:ring-primary/20 ${
+                          className={`pl-10 h-11 rounded-xl border-slate-200 transition-all focus:ring-2 focus:ring-primary/20 ${
                             fieldErrors.email ? 'border-destructive focus:border-destructive' : 'focus:border-primary'
                           }`}
                         />
@@ -550,7 +534,7 @@ export default function RegisterPage() {
                           }}
                           placeholder="+256700000000"
                           required
-                          className={`pl-10 h-10 border-2 transition-all focus:ring-2 focus:ring-primary/20 ${
+                          className={`pl-10 h-11 rounded-xl border-slate-200 transition-all focus:ring-2 focus:ring-primary/20 ${
                             fieldErrors.phone ? 'border-destructive focus:border-destructive' : 'focus:border-primary'
                           }`}
                         />
@@ -578,7 +562,7 @@ export default function RegisterPage() {
                           placeholder="Create a password"
                           required
                           minLength={6}
-                          className="pl-10 pr-10 h-10 border-2 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          className="pl-10 pr-10 h-11 rounded-xl border-slate-200 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
                         />
                         <button
                           type="button"
@@ -603,7 +587,7 @@ export default function RegisterPage() {
                           placeholder="Confirm your password"
                           required
                           minLength={6}
-                          className={`pl-10 pr-10 h-10 border-2 transition-all focus:ring-2 focus:ring-primary/20 ${
+                          className={`pl-10 pr-10 h-11 rounded-xl border-slate-200 transition-all focus:ring-2 focus:ring-primary/20 ${
                             formData.confirmPassword && formData.password !== formData.confirmPassword
                               ? 'border-destructive focus:border-destructive'
                               : 'focus:border-primary'
@@ -645,7 +629,7 @@ export default function RegisterPage() {
                         required
                         minLength={4}
                         maxLength={5}
-                        className="h-10 border-2 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        className="h-11 rounded-xl border-slate-200 transition-all focus:border-primary focus:ring-2 focus:ring-primary/20"
                       />
                       <p className="text-xs text-muted-foreground">
                         Used for Rukapay wallet/app actions — not for logging into Shule.
@@ -672,7 +656,7 @@ export default function RegisterPage() {
                         required
                         minLength={4}
                         maxLength={5}
-                        className={`h-10 border-2 transition-all focus:ring-2 focus:ring-primary/20 ${
+                        className={`h-11 rounded-xl border-slate-200 transition-all focus:ring-2 focus:ring-primary/20 ${
                           formData.confirmPin && formData.pin !== formData.confirmPin
                             ? 'border-destructive focus:border-destructive'
                             : 'focus:border-primary'
@@ -717,7 +701,7 @@ export default function RegisterPage() {
                         }}
                         placeholder="e.g., St. Mary's Primary School"
                         required
-                        className={`h-10 border-2 ${
+                        className={`h-11 rounded-xl border-slate-200 ${
                           fieldErrors.schoolName ? 'border-destructive focus:border-destructive' : ''
                         }`}
                       />
@@ -769,7 +753,7 @@ export default function RegisterPage() {
                             }}
                             placeholder="KPS001 or leave blank to auto-generate"
                             maxLength={10}
-                            className={`h-10 border-2 w-full pr-10 transition-all ${
+                            className={`h-11 rounded-xl border-slate-200 w-full pr-10 transition-all ${
                               fieldErrors.schoolCode 
                                 ? 'border-destructive focus:border-destructive ring-1 ring-destructive/30' 
                                 : 'focus:border-primary focus:ring-primary/20'
@@ -817,7 +801,7 @@ export default function RegisterPage() {
                         onChange={(e) => setFormData({ ...formData, schoolEmail: e.target.value })}
                         placeholder="info@school.ug"
                         required
-                        className="h-10 border-2"
+                        className="h-11 rounded-xl border-slate-200"
                       />
                     </div>
 
@@ -829,7 +813,7 @@ export default function RegisterPage() {
                         value={formData.schoolAddress}
                         onChange={(e) => setFormData({ ...formData, schoolAddress: e.target.value })}
                         placeholder="e.g., Kampala, Uganda"
-                        className="h-10 border-2"
+                        className="h-11 rounded-xl border-slate-200"
                       />
                     </div>
 
@@ -847,7 +831,7 @@ export default function RegisterPage() {
                           value={formData.bankName}
                           onChange={(e) => setFormData({ ...formData, bankName: e.target.value })}
                           placeholder="e.g., Stanbic Bank"
-                          className="h-10 border-2"
+                          className="h-11 rounded-xl border-slate-200"
                         />
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -859,7 +843,7 @@ export default function RegisterPage() {
                             value={formData.bankCode}
                             onChange={(e) => setFormData({ ...formData, bankCode: e.target.value })}
                             placeholder="e.g., 040147"
-                            className="h-10 border-2"
+                            className="h-11 rounded-xl border-slate-200"
                           />
                         </div>
                         <div className="space-y-2">
@@ -870,7 +854,7 @@ export default function RegisterPage() {
                             value={formData.accountNumber}
                             onChange={(e) => setFormData({ ...formData, accountNumber: e.target.value })}
                             placeholder="e.g., 1234567890"
-                            className="h-10 border-2"
+                            className="h-11 rounded-xl border-slate-200"
                           />
                         </div>
                       </div>
@@ -883,7 +867,7 @@ export default function RegisterPage() {
                             value={formData.accountName}
                             onChange={(e) => setFormData({ ...formData, accountName: e.target.value })}
                             placeholder="e.g., School Account"
-                            className="h-10 border-2"
+                            className="h-11 rounded-xl border-slate-200"
                           />
                         </div>
                         <div className="space-y-2">
@@ -894,7 +878,7 @@ export default function RegisterPage() {
                             value={formData.branch}
                             onChange={(e) => setFormData({ ...formData, branch: e.target.value })}
                             placeholder="e.g., Kampala Main"
-                            className="h-10 border-2"
+                            className="h-11 rounded-xl border-slate-200"
                           />
                         </div>
                       </div>
@@ -903,16 +887,16 @@ export default function RegisterPage() {
                 )}
 
                 {/* Navigation Buttons */}
-                <div className="flex gap-4 pt-4 border-t">
+                <div className="flex gap-3 pt-4 border-t border-slate-100">
                   {currentStepIndex > 0 && (
                     <Button
                       type="button"
                       variant="outline"
                       onClick={handlePrevious}
                       disabled={loading || accountCreated}
-                      className="flex-1"
+                      className="flex-1 rounded-full border-slate-200"
                     >
-                      <ChevronLeft className="mr-2 h-4 w-4" />
+                      <ChevronLeft className="h-4 w-4" />
                       Previous
                     </Button>
                   )}
@@ -922,17 +906,17 @@ export default function RegisterPage() {
                       type="button"
                       onClick={handleNext}
                       disabled={!canProceedToNext() || loading || validating}
-                      className="flex-1 bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+                      className="flex-1 rounded-full bg-[#08163d] text-white hover:bg-[#08163d]/90"
                     >
                       {validating ? (
-                        <span className="flex items-center gap-2">
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                          Validating...
-                        </span>
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Validating…
+                        </>
                       ) : (
                         <>
                           Next
-                          <ChevronRight className="ml-2 h-4 w-4" />
+                          <ChevronRight className="h-4 w-4" />
                         </>
                       )}
                     </Button>
@@ -954,17 +938,17 @@ export default function RegisterPage() {
                           !formData.lastName
                         ))
                       }
-                      className="flex-1 bg-[#08163d] hover:bg-[#0a1f4f] text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="flex-1 rounded-full bg-[#08163d] text-white hover:bg-[#08163d]/90"
                     >
                       {loading || validating ? (
-                        <span className="flex items-center gap-2">
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
                           {validating
-                            ? 'Validating...'
+                            ? 'Validating…'
                             : accountCreated
-                              ? 'Creating school...'
-                              : 'Creating account...'}
-                        </span>
+                              ? 'Creating school…'
+                              : 'Creating account…'}
+                        </>
                       ) : accountCreated ? (
                         'Retry school setup'
                       ) : (
@@ -975,54 +959,13 @@ export default function RegisterPage() {
                 </div>
               </form>
 
-              {/* Login Link */}
-              <p className="mt-6 text-center text-sm text-muted-foreground">
+              <p className="mt-6 text-center text-sm text-slate-500">
                 Already have an account?{' '}
-                <Link href="/login" className="font-semibold text-primary hover:underline transition-colors">
+                <Link href="/login" className="font-semibold text-[#08163d] hover:underline">
                   Log in
                 </Link>
               </p>
-            </CardContent>
-          </Card>
-        </div>
       </div>
-
-      {/* Right Panel - Promotional */}
-      <div className="hidden md:flex md:w-1/2 md:flex-col md:items-center md:justify-center md:px-12 relative overflow-hidden bg-[#08163d]">
-        {/* Animated Background Elements */}
-        <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-white/10 rounded-full blur-3xl animate-pulse" />
-          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-white/10 rounded-full blur-3xl animate-pulse delay-1000" />
-        </div>
-        
-        <div className="text-center text-white relative z-10 animate-in fade-in slide-in-from-right-4 duration-700">
-          <div className="mb-8 flex justify-center">
-            <div className="rounded-2xl bg-white/10 backdrop-blur-md p-4 shadow-2xl">
-              <Sparkles className="h-12 w-12 text-white" />
-            </div>
-          </div>
-          <h2 className="mb-2 text-6xl font-bold tracking-tight">Enter</h2>
-          <h2 className="mb-2 text-6xl font-bold tracking-tight">the Future</h2>
-          <h2 className="mb-4 text-5xl font-light">of School</h2>
-          <h2 className="mb-8 text-5xl font-light">Fee Management</h2>
-          <p className="text-xl text-blue-100 max-w-md mx-auto leading-relaxed">
-            Streamline payments, track fees, and manage students with ease
-          </p>
-          
-          {/* Feature Pills */}
-          <div className="mt-12 flex flex-wrap justify-center gap-3">
-            <div className="rounded-full bg-white/20 backdrop-blur-sm px-4 py-2 text-sm font-medium">
-              Secure Payments
-            </div>
-            <div className="rounded-full bg-white/20 backdrop-blur-sm px-4 py-2 text-sm font-medium">
-              Real-time Tracking
-            </div>
-            <div className="rounded-full bg-white/20 backdrop-blur-sm px-4 py-2 text-sm font-medium">
-              Easy Management
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    </AuthSplitLayout>
   );
 }

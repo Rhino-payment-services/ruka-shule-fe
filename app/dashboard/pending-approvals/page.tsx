@@ -4,7 +4,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
 import { schoolsAPI, adminAPI } from '@/lib/api';
-import { School, Clock, Search } from 'lucide-react';
+import { School, Hash, Mail, BadgeCheck, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -14,7 +14,6 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import {
@@ -25,11 +24,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListPagination } from '@/components/ListPagination';
 import { ButtonSpinner, LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
+import {
+  DataTableShell,
+  PillSearch,
+  StatusPill,
+  TableHeadLabel,
+  toneFromStatus,
+} from '@/components/data-table';
 
 interface SchoolData {
   id: string;
@@ -104,7 +108,7 @@ export default function PendingApprovalsPage() {
       setApproveSchoolId(null);
       await loadSchools();
       toast.success('School approved successfully');
-    } catch (err) {
+    } catch {
       toast.error('Failed to approve school. See console for details.');
     } finally {
       setActionLoading(false);
@@ -121,72 +125,47 @@ export default function PendingApprovalsPage() {
     if (!rejectSchoolId) return;
     try {
       setActionLoading(true);
-      await adminAPI.updateMerchantStatus(rejectSchoolId, { merchant_status: 'rejected', reason: rejectReason || null });
+      await adminAPI.updateMerchantStatus(rejectSchoolId, {
+        merchant_status: 'rejected',
+        reason: rejectReason || null,
+      });
       setRejectDialogOpen(false);
       setRejectSchoolId(null);
       await loadSchools();
       toast.success('School rejected');
-    } catch (err) {
+    } catch {
       toast.error('Failed to reject school. See console for details.');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const getMerchantStatusBadge = (status?: string) => {
-    if (!status) return null;
-    const isKyc = status === 'kyc_submitted';
-    return (
-      <Badge
-        className={
-          isKyc
-            ? 'bg-amber-100 text-amber-700 border-amber-300 hover:bg-amber-200'
-            : 'bg-orange-100 text-orange-700 border-orange-300 hover:bg-orange-200'
-        }
-        variant="outline"
-      >
-        {status === 'kyc_submitted' ? 'KYC Submitted' : 'Pending Onboarding'}
-      </Badge>
-    );
+  const merchantLabel = (status?: string) => {
+    if (status === 'kyc_submitted') return 'KYC Submitted';
+    if (status === 'pending_onboarding') return 'Pending Onboarding';
+    return status || '—';
   };
 
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <DashboardLayout>
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-amber-600 bg-clip-text text-transparent">
-                Pending Approvals
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Schools awaiting merchant onboarding or KYC approval
-              </p>
-            </div>
-          </div>
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500">
+            Schools awaiting merchant onboarding or KYC approval
+          </p>
 
-          {/* Search */}
-          <Card className="border-2 border-orange-200 bg-gradient-to-r from-white to-orange-50">
-            <CardContent className="pt-6">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-orange-600" />
-                <Input
-                  type="text"
-                  placeholder="Search schools..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 border-orange-200 focus:border-orange-400 focus:ring-orange-100"
-                />
-              </div>
-            </CardContent>
-          </Card>
-          {/* Reject dialog */}
+          <PillSearch
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="Search schools…"
+          />
+
           <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Reject School Onboarding</DialogTitle>
                 <DialogDescription>
-                  Optionally provide a reason for rejecting this school's merchant onboarding.
+                  Optionally provide a reason for rejecting this school&apos;s merchant onboarding.
                 </DialogDescription>
               </DialogHeader>
               <div className="mt-4">
@@ -199,27 +178,47 @@ export default function PendingApprovalsPage() {
               </div>
               <DialogFooter>
                 <div className="flex gap-2">
-                  <Button variant="outline" disabled={actionLoading} onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
-                  <Button variant="outline" disabled={actionLoading} onClick={submitReject} className="bg-red-600 text-white">
-                    {actionLoading ? (<><ButtonSpinner /> Rejecting…</>) : 'Reject'}
+                  <Button
+                    variant="outline"
+                    disabled={actionLoading}
+                    onClick={() => setRejectDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={actionLoading}
+                    onClick={submitReject}
+                    className="bg-red-600 text-white"
+                  >
+                    {actionLoading ? (
+                      <>
+                        <ButtonSpinner /> Rejecting…
+                      </>
+                    ) : (
+                      'Reject'
+                    )}
                   </Button>
                 </div>
               </DialogFooter>
             </DialogContent>
           </Dialog>
 
-          {/* Approve confirmation dialog */}
           <Dialog open={approveDialogOpen} onOpenChange={setApproveDialogOpen}>
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Approve School Onboarding</DialogTitle>
                 <DialogDescription>
-                  Confirm approval for this school's merchant onboarding. Optionally add an approval note.
+                  Confirm approval for this school&apos;s merchant onboarding. Optionally add an
+                  approval note.
                 </DialogDescription>
               </DialogHeader>
               <div className="mt-4">
-                <p className="text-sm font-medium mb-3">
-                  School: {approveSchoolId ? (schools.find((s) => s.id === approveSchoolId)?.name ?? '—') : '—'}
+                <p className="mb-3 text-sm font-medium">
+                  School:{' '}
+                  {approveSchoolId
+                    ? (schools.find((s) => s.id === approveSchoolId)?.name ?? '—')
+                    : '—'}
                 </p>
                 <textarea
                   className="modal-textarea w-full"
@@ -230,103 +229,116 @@ export default function PendingApprovalsPage() {
               </div>
               <DialogFooter>
                 <div className="flex gap-2">
-                  <Button variant="outline" disabled={actionLoading} onClick={() => setApproveDialogOpen(false)}>Cancel</Button>
-                  <Button variant="outline" disabled={actionLoading} onClick={submitApprove} className="bg-green-600 text-white">
-                    {actionLoading ? (<><ButtonSpinner /> Approving…</>) : 'Confirm Approve'}
+                  <Button
+                    variant="outline"
+                    disabled={actionLoading}
+                    onClick={() => setApproveDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={actionLoading}
+                    onClick={submitApprove}
+                    className="bg-emerald-600 text-white"
+                  >
+                    {actionLoading ? (
+                      <>
+                        <ButtonSpinner /> Approving…
+                      </>
+                    ) : (
+                      'Confirm Approve'
+                    )}
                   </Button>
                 </div>
               </DialogFooter>
             </DialogContent>
           </Dialog>
 
-          {/* Pending Schools Table */}
-          <Card className="border-2 border-orange-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5 text-orange-600" />
-                Schools Awaiting Approval ({total})
-              </CardTitle>
-              <CardDescription>
-                These schools have been onboarded but their merchant/wallet setup is
-                pending or KYC has been submitted
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <LoadingState label="Loading pending approvals…" />
-              ) : schools.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="rounded-full bg-orange-100 p-4 mb-4">
-                    <School className="h-8 w-8 text-orange-600" />
-                  </div>
-                  <p className="font-medium text-muted-foreground">
-                    No pending approvals
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    All schools have completed merchant onboarding
-                  </p>
-                  <Button
-                    variant="outline"
-                    className="mt-4"
-                    onClick={() => router.push('/dashboard/schools')}
-                  >
-                    View All Schools
-                  </Button>
+          <DataTableShell
+            title={`Schools Awaiting Approval (${total})`}
+            description="Onboarded schools with pending merchant/wallet setup or submitted KYC"
+            footer={
+              <ListPagination
+                page={page}
+                totalPages={totalPages}
+                total={total}
+                loading={loading}
+                onPageChange={setPage}
+              />
+            }
+          >
+            {loading ? (
+              <LoadingState label="Loading pending approvals…" className="py-10" />
+            ) : schools.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="mb-3 rounded-full bg-[#FFF4C2] p-3">
+                  <School className="h-7 w-7 text-[#E8A317]" />
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gradient-to-r from-orange-50 to-amber-50 border-b-2 border-orange-200">
-                      <TableHead className="font-semibold text-orange-900">
-                        School
-                      </TableHead>
-                      <TableHead className="font-semibold text-orange-900">
-                        Code
-                      </TableHead>
-                      <TableHead className="font-semibold text-orange-900">
-                        Contact
-                      </TableHead>
-                      <TableHead className="font-semibold text-orange-900">
-                        Merchant Status
-                      </TableHead>
-                      <TableHead className="text-right font-semibold text-orange-900">
+                <p className="text-sm font-medium text-slate-500">No pending approvals</p>
+                <p className="mt-1 text-xs text-slate-400">
+                  All schools have completed merchant onboarding
+                </p>
+                <Button
+                  variant="outline"
+                  className="mt-4 h-8 rounded-full text-xs"
+                  onClick={() => router.push('/dashboard/schools')}
+                >
+                  View All Schools
+                </Button>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>
+                      <TableHeadLabel icon={School}>School</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Hash}>Code</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Mail}>Contact</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={BadgeCheck}>Merchant</TableHeadLabel>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <TableHeadLabel icon={MoreHorizontal} className="justify-end">
                         Actions
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {schools.map((school) => (
-                      <TableRow
-                        key={school.id}
-                        className="hover:bg-orange-50/50 transition-colors"
-                      >
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 border border-orange-200">
-                              <School className="h-5 w-5 text-orange-600" />
-                            </div>
-                            <div className="font-medium">{school.name}</div>
+                      </TableHeadLabel>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {schools.map((school) => (
+                    <TableRow key={school.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#FFF4C2]">
+                            <School className="h-3.5 w-3.5 text-[#E8A317]" />
                           </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground font-mono">
-                          {school.code}
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            <div>{school.email}</div>
-                            <div className="text-muted-foreground">
-                              {school.phone}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {getMerchantStatusBadge(school.merchant_status)}
-                        </TableCell>
-                        <TableCell className="text-right flex items-center justify-end gap-2">
+                          <div className="font-medium text-[#08163d]">{school.name}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-slate-500">{school.code}</TableCell>
+                      <TableCell>
+                        <div className="text-xs">
+                          <div className="text-[#08163d]">{school.email}</div>
+                          <div className="text-slate-400">{school.phone}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <StatusPill tone={toneFromStatus(school.merchant_status)} dot>
+                          {merchantLabel(school.merchant_status)}
+                        </StatusPill>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-green-700 border-green-200 hover:bg-green-50"
+                            className="h-7 px-2 text-xs text-emerald-700 hover:bg-emerald-50"
                             onClick={() => handleApprove(school.id)}
                           >
                             Approve
@@ -334,7 +346,7 @@ export default function PendingApprovalsPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="text-red-700 border-red-200 hover:bg-red-50"
+                            className="h-7 px-2 text-xs text-red-700 hover:bg-red-50"
                             onClick={() => openRejectDialog(school.id)}
                           >
                             Reject
@@ -342,29 +354,19 @@ export default function PendingApprovalsPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            className="border-orange-200 hover:bg-orange-50 hover:border-orange-300"
-                            onClick={() =>
-                              router.push(`/dashboard/schools/${school.id}`)
-                            }
+                            className="h-7 rounded-full border-slate-200 px-2.5 text-xs"
+                            onClick={() => router.push(`/dashboard/schools/${school.id}`)}
                           >
-                            View Details
+                            View
                           </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-              <ListPagination
-                className="mt-4"
-                page={page}
-                totalPages={totalPages}
-                total={total}
-                loading={loading}
-                onPageChange={setPage}
-              />
-            </CardContent>
-          </Card>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </DataTableShell>
         </div>
       </DashboardLayout>
     </ProtectedRoute>

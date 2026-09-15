@@ -1,9 +1,12 @@
 import { api } from './client';
-import type { ApiSuccessResponse, ApiPaginatedResponse, Student } from './types';
+import type { ApiSuccessResponse, ApiPaginatedResponse, Student, GenderInsights } from './types';
 
 export const studentsAPI = {
   lookup: (params: { registration_id?: string; school_code?: string; phone?: string }) =>
     api.get<ApiSuccessResponse<Student[]>>('/students/lookup', { params }),
+
+  getGenderInsights: () =>
+    api.get<ApiSuccessResponse<GenderInsights>>('/students/insights/gender'),
 
   list: (
     page = 1,

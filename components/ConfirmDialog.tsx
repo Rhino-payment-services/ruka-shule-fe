@@ -57,11 +57,6 @@ export function ConfirmDialog({
           <Button
             type="button"
             variant={variant === 'destructive' ? 'destructive' : 'default'}
-            className={
-              variant === 'default'
-                ? 'bg-[#08163d] hover:bg-[#0a1f4f] text-white'
-                : undefined
-            }
             disabled={loading}
             onClick={handleConfirm}
           >

@@ -53,15 +53,15 @@ export function DatePicker({
         variant="outline"
         onClick={() => setOpen(!open)}
         className={cn(
-          "w-full justify-start text-left font-normal",
-          !selected && "text-muted-foreground"
+          "h-10 w-full justify-start rounded-xl border-0 bg-[#F8F9FB] text-left font-normal shadow-none ring-1 ring-black/5 hover:bg-[#F8F9FB]",
+          !selected && "text-slate-400"
         )}
       >
         <CalendarIcon className="mr-2 h-4 w-4" />
         {selected ? format(selected, "PPP") : placeholder}
       </Button>
       {open && (
-        <div className="absolute left-0 top-full z-[100] mt-2 rounded-md border bg-white p-3 shadow-lg">
+        <div className="absolute left-0 top-full z-[100] mt-2 rounded-xl bg-white p-3 shadow-lg ring-1 ring-black/5">
           <Calendar
             mode="single"
             selected={selected}

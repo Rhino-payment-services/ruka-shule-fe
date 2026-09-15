@@ -7,9 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import {
+  DataTableShell,
+  StatusPill,
+  TableHeadLabel,
+  toneFromStatus,
+} from '@/components/data-table';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -23,7 +29,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Receipt, Plus, Edit, Trash2, Lock, Unlock } from 'lucide-react';
+import {
+  Receipt,
+  Plus,
+  Edit,
+  Trash2,
+  Lock,
+  Unlock,
+  Calendar,
+  CircleDot,
+  MoreHorizontal,
+  Hash,
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { schoolsAPI, feesAPI } from '@/lib/api';
 import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
@@ -342,24 +359,20 @@ export default function FeesPage() {
 
   const getFeeTypeBadge = (feeType: string) => {
     return feeType === 'school_fees' ? (
-      <Badge className="bg-blue-500 hover:bg-blue-600">School Fees</Badge>
+      <StatusPill tone="info" dot>School Fees</StatusPill>
     ) : (
-      <Badge className="bg-purple-500 hover:bg-purple-600">Other Fees</Badge>
+      <StatusPill tone="neutral" dot>Other Fees</StatusPill>
     );
   };
 
   const getStatusBadge = (status: string) => {
-    return status === 'active' ? (
-      <Badge className="bg-green-500 hover:bg-green-600">Active</Badge>
-    ) : (
-      <Badge variant="secondary">Inactive</Badge>
-    );
+    return <StatusPill tone={toneFromStatus(status)} dot>{status === 'active' ? 'Active' : 'Inactive'}</StatusPill>;
   };
 
   return (
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
-        <div className="space-y-6">
+        <div className="space-y-4">
           {schoolSetupRequired && (
             <Card className="border-amber-200 bg-amber-50">
               <CardHeader>
@@ -379,145 +392,192 @@ export default function FeesPage() {
             </Card>
           )}
 
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">Fees Management</h1>
-              <p className="mt-2 text-muted-foreground">Set and manage school fees structure</p>
-            </div>
-            <Button onClick={() => setIsCreateDialogOpen(true)} className="bg-[#08163d] hover:bg-[#0a1f4f] text-white">
-              <Plus className="mr-2 h-4 w-4" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">Set and manage school fees structure</p>
+            <Button
+              onClick={() => setIsCreateDialogOpen(true)}
+              className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
               Add Fee
             </Button>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Receipt className="h-5 w-5" />
-                All Fees
-              </CardTitle>
-              <CardDescription>Manage your school's fee structure</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <LoadingState label="Loading fees…" />
-              ) : fees.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <Receipt className="mb-4 h-12 w-12 text-muted-foreground" />
-                  <p className="text-muted-foreground">No fees configured yet</p>
-                  <Button onClick={() => setIsCreateDialogOpen(true)} className="mt-4" variant="outline">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create First Fee
-                  </Button>
-                </div>
-              ) : (
-                <>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Frequency</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Year</TableHead>
-                      <TableHead>Term</TableHead>
-                      <TableHead>Class</TableHead>
-                      <TableHead>Stream</TableHead>
-                      <TableHead>Gender</TableHead>
-                      <TableHead>Due Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Lock</TableHead>
-                      <TableHead>Updated</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {fees.map((fee) => (
-                      <TableRow key={fee.id}>
-                        <TableCell className="font-medium">{fee.name}</TableCell>
-                        <TableCell>{getFeeTypeBadge(fee.fee_type)}</TableCell>
-                        <TableCell className="capitalize">{fee.billing_frequency || 'termly'}</TableCell>
-                        <TableCell>
-                          {fee.currency} {fee.amount.toLocaleString()}
-                        </TableCell>
-                        <TableCell>{fee.academic_year}</TableCell>
-                        <TableCell>{fee.term || <span className="text-muted-foreground">All Terms</span>}</TableCell>
-                        <TableCell>{fee.class || <span className="text-muted-foreground">All</span>}</TableCell>
-                        <TableCell>{fee.stream || <span className="text-muted-foreground">All</span>}</TableCell>
-                        <TableCell>{fee.gender || <span className="text-muted-foreground">All</span>}</TableCell>
-                        <TableCell>
-                          {fee.due_date ? new Date(fee.due_date).toLocaleDateString() : 'N/A'}
-                        </TableCell>
-                        <TableCell>{getStatusBadge(fee.status)}</TableCell>
-                        <TableCell>
-                          {fee.is_locked ? (
-                            <Badge className="bg-amber-500 hover:bg-amber-600">Locked</Badge>
-                          ) : (
-                            <Badge variant="outline">Open</Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {fee.updated_at
-                            ? new Date(fee.updated_at).toLocaleDateString()
-                            : new Date(fee.created_at).toLocaleDateString()}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={fee.is_locked}
-                              onClick={() => handleEdit(fee)}
-                              className="h-8 w-8 p-0"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setLockConfirmFee(fee)}
-                              className={`h-8 w-8 p-0 ${fee.is_locked ? 'text-amber-600 hover:text-amber-700' : 'text-slate-600 hover:text-slate-900'}`}
-                              title={fee.is_locked ? 'Unlock fee' : 'Lock fee'}
-                            >
-                              {fee.is_locked ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={fee.is_locked}
-                              onClick={() => setDeleteConfirmId(fee.id)}
-                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+          <DataTableShell
+            title="All Fees"
+            description="Manage your school's fee structure"
+            footer={
+              fees.length > 0 ? (
                 <ListPagination
-                  className="mt-4"
                   page={page}
                   totalPages={totalPages}
                   total={total}
                   loading={loading}
                   onPageChange={setPage}
                 />
-                </>
-              )}
-            </CardContent>
-          </Card>
+              ) : null
+            }
+          >
+            {loading ? (
+              <LoadingState label="Loading fees…" className="py-10" />
+            ) : fees.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#08163d]/5">
+                  <Receipt className="h-6 w-6 text-[#08163d]/50" />
+                </div>
+                <p className="mb-4 text-sm text-slate-400">No fees configured yet</p>
+                <Button
+                  onClick={() => setIsCreateDialogOpen(true)}
+                  variant="outline"
+                  className="h-9 rounded-full border-slate-200"
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  Create First Fee
+                </Button>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>
+                      <TableHeadLabel icon={Receipt}>Name</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Type</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Frequency</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Hash}>Amount</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Year</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Term</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Class</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Stream</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Gender</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Calendar}>Due Date</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={CircleDot}>Status</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Lock}>Lock</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Calendar}>Updated</TableHeadLabel>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <TableHeadLabel icon={MoreHorizontal} className="justify-end">
+                        Actions
+                      </TableHeadLabel>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {fees.map((fee) => (
+                    <TableRow key={fee.id}>
+                      <TableCell className="font-medium text-[#08163d]">{fee.name}</TableCell>
+                      <TableCell>{getFeeTypeBadge(fee.fee_type)}</TableCell>
+                      <TableCell className="capitalize text-xs text-slate-600">
+                        {fee.billing_frequency || 'termly'}
+                      </TableCell>
+                      <TableCell className="text-sm font-medium text-[#08163d]">
+                        {fee.currency} {fee.amount.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600">{fee.academic_year}</TableCell>
+                      <TableCell className="text-xs text-slate-500">
+                        {fee.term || 'All Terms'}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500">{fee.class || 'All'}</TableCell>
+                      <TableCell className="text-xs text-slate-500">{fee.stream || 'All'}</TableCell>
+                      <TableCell className="text-xs text-slate-500">{fee.gender || 'All'}</TableCell>
+                      <TableCell className="text-xs text-slate-400">
+                        {fee.due_date ? new Date(fee.due_date).toLocaleDateString() : 'N/A'}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(fee.status)}</TableCell>
+                      <TableCell>
+                        {fee.is_locked ? (
+                          <StatusPill tone="warning" dot>
+                            Locked
+                          </StatusPill>
+                        ) : (
+                          <StatusPill tone="neutral" dot>
+                            Open
+                          </StatusPill>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-400">
+                        {fee.updated_at
+                          ? new Date(fee.updated_at).toLocaleDateString()
+                          : new Date(fee.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={fee.is_locked}
+                            onClick={() => handleEdit(fee)}
+                            className="h-7 px-2 text-[#08163d] hover:bg-[#FFF4C2]/50"
+                          >
+                            <Edit className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setLockConfirmFee(fee)}
+                            className={`h-7 px-2 hover:bg-[#FFF4C2]/50 ${
+                              fee.is_locked
+                                ? 'text-amber-600 hover:text-amber-700'
+                                : 'text-slate-600 hover:text-[#08163d]'
+                            }`}
+                            title={fee.is_locked ? 'Unlock fee' : 'Lock fee'}
+                          >
+                            {fee.is_locked ? (
+                              <Unlock className="h-3.5 w-3.5" />
+                            ) : (
+                              <Lock className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={fee.is_locked}
+                            onClick={() => setDeleteConfirmId(fee.id)}
+                            className="h-7 px-2 text-red-600 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </DataTableShell>
 
           {/* Create Fee Dialog */}
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-visible">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Create New Fee</DialogTitle>
                 <DialogDescription>Add a new fee to your school's fee structure</DialogDescription>
               </DialogHeader>
-              <div className="max-h-[65vh] overflow-y-auto pr-2">
-              <div className="grid gap-4 py-4">
+              <DialogBody>
+              <div className="grid gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="name">Fee Name *</Label>
                   <Input
@@ -693,7 +753,7 @@ export default function FeesPage() {
                   <p className="text-xs text-muted-foreground">Today and past dates cannot be selected.</p>
                 </div>
               </div>
-              </div>
+              </DialogBody>
               <DialogFooter>
                 <Button
                   variant="outline"
@@ -705,7 +765,6 @@ export default function FeesPage() {
                 <Button
                   onClick={() => handleCreate()}
                   disabled={confirmLoading}
-                  className="bg-[#08163d] hover:bg-[#0a1f4f] text-white"
                 >
                   {confirmLoading ? (
                     <>
@@ -722,13 +781,13 @@ export default function FeesPage() {
 
           {/* Edit Fee Dialog */}
           <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-visible">
+            <DialogContent className="max-w-2xl">
               <DialogHeader>
                 <DialogTitle>Edit Fee</DialogTitle>
                 <DialogDescription>Update fee details</DialogDescription>
               </DialogHeader>
-              <div className="max-h-[65vh] overflow-y-auto pr-2">
-              <div className="grid gap-4 py-4">
+              <DialogBody>
+              <div className="grid gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="edit-name">Fee Name *</Label>
                   <Input
@@ -879,7 +938,7 @@ export default function FeesPage() {
                   <p className="text-xs text-muted-foreground">Today and past dates cannot be selected.</p>
                 </div>
               </div>
-              </div>
+              </DialogBody>
               <DialogFooter>
                 <Button
                   variant="outline"
@@ -891,7 +950,6 @@ export default function FeesPage() {
                 <Button
                   onClick={() => handleUpdate()}
                   disabled={confirmLoading}
-                  className="bg-[#08163d] hover:bg-[#0a1f4f] text-white"
                 >
                   {confirmLoading ? (
                     <>
