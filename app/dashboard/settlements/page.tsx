@@ -6,12 +6,23 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { StatusPill, toneFromStatus, DataTableShell, TableHeadLabel } from '@/components/data-table';
+import { StatSummaryCard } from '@/components/dashboard/StatSummaryCard';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { paymentsAPI, schoolsAPI } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { LoadingState } from '@/components/LoadingState';
-import { Loader2, RefreshCcw, Landmark } from 'lucide-react';
+import {
+  Loader2,
+  RefreshCcw,
+  Landmark,
+  Wallet,
+  CircleDollarSign,
+  Clock,
+  Hash,
+  Calendar,
+  CircleDot,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { ListPagination } from '@/components/ListPagination';
@@ -255,17 +266,23 @@ export default function SettlementsPage() {
   const formatDate = (value?: string) => (value ? new Date(value).toLocaleString() : '—');
 
   const statusBadge = (status: SettlementRow['status']) => {
-    if (status === 'completed') return <Badge className="bg-green-500">Completed</Badge>;
-    if (status === 'processing') return <Badge className="bg-blue-500">Processing</Badge>;
-    if (status === 'escrow_funded') return <Badge className="bg-amber-500">Escrow funded</Badge>;
-    if (status === 'failed') return <Badge className="bg-red-500">Failed</Badge>;
-    return <Badge className="bg-yellow-500">Pending</Badge>;
+    const label =
+      status === 'escrow_funded'
+        ? 'Escrow funded'
+        : status.charAt(0).toUpperCase() + status.slice(1);
+    const tone =
+      status === 'escrow_funded' ? 'warning' : toneFromStatus(status);
+    return (
+      <StatusPill tone={tone} dot>
+        {label}
+      </StatusPill>
+    );
   };
 
   return (
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
-        <div className="space-y-6">
+        <div className="space-y-4">
           {schoolSetupRequired && (
             <Card className="border-amber-200 bg-amber-50">
               <CardHeader>
@@ -285,85 +302,100 @@ export default function SettlementsPage() {
             </Card>
           )}
 
-          <div>
-            <h1 className="text-3xl font-bold">Settlements</h1>
-            <p className="mt-2 text-muted-foreground">
-              Fund the school escrow wallet first, then send the amount you choose from escrow to the school bank account.
-            </p>
+          <p className="text-xs text-slate-500">
+            Fund the school escrow wallet first, then send the amount you choose from escrow to the school bank account.
+          </p>
+
+          <div
+            className={`overflow-hidden rounded-2xl bg-white px-4 py-3.5 shadow-[0_4px_14px_rgba(8,22,61,0.04)] ring-1 ${
+              !hasBankProfile ? 'ring-amber-300' : 'ring-black/3'
+            }`}
+          >
+            <div className="mb-2 flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#08163d]/5">
+                <Landmark className="h-4 w-4 text-[#08163d]" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-[#08163d]">Bank Profile</h2>
+                <p className="text-xs text-slate-400">
+                  Settlements require bank name, bank code, account name, and account number.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-1 text-sm sm:grid-cols-2">
+              <p>
+                <span className="text-slate-400">Bank:</span>{' '}
+                <span className="text-[#08163d]">{school?.bank_name || '—'}</span>
+              </p>
+              <p>
+                <span className="text-slate-400">Bank Code:</span>{' '}
+                <span className="text-[#08163d]">{school?.bank_code || '—'}</span>
+              </p>
+              <p>
+                <span className="text-slate-400">Account Name:</span>{' '}
+                <span className="text-[#08163d]">{school?.bank_account_name || '—'}</span>
+              </p>
+              <p>
+                <span className="text-slate-400">Account Number:</span>{' '}
+                <span className="text-[#08163d]">{school?.bank_account_number || '—'}</span>
+              </p>
+            </div>
+            {!hasBankProfile && (
+              <p className="pt-2 text-xs text-amber-700">
+                Bank profile incomplete. Add bank name, bank code, account name, and account number before running settlements.
+              </p>
+            )}
           </div>
 
-          <Card className={!hasBankProfile ? 'border-amber-300' : ''}>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Landmark className="h-5 w-5" />
-                Bank Profile
-              </CardTitle>
-              <CardDescription>
-                Settlements require bank name, bank code, account name, and account number.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-1 text-sm">
-              <p><span className="text-muted-foreground">Bank:</span> {school?.bank_name || '—'}</p>
-              <p><span className="text-muted-foreground">Bank Code:</span> {school?.bank_code || '—'}</p>
-              <p><span className="text-muted-foreground">Account Name:</span> {school?.bank_account_name || '—'}</p>
-              <p><span className="text-muted-foreground">Account Number:</span> {school?.bank_account_number || '—'}</p>
-              {!hasBankProfile && (
-                <p className="pt-2 text-amber-700">
-                  Bank profile incomplete. Add bank name, bank code, account name, and account number before running settlements.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Available to settle</p>
-                <p className="text-2xl font-bold">{formatCurrency(availableBusiness)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">From business wallet</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Business wallet</p>
-                <p className="text-2xl font-bold">
-                  {summary?.business_wallet_balance !== undefined && summary?.business_wallet_balance !== null
-                    ? formatCurrency(summary.business_wallet_balance)
-                    : '—'}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Escrow wallet</p>
-                <p className="text-2xl font-bold text-amber-700">{formatCurrency(escrowBalance)}</p>
-                <p className="mt-1 text-xs text-muted-foreground">Held before bank payout</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Settled</p>
-                <p className="text-2xl font-bold text-green-600">{formatCurrency(summary?.total_settled || 0)}</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <p className="text-sm text-muted-foreground">Pending</p>
-                <p className="text-2xl font-bold text-blue-600">{formatCurrency(summary?.pending_settlements || 0)}</p>
-              </CardContent>
-            </Card>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <StatSummaryCard
+              title="Available to settle"
+              value={formatCurrency(availableBusiness)}
+              description="From business wallet"
+              icon={Wallet}
+              accent="navy"
+            />
+            <StatSummaryCard
+              title="Business wallet"
+              value={
+                summary?.business_wallet_balance !== undefined && summary?.business_wallet_balance !== null
+                  ? formatCurrency(summary.business_wallet_balance)
+                  : '—'
+              }
+              icon={CircleDollarSign}
+              accent="muted"
+            />
+            <StatSummaryCard
+              title="Escrow wallet"
+              value={formatCurrency(escrowBalance)}
+              description="Held before bank payout"
+              icon={Wallet}
+              accent="gold"
+            />
+            <StatSummaryCard
+              title="Settled"
+              value={formatCurrency(summary?.total_settled || 0)}
+              icon={CircleDollarSign}
+              accent="emerald"
+            />
+            <StatSummaryCard
+              title="Pending"
+              value={formatCurrency(summary?.pending_settlements || 0)}
+              icon={Clock}
+              accent="gold"
+            />
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>1. Fund escrow</CardTitle>
-              <CardDescription>
-                Move money from the school business wallet into escrow. Leave empty to move the full available balance
-                ({formatCurrency(availableBusiness)}).
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] ring-1 ring-black/3">
+            <div className="border-b border-slate-100 px-4 py-3.5">
+              <h2 className="text-sm font-semibold text-[#08163d]">1. Fund escrow</h2>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Move money from the school business wallet into escrow. Leave empty to move the full available balance (
+                {formatCurrency(availableBusiness)}).
+              </p>
+            </div>
+            <div className="space-y-3 px-4 py-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Input
                   type="number"
                   min={0}
@@ -375,35 +407,42 @@ export default function SettlementsPage() {
                     setFundAmountInput(e.target.value);
                     setFundError('');
                   }}
+                  className="h-10 rounded-full border-0 bg-[#F8F9FB] shadow-none ring-1 ring-black/5 focus-visible:ring-2 focus-visible:ring-[#E8A317]/35"
                 />
                 <Button
                   onClick={openFundConfirm}
                   disabled={funding || loading || availableBusiness <= 0}
+                  className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
                 >
                   {funding ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Fund escrow'}
                 </Button>
-                <Button variant="outline" onClick={() => loadData()} disabled={loading}>
-                  <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                <Button
+                  variant="outline"
+                  onClick={() => loadData()}
+                  disabled={loading}
+                  className="h-9 rounded-full border-slate-200"
+                >
+                  <RefreshCcw className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
                   Refresh
                 </Button>
               </div>
               {fundError && <p className="text-sm text-red-600">{fundError}</p>}
               {availableBusiness <= 0 && !fundError && (
-                <p className="text-sm text-muted-foreground">No business-wallet funds available to move into escrow.</p>
+                <p className="text-xs text-slate-400">No business-wallet funds available to move into escrow.</p>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>2. Send escrow to bank</CardTitle>
-              <CardDescription>
-                Choose how much of the escrow balance to send to the bank. Leave empty to send the full escrow balance
-                ({formatCurrency(escrowBalance)}).
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex flex-col gap-3 sm:flex-row">
+          <div className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] ring-1 ring-black/3">
+            <div className="border-b border-slate-100 px-4 py-3.5">
+              <h2 className="text-sm font-semibold text-[#08163d]">2. Send escrow to bank</h2>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Choose how much of the escrow balance to send to the bank. Leave empty to send the full escrow balance (
+                {formatCurrency(escrowBalance)}).
+              </p>
+            </div>
+            <div className="space-y-3 px-4 py-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                 <Input
                   type="number"
                   min={0}
@@ -415,71 +454,87 @@ export default function SettlementsPage() {
                     setAmountInput(e.target.value);
                     setRunError('');
                   }}
+                  className="h-10 rounded-full border-0 bg-[#F8F9FB] shadow-none ring-1 ring-black/5 focus-visible:ring-2 focus-visible:ring-[#E8A317]/35"
                 />
                 <Button
                   onClick={openRunConfirm}
                   disabled={running || loading || !hasBankProfile || escrowBalance <= 0}
+                  className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
                 >
                   {running ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send to bank'}
                 </Button>
               </div>
               {runError && <p className="text-sm text-red-600">{runError}</p>}
               {!hasBankProfile && (
-                <p className="text-sm text-amber-700">Complete the bank profile before sending to bank.</p>
+                <p className="text-xs text-amber-700">Complete the bank profile before sending to bank.</p>
               )}
               {hasBankProfile && escrowBalance <= 0 && !runError && (
-                <p className="text-sm text-muted-foreground">Escrow is empty. Fund escrow first, then send to bank.</p>
+                <p className="text-xs text-slate-400">Escrow is empty. Fund escrow first, then send to bank.</p>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Settlement History</CardTitle>
-              <CardDescription>Track escrow funding and bank payout status.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Reference</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Settled</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={5} className="p-0">
-                        <LoadingState label="Loading settlements…" className="py-8" />
-                      </TableCell>
-                    </TableRow>
-                  ) : settlements.length === 0 ? (
-                    <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No settlements yet.</TableCell></TableRow>
-                  ) : (
-                    settlements.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell className="font-mono text-xs">{row.reference}</TableCell>
-                        <TableCell>{formatCurrency(row.amount, row.currency)}</TableCell>
-                        <TableCell>{statusBadge(row.status)}</TableCell>
-                        <TableCell>{formatDate(row.created_at)}</TableCell>
-                        <TableCell>{formatDate(row.settled_at)}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+          <DataTableShell
+            title="Settlement History"
+            description="Track escrow funding and bank payout status."
+            footer={
               <ListPagination
-                className="mt-4"
                 page={page}
                 totalPages={totalPages}
                 loading={loading}
                 onPageChange={setPage}
               />
-            </CardContent>
-          </Card>
+            }
+          >
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>
+                    <TableHeadLabel icon={Hash}>Reference</TableHeadLabel>
+                  </TableHead>
+                  <TableHead>
+                    <TableHeadLabel>Amount</TableHeadLabel>
+                  </TableHead>
+                  <TableHead>
+                    <TableHeadLabel icon={CircleDot}>Status</TableHeadLabel>
+                  </TableHead>
+                  <TableHead>
+                    <TableHeadLabel icon={Calendar}>Created</TableHeadLabel>
+                  </TableHead>
+                  <TableHead>
+                    <TableHeadLabel icon={Calendar}>Settled</TableHeadLabel>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="p-0">
+                      <LoadingState label="Loading settlements…" className="py-8" />
+                    </TableCell>
+                  </TableRow>
+                ) : settlements.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-10 text-center text-slate-400">
+                      No settlements yet.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  settlements.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-mono text-xs text-slate-500">{row.reference}</TableCell>
+                      <TableCell className="text-sm font-medium text-[#08163d]">
+                        {formatCurrency(row.amount, row.currency)}
+                      </TableCell>
+                      <TableCell>{statusBadge(row.status)}</TableCell>
+                      <TableCell className="text-xs text-slate-400">{formatDate(row.created_at)}</TableCell>
+                      <TableCell className="text-xs text-slate-400">{formatDate(row.settled_at)}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </DataTableShell>
 
           <ConfirmDialog
             open={fundConfirmOpen}

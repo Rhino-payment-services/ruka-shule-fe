@@ -2,7 +2,7 @@
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   LayoutDashboard,
   School,
@@ -15,6 +15,8 @@ import {
   Menu,
   X,
   Clock,
+  Search,
+  ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -26,196 +28,315 @@ interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
+type NavGroup = 'school' | 'finance';
+
+type MenuItem = {
+  name: string;
+  icon: typeof LayoutDashboard;
+  href: string;
+  roles: Array<'admin' | 'school_admin'>;
+  group?: NavGroup;
+};
+
+const SIDEBAR_WIDTH = 'w-[220px]';
+const SIDEBAR_PL = 'lg:pl-[220px]';
+
+const GROUPS: { id: NavGroup; label: string }[] = [
+  { id: 'school', label: 'School' },
+  { id: 'finance', label: 'Finance' },
+];
+
+const MENU_ITEMS: MenuItem[] = [
+  {
+    name: 'Dashboard',
+    icon: LayoutDashboard,
+    href: '/dashboard',
+    roles: ['admin', 'school_admin'],
+  },
+  {
+    name: 'Schools',
+    icon: School,
+    href: '/dashboard/schools',
+    roles: ['admin'],
+    group: 'school',
+  },
+  {
+    name: 'Pending Approvals',
+    icon: Clock,
+    href: '/dashboard/pending-approvals',
+    roles: ['admin'],
+    group: 'school',
+  },
+  {
+    name: 'Users',
+    icon: Users,
+    href: '/dashboard/users',
+    roles: ['admin'],
+    group: 'school',
+  },
+  {
+    name: 'Students',
+    icon: Users,
+    href: '/dashboard/students',
+    roles: ['admin', 'school_admin'],
+    group: 'school',
+  },
+  {
+    name: 'Fees',
+    icon: Receipt,
+    href: '/dashboard/fees',
+    roles: ['school_admin'],
+    group: 'school',
+  },
+  {
+    name: 'Additional Charges',
+    icon: Receipt,
+    href: '/dashboard/one-off-charges',
+    roles: ['school_admin'],
+    group: 'school',
+  },
+  {
+    name: 'Fees Overview',
+    icon: Receipt,
+    href: '/dashboard/fees-overview',
+    roles: ['school_admin'],
+    group: 'school',
+  },
+  {
+    name: 'Platform Payments',
+    icon: CreditCard,
+    href: '/dashboard/platform-payments',
+    roles: ['admin'],
+    group: 'finance',
+  },
+  {
+    name: 'Payments',
+    icon: CreditCard,
+    href: '/dashboard/payments',
+    roles: ['school_admin'],
+    group: 'finance',
+  },
+  {
+    name: 'Settlements',
+    icon: Wallet,
+    href: '/dashboard/settlements',
+    roles: ['school_admin'],
+    group: 'finance',
+  },
+  {
+    name: 'Settings',
+    icon: Settings,
+    href: '/dashboard/settings',
+    roles: ['admin', 'school_admin'],
+  },
+];
+
+function isActivePath(pathname: string, href: string) {
+  const normalizedPath = pathname.replace(/\/$/, '') || '';
+  const normalizedHref = href.replace(/\/$/, '');
+  return (
+    normalizedPath === normalizedHref ||
+    (normalizedHref !== '/dashboard' && normalizedPath.startsWith(normalizedHref + '/'))
+  );
+}
+
+function pageTitleFromPath(pathname: string): string {
+  const normalized = pathname.replace(/\/$/, '') || '/dashboard';
+  if (normalized === '/dashboard') return 'Dashboard';
+
+  const match = MENU_ITEMS.find(
+    (item) =>
+      normalized === item.href ||
+      (item.href !== '/dashboard' && normalized.startsWith(item.href + '/'))
+  );
+  if (match) return match.name;
+
+  const segment = normalized.split('/').filter(Boolean).pop() || 'Dashboard';
+  return segment
+    .split('-')
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+function roleLabel(role?: string) {
+  if (role === 'admin') return 'Admin';
+  if (role === 'school_admin') return 'School Admin';
+  return 'User';
+}
+
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname() || '';
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [openGroups, setOpenGroups] = useState<Record<NavGroup, boolean>>({
+    school: true,
+    finance: true,
+  });
 
   const handleLogout = async () => {
     await logout();
     router.push('/');
   };
 
-  const menuItems = [
-    {
-      name: 'Dashboard',
-      icon: LayoutDashboard,
-      href: '/dashboard',
-      roles: ['admin', 'school_admin'],
-    },
-    {
-      name: 'Schools',
-      icon: School,
-      href: '/dashboard/schools',
-      roles: ['admin'],
-    },
-    {
-      name: 'Pending Approvals',
-      icon: Clock,
-      href: '/dashboard/pending-approvals',
-      roles: ['admin'],
-    },
-    {
-      name: 'Platform Payments',
-      icon: CreditCard,
-      href: '/dashboard/platform-payments',
-      roles: ['admin'],
-    },
-    {
-      name: 'Users',
-      icon: Users,
-      href: '/dashboard/users',
-      roles: ['admin'],
-    },
-    {
-      name: 'Students',
-      icon: Users,
-      href: '/dashboard/students',
-      roles: ['admin', 'school_admin'],
-    },
-    {
-      name: 'Payments',
-      icon: CreditCard,
-      href: '/dashboard/payments',
-      roles: ['school_admin'],
-    },
-    {
-      name: 'Fees',
-      icon: Receipt,
-      href: '/dashboard/fees',
-      roles: ['school_admin'],
-    },
-    {
-      name: 'Additional Charges',
-      icon: Receipt,
-      href: '/dashboard/one-off-charges',
-      roles: ['school_admin'],
-    },
-    {
-      name: 'Fees Overview',
-      icon: Receipt,
-      href: '/dashboard/fees-overview',
-      roles: ['school_admin'],
-    },
-    {
-      name: 'Settlements',
-      icon: Wallet,
-      href: '/dashboard/settlements',
-      roles: ['school_admin'],
-    },
-    {
-      name: 'Settings',
-      icon: Settings,
-      href: '/dashboard/settings',
-      roles: ['admin', 'school_admin'],
-    },
-  ].filter((item) => item.roles.includes(user?.role || ''));
+  const role = (user?.role || '') as 'admin' | 'school_admin' | '';
+  const pageTitle = pageTitleFromPath(pathname);
+  const displayName =
+    [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
+    user?.email?.split('@')[0] ||
+    'User';
+
+  const visibleItems = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return MENU_ITEMS.filter((item) => item.roles.includes(role as 'admin' | 'school_admin')).filter(
+      (item) => !q || item.name.toLowerCase().includes(q)
+    );
+  }, [role, query]);
+
+  const topItems = visibleItems.filter((item) => !item.group && item.href !== '/dashboard/settings');
+  const settingsItem = visibleItems.find((item) => item.href === '/dashboard/settings');
+
+  const toggleGroup = (id: NavGroup) => {
+    setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const renderLink = (item: MenuItem, indented = false) => {
+    const Icon = item.icon;
+    const active = isActivePath(pathname, item.href);
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => setSidebarOpen(false)}
+        className={cn(
+          'relative flex items-center gap-2 rounded-xl px-2 py-1.5 text-[12px] font-medium transition-colors',
+          indented && 'pl-5',
+          active
+            ? 'bg-[#FFF4C2] text-[#08163d]'
+            : 'text-slate-500 hover:bg-[#F8F9FB] hover:text-[#08163d]'
+        )}
+      >
+        {active && (
+          <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-[#E8A317]" />
+        )}
+        <Icon
+          className={cn('h-3.5 w-3.5 shrink-0', active ? 'text-[#E8A317]' : 'text-slate-400')}
+        />
+        <span className="truncate text-[12px]">{item.name}</span>
+      </Link>
+    );
+  };
 
   return (
-    <div className="flex min-h-screen bg-white">
-      {/* Sidebar */}
+    <div className="flex min-h-screen bg-[#F4F5F7] font-outfit text-[#08163d]">
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 transform border-r bg-white/80 backdrop-blur-xl shadow-xl transition-transform duration-300 ease-in-out lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-50 flex flex-col border-r border-[#08163d]/6 bg-white transition-transform duration-300 ease-in-out lg:translate-x-0',
+          SIDEBAR_WIDTH,
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
-        <div className="flex h-full flex-col">
-          {/* Logo */}
-          <div className="flex h-20 items-center justify-between px-6 bg-primary/5">
-            <RukapayLogo size="md" showText={true} />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setSidebarOpen(false)}
-              className="lg:hidden"
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
+        <div className="flex h-14 items-center justify-between px-4 pt-1">
+          <RukapayLogo size="sm" className="text-[#08163d]" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden"
+            aria-label="Close menu"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
 
-          {/* Menu */}
-          <nav className="flex-1 space-y-2 px-4 py-6">
-            <div className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground px-3">
-              Menu
-            </div>
-            {menuItems.map((item) => {
-              const Icon = item.icon;
-              const normalizedPath = pathname?.replace(/\/$/, '') || '';
-              const normalizedHref = item.href.replace(/\/$/, '');
-              const isActive =
-                normalizedPath === normalizedHref ||
-                (normalizedHref !== '/dashboard' && normalizedPath.startsWith(normalizedHref + '/'));
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    'flex items-center gap-3 rounded-lg px-4 py-3 text-sm font-medium transition-all duration-200',
-                    isActive
-                      ? 'bg-[#08163d] text-white shadow-lg'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  )}
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5 pb-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {topItems.map((item) => renderLink(item))}
+
+          {GROUPS.map((group) => {
+            const items = visibleItems.filter((item) => item.group === group.id);
+            if (items.length === 0) return null;
+            const open = query.trim() ? true : openGroups[group.id];
+            return (
+              <div key={group.id} className="pt-2.5">
+                <button
+                  type="button"
+                  onClick={() => toggleGroup(group.id)}
+                  className="flex w-full items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 hover:text-[#08163d]"
                 >
-                  <Icon className="h-5 w-5 shrink-0" />
-                  <span>{item.name}</span>
-                </Link>
-              );
-            })}
-          </nav>
+                  <ChevronRight className={cn('h-3 w-3 transition-transform', open && 'rotate-90')} />
+                  {group.label}
+                </button>
+                {open && <div className="mt-0.5 space-y-0.5">{items.map((item) => renderLink(item, true))}</div>}
+              </div>
+            );
+          })}
 
-          {/* Logout */}
-          <div className="border-t bg-gray-50 p-4">
-            <Button
-              variant="ghost"
-              onClick={handleLogout}
-              className="w-full justify-start text-muted-foreground hover:text-destructive"
-            >
-              <LogOut className="mr-2 h-4 w-4" />
-              Logout
-            </Button>
-          </div>
+          {settingsItem && <div className="pt-2.5">{renderLink(settingsItem)}</div>}
+
+          {visibleItems.length === 0 && (
+            <p className="px-2.5 py-6 text-center text-xs text-slate-400">No matching pages</p>
+          )}
+        </nav>
+
+        <div className="px-2.5 pb-4">
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-[13px] font-medium text-slate-500 transition-colors hover:bg-[#F8F9FB] hover:text-[#08163d]"
+          >
+            <LogOut className="h-4 w-4 text-slate-400" />
+            Log out
+          </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex flex-1 flex-col min-w-0 lg:pl-64">
-        {/* Header */}
-        <header className="sticky top-0 z-40 flex h-16 items-center justify-between border-b bg-white/80 backdrop-blur-xl shadow-sm px-4 lg:px-6">
+      <div className={cn('flex min-w-0 flex-1 flex-col', SIDEBAR_PL)}>
+        <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-[#08163d]/4 bg-[#F4F5F7]/95 px-4 backdrop-blur-sm lg:px-6">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setSidebarOpen(true)}
-            className="lg:hidden"
+            className="shrink-0 lg:hidden"
+            aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </Button>
 
-          <div className="flex flex-1" />
+          <h1 className="hidden shrink-0 text-lg font-semibold tracking-tight text-[#08163d] sm:block">
+            {pageTitle}
+          </h1>
 
-          {/* Right side */}
-          <div className="flex items-center gap-3 pl-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#08163d] text-sm font-semibold text-white shadow-md">
-              {user?.email?.charAt(0).toUpperCase()}
+          <div className="mx-auto w-full max-w-sm flex-1">
+            <label className="relative block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search menu…"
+                className="h-9 w-full rounded-full border-0 bg-white pl-9 pr-3 text-xs text-[#08163d] shadow-sm placeholder:text-slate-400 outline-none ring-1 ring-black/5 focus:ring-2 focus:ring-[#E8A317]/35"
+              />
+            </label>
+          </div>
+
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#08163d] text-xs font-semibold text-white">
+              {(user?.first_name || user?.email || 'U').charAt(0).toUpperCase()}
             </div>
-            <div className="hidden md:block">
-              <div className="text-sm font-medium">
-                {user?.email?.split('@')[0] || 'User'}
-              </div>
-              <div className="text-xs text-muted-foreground">{user?.email}</div>
+            <div className="hidden min-w-0 md:block">
+              <div className="truncate text-xs font-medium leading-tight">{displayName}</div>
+              <div className="text-[10px] text-slate-400">{roleLabel(user?.role)}</div>
             </div>
           </div>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 p-4 lg:p-6">{children}</main>
+        <main className="flex-1 px-4 pb-6 pt-4 lg:px-6 lg:pt-5">{children}</main>
       </div>
 
-      {/* Overlay for mobile */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-40 bg-[#08163d]/20 backdrop-blur-sm lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}

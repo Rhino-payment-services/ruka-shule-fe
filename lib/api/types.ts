@@ -388,6 +388,26 @@ export interface AdminStats {
   total_revenue: number;
 }
 
+export interface MonthlyRevenuePoint {
+  month: number;
+  label: string;
+  collected: number;
+  processing_fee: number;
+  net_after_fees: number;
+}
+
+export interface MonthlyRevenueInsights {
+  year: number;
+  months: MonthlyRevenuePoint[];
+}
+
+export interface GenderInsights {
+  male: number;
+  female: number;
+  unspecified: number;
+  total: number;
+}
+
 export interface AdminUser {
   id: string;
   email: string;

@@ -4,9 +4,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
 import { adminAPI, API_BASE_URL } from '@/lib/api';
-import { CreditCard, CheckCircle, XCircle, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useRouter } from 'next/navigation';
+import { CreditCard, User, School, Banknote, CircleDot, Calendar, Receipt } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -15,11 +13,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListPagination } from '@/components/ListPagination';
 import { LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
+import {
+  DataTableShell,
+  StatusPill,
+  TableHeadLabel,
+  toneFromStatus,
+} from '@/components/data-table';
 
 interface Payment {
   id: string;
@@ -34,7 +36,6 @@ interface Payment {
 }
 
 export default function PlatformPaymentsPage() {
-  const router = useRouter();
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -59,132 +60,115 @@ export default function PlatformPaymentsPage() {
     }
   };
 
-  const StatusIcon = (status: string) => {
-    if (status === 'completed' || status === 'paid') return CheckCircle;
-    if (status === 'failed') return XCircle;
-    return Clock;
-  };
-
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <DashboardLayout>
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-[#08163d] to-[#0a1f4f] bg-clip-text text-transparent">
-                Platform Payments
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                All payments across all schools
-              </p>
-            </div>
-          </div>
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500">All payments across all schools</p>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5" />
-                All Payments
-              </CardTitle>
-              <CardDescription>
-                {total} total transactions
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <LoadingState label="Loading payments…" />
-              ) : payments.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <CreditCard className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="font-medium text-muted-foreground">No payments yet</p>
-                </div>
-              ) : (
-                <>
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gradient-to-r from-primary/10 to-primary/5 border-b-2 border-primary/20">
-                        <TableHead className="font-semibold">Student</TableHead>
-                        <TableHead className="font-semibold">School</TableHead>
-                        <TableHead className="font-semibold">Amount</TableHead>
-                        <TableHead className="font-semibold">Status</TableHead>
-                        <TableHead className="font-semibold">Date</TableHead>
-                        <TableHead className="text-right font-semibold">Receipt</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {payments.map((p) => {
-                        const Icon = StatusIcon(p.status);
-                        const isCompleted = p.status === 'completed' || p.status === 'paid';
-                        return (
-                          <TableRow key={p.id} className="hover:bg-primary/5">
-                            <TableCell className="font-medium">{p.student_name || '—'}</TableCell>
-                            <TableCell>
-                              <div>
-                                <div>{p.school_name || '—'}</div>
-                                {p.school_code && (
-                                  <div className="text-xs text-muted-foreground font-mono">
-                                    {p.school_code}
-                                  </div>
-                                )}
+          <DataTableShell
+            title="All Payments"
+            description={`${total} total transactions`}
+            footer={
+              payments.length > 0 ? (
+                <ListPagination
+                  page={page}
+                  totalPages={totalPages}
+                  total={total}
+                  loading={loading}
+                  onPageChange={setPage}
+                />
+              ) : undefined
+            }
+          >
+            {loading ? (
+              <LoadingState label="Loading payments…" className="py-10" />
+            ) : payments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <CreditCard className="mb-3 h-10 w-10 text-slate-300" />
+                <p className="text-sm font-medium text-slate-400">No payments yet</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>
+                      <TableHeadLabel icon={User}>Student</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={School}>School</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Banknote}>Amount</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={CircleDot}>Status</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Calendar}>Date</TableHeadLabel>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <TableHeadLabel icon={Receipt} className="justify-end">
+                        Receipt
+                      </TableHeadLabel>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {payments.map((p) => {
+                    const isCompleted = p.status === 'completed' || p.status === 'paid';
+                    return (
+                      <TableRow key={p.id}>
+                        <TableCell className="font-medium text-[#08163d]">
+                          {p.student_name || '—'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-xs">
+                            <div className="text-[#08163d]">{p.school_name || '—'}</div>
+                            {p.school_code && (
+                              <div className="font-mono text-[11px] text-slate-400">
+                                {p.school_code}
                               </div>
-                            </TableCell>
-                            <TableCell>
-                              {p.currency} {p.amount?.toLocaleString()}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant="secondary"
-                                className={
-                                  isCompleted
-                                    ? 'bg-green-100 text-green-700'
-                                    : p.status === 'failed'
-                                    ? 'bg-red-100 text-red-700'
-                                    : 'bg-amber-100 text-amber-700'
-                                }
-                              >
-                                <Icon className="mr-1 h-3 w-3 inline" />
-                                {p.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-muted-foreground text-sm">
-                              {p.created_at
-                                ? new Date(p.created_at).toLocaleDateString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit',
-                                  })
-                                : '—'}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {isCompleted && (
-                                <a
-                                  href={`${API_BASE_URL}/receipts/${p.reference}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-sm text-primary hover:underline"
-                                >
-                                  Receipt
-                                </a>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                  <ListPagination
-                    className="mt-4"
-                    page={page}
-                    totalPages={totalPages}
-                    total={total}
-                    loading={loading}
-                    onPageChange={setPage}
-                  />
-                </>
-              )}
-            </CardContent>
-          </Card>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm font-medium text-[#08163d]">
+                          {p.currency} {p.amount?.toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          <StatusPill tone={toneFromStatus(p.status)} dot>
+                            {p.status}
+                          </StatusPill>
+                        </TableCell>
+                        <TableCell className="text-xs text-slate-400">
+                          {p.created_at
+                            ? new Date(p.created_at).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })
+                            : '—'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {isCompleted && (
+                            <a
+                              href={`${API_BASE_URL}/receipts/${p.reference}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-medium text-[#08163d] hover:underline"
+                            >
+                              Receipt
+                            </a>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </DataTableShell>
         </div>
       </DashboardLayout>
     </ProtectedRoute>

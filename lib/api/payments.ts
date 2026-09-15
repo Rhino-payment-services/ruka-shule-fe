@@ -8,12 +8,18 @@ import type {
   StudentLookupResponse,
   Settlement,
   SettlementsResponse,
+  MonthlyRevenueInsights,
 } from './types';
 
 export const paymentsAPI = {
   list: (page = 1, pageSize = 10) =>
     api.get<ApiPaginatedResponse<Payment>>('/payments', {
       params: { page, page_size: pageSize },
+    }),
+
+  getMonthlyInsights: (year?: number) =>
+    api.get<ApiSuccessResponse<MonthlyRevenueInsights>>('/payments/insights/monthly', {
+      params: year ? { year } : undefined,
     }),
 
   get: (id: string) => api.get<ApiSuccessResponse<Payment>>(`/payments/${id}`),

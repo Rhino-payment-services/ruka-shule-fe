@@ -2,6 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export interface ListPaginationProps {
   page: number;
@@ -24,18 +25,19 @@ export function ListPagination({
   const safePage = Math.min(Math.max(1, page), safeTotalPages);
 
   return (
-    <div className={`flex items-center justify-between gap-3 ${className ?? ''}`}>
+    <div className={cn('flex items-center justify-between gap-3', className)}>
       <Button
         type="button"
         variant="outline"
         size="sm"
         onClick={() => onPageChange(safePage - 1)}
         disabled={safePage <= 1 || loading}
+        className="h-8 rounded-full border-slate-200 px-3 text-xs text-[#08163d] hover:bg-[#F8F9FB]"
       >
-        <ChevronLeft className="h-4 w-4" />
+        <ChevronLeft className="h-3.5 w-3.5" />
         Previous
       </Button>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-xs text-slate-400">
         Page {safePage} of {safeTotalPages}
         {typeof total === 'number' ? ` · ${total} total` : null}
       </p>
@@ -45,9 +47,10 @@ export function ListPagination({
         size="sm"
         onClick={() => onPageChange(safePage + 1)}
         disabled={safePage >= safeTotalPages || loading}
+        className="h-8 rounded-full border-slate-200 px-3 text-xs text-[#08163d] hover:bg-[#F8F9FB]"
       >
         Next
-        <ChevronRight className="h-4 w-4" />
+        <ChevronRight className="h-3.5 w-3.5" />
       </Button>
     </div>
   );
