@@ -1,8 +1,16 @@
 import { api } from './client';
-import type { ApiSuccessResponse, ApiPaginatedResponse, AdminStats, AdminUser, School, Payment, Student } from './types';
+import type { ApiSuccessResponse, ApiPaginatedResponse, AdminStats, AdminUser, School, Payment, Student, MonthlyRevenueInsights, GenderInsights } from './types';
 
 export const adminAPI = {
   getStats: () => api.get<ApiSuccessResponse<AdminStats>>('/admin/stats'),
+
+  getMonthlyInsights: (year?: number) =>
+    api.get<ApiSuccessResponse<MonthlyRevenueInsights>>('/admin/insights/monthly', {
+      params: year ? { year } : undefined,
+    }),
+
+  getGenderInsights: () =>
+    api.get<ApiSuccessResponse<GenderInsights>>('/admin/insights/gender'),
 
   listUsers: (page = 1, pageSize = 10) =>
     api.get<ApiPaginatedResponse<AdminUser>>('/admin/users', {

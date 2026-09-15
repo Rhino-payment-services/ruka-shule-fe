@@ -7,11 +7,10 @@ import { oneOffChargesAPI, studentsAPI, schoolsAPI } from '@/lib/api';
 import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { PillSearch, StatusPill, toneFromStatus, DataTableShell, TableHeadLabel } from '@/components/data-table';
 import {
   Dialog,
   DialogContent,
@@ -20,7 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
-import { Plus, Pencil, List, Trash2 } from 'lucide-react';
+import { Plus, Pencil, List, Trash2, Receipt, CircleDot, Calendar, MoreHorizontal, Hash } from 'lucide-react';
 import { ListPagination } from '@/components/ListPagination';
 import { ButtonSpinner, LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
@@ -449,229 +448,280 @@ export default function OneOffChargesPage() {
   return (
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">
-                Additional Charges
-                <span className="ml-2 text-base font-normal text-muted-foreground">
-                  (One-off Charges)
-                </span>
-              </h1>
-              <p className="text-muted-foreground">
-                Registration, uniforms, ID cards, photos, and other non-recurring charges.
-              </p>
-            </div>
-            <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              Registration, uniforms, ID cards, photos, and other non-recurring charges.
+            </p>
+            <Button
+              onClick={() => setCreateOpen(true)}
+              className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
               New Charge
             </Button>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Charge definitions</CardTitle>
-              <CardDescription>Create once, then assign to students.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <LoadingState label="Loading charges…" />
-              ) : (
-                <div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Name</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Class</TableHead>
-                        <TableHead>Gender</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Updated</TableHead>
-                        <TableHead>Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {charges.map((charge) => (
-                        <TableRow key={charge.id}>
-                          <TableCell className="font-medium">{charge.name}</TableCell>
-                          <TableCell>
-                            {formatUgx(charge.amount)}
-                          </TableCell>
-                          <TableCell>{charge.class || 'All'}</TableCell>
-                          <TableCell>{charge.gender || 'All'}</TableCell>
-                          <TableCell>
-                            <Badge>{charge.status}</Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {charge.updated_at
-                              ? new Date(charge.updated_at).toLocaleDateString()
-                              : charge.created_at
-                                ? new Date(charge.created_at).toLocaleDateString()
-                                : '—'}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-2">
+          <DataTableShell
+            title="Charge definitions"
+            description="Create once, then assign to students."
+            footer={
+              !loading ? (
+                <ListPagination
+                  page={page}
+                  totalPages={chargePagination.totalPages}
+                  total={chargePagination.total}
+                  loading={loading}
+                  onPageChange={setPage}
+                />
+              ) : null
+            }
+          >
+            {loading ? (
+              <LoadingState label="Loading charges…" className="py-10" />
+            ) : charges.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#08163d]/5">
+                  <Receipt className="h-6 w-6 text-[#08163d]/50" />
+                </div>
+                <p className="text-sm text-slate-400">No charges yet</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>
+                      <TableHeadLabel icon={Receipt}>Name</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Hash}>Amount</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Class</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Gender</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={CircleDot}>Status</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Calendar}>Updated</TableHeadLabel>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <TableHeadLabel icon={MoreHorizontal} className="justify-end">
+                        Actions
+                      </TableHeadLabel>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {charges.map((charge) => (
+                    <TableRow key={charge.id}>
+                      <TableCell className="font-medium text-[#08163d]">{charge.name}</TableCell>
+                      <TableCell className="text-sm font-medium text-[#08163d]">
+                        {formatUgx(charge.amount)}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500">{charge.class || 'All'}</TableCell>
+                      <TableCell className="text-xs text-slate-500">{charge.gender || 'All'}</TableCell>
+                      <TableCell>
+                        <StatusPill tone={toneFromStatus(charge.status)} dot>
+                          {charge.status}
+                        </StatusPill>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-400">
+                        {charge.updated_at
+                          ? new Date(charge.updated_at).toLocaleDateString()
+                          : charge.created_at
+                            ? new Date(charge.created_at).toLocaleDateString()
+                            : '—'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex flex-wrap justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 rounded-full border-slate-200 px-2.5 text-xs"
+                            onClick={() => openAssign(charge)}
+                          >
+                            Assign
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 rounded-full border-slate-200 px-2.5 text-xs"
+                            onClick={() => openEdit(charge)}
+                          >
+                            <Pencil className="mr-1 h-3 w-3" />
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 rounded-full border-slate-200 px-2.5 text-xs"
+                            onClick={() => openAssignments(charge)}
+                          >
+                            <List className="mr-1 h-3 w-3" />
+                            Assignments
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 rounded-full border-slate-200 px-2.5 text-xs text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={() => setDeleteConfirmId(charge.id)}
+                          >
+                            <Trash2 className="mr-1 h-3 w-3" />
+                            Delete
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </DataTableShell>
+
+          <DataTableShell
+            title="Student payment history"
+            description="Check whether an additional charge has already been paid for a student."
+            toolbar={
+              <div className="flex w-full max-w-xl flex-col gap-2 sm:flex-row sm:items-center">
+                <select
+                  className="h-9 rounded-full border-0 bg-[#F8F9FB] px-3 text-xs shadow-none ring-1 ring-black/5 outline-none focus:ring-2 focus:ring-[#E8A317]/35"
+                  value={historyClassFilter || 'all'}
+                  onChange={(e) => handleHistoryClassChange(e.target.value)}
+                >
+                  <option value="all">Select a class</option>
+                  {schoolClasses.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
+                {historyClassFilter ? (
+                  <>
+                    <PillSearch
+                      value={historySearch}
+                      onChange={setHistorySearch}
+                      placeholder="Search students…"
+                      className="min-w-[160px] flex-1"
+                    />
+                    <select
+                      className="h-9 min-w-[180px] rounded-full border-0 bg-[#F8F9FB] px-3 text-xs shadow-none ring-1 ring-black/5 outline-none focus:ring-2 focus:ring-[#E8A317]/35"
+                      value={historyStudentId}
+                      onChange={(e) => loadHistory(e.target.value)}
+                    >
+                      <option value="">Select student</option>
+                      {historyStudents.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.registration_id} — {s.first_name} {s.last_name}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                ) : null}
+              </div>
+            }
+          >
+            {!historyClassFilter ? (
+              <p className="py-8 text-center text-sm text-slate-400">
+                Choose a class first to narrow the student list.
+              </p>
+            ) : historyClassFilter && historyStudents.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">
+                No students found in {historyClassFilter}
+                {historySearch ? ' for this search' : ''}.
+              </p>
+            ) : history.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-400">
+                {historyStudentId ? 'No charge history for this student.' : 'Select a student to view history.'}
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>
+                      <TableHeadLabel>Charge</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Amount</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={CircleDot}>Status</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Calendar}>Paid at</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Reference</TableHeadLabel>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <TableHeadLabel icon={MoreHorizontal} className="justify-end">
+                        Actions
+                      </TableHeadLabel>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {history.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-medium text-[#08163d]">{row.charge_name}</TableCell>
+                      <TableCell className="text-sm">{formatUgx(row.amount)}</TableCell>
+                      <TableCell>
+                        <StatusPill
+                          tone={
+                            row.status === 'paid'
+                              ? 'success'
+                              : row.status === 'waived'
+                                ? 'neutral'
+                                : toneFromStatus(row.status)
+                          }
+                          dot
+                        >
+                          {row.status}
+                        </StatusPill>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-400">
+                        {row.paid_at ? new Date(row.paid_at).toLocaleString() : '—'}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-slate-500">
+                        {row.external_ref || '—'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {['unpaid', 'pending'].includes(row.status) ? (
+                          <div className="flex justify-end gap-1">
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => openAssign(charge)}
-                            >
-                              Assign
-                            </Button>
-                              <Button size="sm" variant="outline" onClick={() => openEdit(charge)}>
-                                <Pencil className="mr-1 h-3 w-3" />
-                                Edit
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={() => openAssignments(charge)}>
-                                <List className="mr-1 h-3 w-3" />
-                                Assignments
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="text-destructive hover:text-destructive"
-                                onClick={() => setDeleteConfirmId(charge.id)}
-                              >
-                                <Trash2 className="mr-1 h-3 w-3" />
-                                Delete
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  <ListPagination
-                    className="mt-4"
-                    page={page}
-                    totalPages={chargePagination.totalPages}
-                    total={chargePagination.total}
-                    loading={loading}
-                    onPageChange={setPage}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Student payment history</CardTitle>
-              <CardDescription>
-                Check whether an additional charge has already been paid for a student.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="max-w-md space-y-3">
-                <div className="space-y-2">
-                  <Label>Class</Label>
-                  <select
-                    className="w-full rounded border px-3 py-2 text-sm"
-                    value={historyClassFilter || 'all'}
-                    onChange={(e) => handleHistoryClassChange(e.target.value)}
-                  >
-                    <option value="all">Select a class</option>
-                    {schoolClasses.map((cls) => (
-                      <option key={cls} value={cls}>
-                        {cls}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                {historyClassFilter ? (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Student</Label>
-                      <Input
-                        value={historySearch}
-                        onChange={(e) => setHistorySearch(e.target.value)}
-                        placeholder="Search students in this class..."
-                      />
-                      <select
-                        className="w-full rounded border px-3 py-2 text-sm"
-                        value={historyStudentId}
-                        onChange={(e) => loadHistory(e.target.value)}
-                      >
-                        <option value="">Select student</option>
-                        {historyStudents.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.registration_id} — {s.first_name} {s.last_name}
-                          </option>
-                        ))}
-                      </select>
-                      {historyStudents.length === 0 ? (
-                        <p className="text-xs text-muted-foreground">
-                          No students found in {historyClassFilter}
-                          {historySearch ? ' for this search' : ''}.
-                        </p>
-                      ) : null}
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    Choose a class first to narrow the student list.
-                  </p>
-                )}
-              </div>
-              {history.length > 0 && (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Charge</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Paid at</TableHead>
-                      <TableHead>Reference</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {history.map((row) => (
-                      <TableRow key={row.id}>
-                        <TableCell>{row.charge_name}</TableCell>
-                        <TableCell>
-                          {formatUgx(row.amount)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            className={
-                              row.status === 'paid'
-                                ? 'bg-green-600'
-                                : row.status === 'waived'
-                                  ? 'bg-slate-500'
-                                  : 'bg-amber-500'
-                            }
-                          >
-                            {row.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {row.paid_at ? new Date(row.paid_at).toLocaleString() : '-'}
-                        </TableCell>
-                        <TableCell>
-                          {row.external_ref || '-'}
-                        </TableCell>
-                        <TableCell>
-                          {['unpaid', 'pending'].includes(row.status) ? (
-                            <div className="flex gap-2">
-                              <Button size="sm" variant="outline" onClick={() => {
+                              className="h-7 rounded-full border-slate-200 px-2.5 text-xs"
+                              onClick={() => {
                                 setMarkPaidAssignment(row);
                                 setMarkPaidNote('');
                                 setMarkPaidReference('');
-                              }}>Mark as paid</Button>
-                              <Button size="sm" variant="outline" onClick={() => setWaiveConfirmId(row.id)}>Waive</Button>
-                            </div>
-                          ) : (
-                            '-'
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+                              }}
+                            >
+                              Mark as paid
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-7 rounded-full border-slate-200 px-2.5 text-xs"
+                              onClick={() => setWaiveConfirmId(row.id)}
+                            >
+                              Waive
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </DataTableShell>
         </div>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -699,7 +749,7 @@ export default function OneOffChargesPage() {
               <div className="space-y-2">
                 <Label>Class (optional)</Label>
                 <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
                   value={form.class || 'all'}
                   onChange={(e) =>
                     setForm({ ...form, class: e.target.value === 'all' ? '' : e.target.value })
@@ -719,7 +769,7 @@ export default function OneOffChargesPage() {
               <div className="space-y-2">
                 <Label>Gender (optional)</Label>
                 <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
                   value={form.gender}
                   onChange={(e) => setForm({ ...form, gender: e.target.value })}
                 >
@@ -737,7 +787,11 @@ export default function OneOffChargesPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button disabled={saving} onClick={handleCreate}>
+              <Button
+                disabled={saving}
+                onClick={handleCreate}
+                className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+              >
                 {saving ? (<><ButtonSpinner /> Creating…</>) : 'Create'}
               </Button>
             </DialogFooter>
@@ -768,7 +822,7 @@ export default function OneOffChargesPage() {
               <div className="space-y-2">
                 <Label>Class (optional)</Label>
                 <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
                   value={form.class || 'all'}
                   onChange={(e) =>
                     setForm({ ...form, class: e.target.value === 'all' ? '' : e.target.value })
@@ -788,7 +842,7 @@ export default function OneOffChargesPage() {
               <div className="space-y-2">
                 <Label>Gender (optional)</Label>
                 <select
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
                   value={form.gender}
                   onChange={(e) => setForm({ ...form, gender: e.target.value })}
                 >
@@ -817,7 +871,11 @@ export default function OneOffChargesPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button disabled={saving} onClick={handleUpdate}>
+              <Button
+                disabled={saving}
+                onClick={handleUpdate}
+                className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+              >
                 {saving ? (<><ButtonSpinner /> Saving…</>) : 'Save changes'}
               </Button>
             </DialogFooter>
@@ -851,16 +909,16 @@ export default function OneOffChargesPage() {
                   Charge targets <span className="font-medium">{selectedCharge.gender}</span> students
                 </p>
               ) : null}
-              <Input
+              <PillSearch
                 value={studentSearch}
-                onChange={(e) => setStudentSearch(e.target.value)}
-                placeholder="Search by name, registration ID, or phone..."
+                onChange={setStudentSearch}
+                placeholder="Search by name, registration ID, or phone…"
               />
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Filter by class</Label>
                   <select
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
                     value={assignClassFilter || 'all'}
                     disabled={!!selectedCharge?.class}
                     onChange={(e) =>
@@ -881,7 +939,7 @@ export default function OneOffChargesPage() {
                 <div className="space-y-2">
                   <Label>Filter by gender</Label>
                   <select
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
                     value={assignGenderFilter || 'all'}
                     disabled={!!selectedCharge?.gender}
                     onChange={(e) =>
@@ -985,6 +1043,7 @@ export default function OneOffChargesPage() {
                   }
                   setAssignConfirmOpen(true);
                 }}
+                className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
               >
                 Assign selected ({selectedStudentIds.length})
               </Button>
@@ -1024,7 +1083,9 @@ export default function OneOffChargesPage() {
                         {formatUgx(row.amount)}
                       </TableCell>
                       <TableCell>
-                        <Badge>{row.status}</Badge>
+                        <StatusPill tone={toneFromStatus(row.status)} dot>
+                          {row.status}
+                        </StatusPill>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground">
                         {row.external_ref || row.payment_note || '-'}
@@ -1085,7 +1146,11 @@ export default function OneOffChargesPage() {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setMarkPaidAssignment(null)}>Cancel</Button>
-              <Button disabled={actionLoading} onClick={handleMarkPaid}>
+              <Button
+                disabled={actionLoading}
+                onClick={handleMarkPaid}
+                className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+              >
                 {actionLoading ? (<><ButtonSpinner /> Saving…</>) : 'Mark as paid'}
               </Button>
             </DialogFooter>

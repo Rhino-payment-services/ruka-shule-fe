@@ -10,12 +10,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Users, 
-  Plus, 
-  FileSpreadsheet, 
-  Download, 
-  Search, 
+import {
+  DataTableShell,
+  PillSearch,
+  StatusPill,
+  TableHeadLabel,
+  toneFromStatus,
+} from '@/components/data-table';
+import {
+  Users,
+  Plus,
+  FileSpreadsheet,
+  Download,
+  Search,
   Eye,
   Loader2,
   DollarSign,
@@ -26,6 +33,11 @@ import {
   Pencil,
   Trash2,
   RotateCcw,
+  Hash,
+  CircleDot,
+  Calendar,
+  MoreHorizontal,
+  School,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { toast } from 'sonner';
@@ -674,7 +686,7 @@ export default function StudentsPage() {
   return (
     <ProtectedRoute allowedRoles={['admin', 'school_admin']}>
       <DashboardLayout>
-        <div className="space-y-6">
+        <div className="space-y-4">
           {schoolSetupRequired && (
             <Card className="border-amber-200 bg-amber-50">
               <CardHeader>
@@ -694,48 +706,47 @@ export default function StudentsPage() {
             </Card>
           )}
 
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold">Students</h1>
-              <p className="mt-2 text-muted-foreground">
-                {isPlatformAdmin
-                  ? 'View students across schools (select a school to continue)'
-                  : "Manage your school's students"}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              {!isPlatformAdmin && (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={downloadExampleExcel}
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download Example Excel
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => router.push('/dashboard/students/import')}
-                  >
-                    <FileSpreadsheet className="mr-2 h-4 w-4" />
-                    Import from Excel
-                  </Button>
-                  <Button onClick={() => router.push('/dashboard/students/add')}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Student
-                  </Button>
-                </>
-              )}
-            </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              {isPlatformAdmin
+                ? 'View students across schools (select a school to continue)'
+                : "Manage your school's students"}
+            </p>
+            {!isPlatformAdmin && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  className="h-9 rounded-full border-slate-200 px-3 text-xs"
+                  onClick={downloadExampleExcel}
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" />
+                  Example Excel
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-9 rounded-full border-slate-200 px-3 text-xs"
+                  onClick={() => router.push('/dashboard/students/import')}
+                >
+                  <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                  Import
+                </Button>
+                <Button
+                  onClick={() => router.push('/dashboard/students/add')}
+                  className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+                >
+                  <Plus className="mr-1.5 h-4 w-4" />
+                  Add Student
+                </Button>
+              </div>
+            )}
           </div>
 
           {isPlatformAdmin && (
-            <Card>
-              <CardHeader>
-                <CardTitle>School</CardTitle>
-                <CardDescription>Select a school to view its students.</CardDescription>
-              </CardHeader>
-              <CardContent className="max-w-md space-y-4">
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-white px-4 py-3 shadow-[0_4px_14px_rgba(8,22,61,0.04)] ring-1 ring-black/3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#08163d]/5">
+                <School className="h-4 w-4 text-[#08163d]" />
+              </div>
+              <div className="min-w-0 flex-1 sm:max-w-sm">
                 <Select
                   value={selectedSchoolId || undefined}
                   onValueChange={(value) => {
@@ -744,7 +755,7 @@ export default function StudentsPage() {
                     setCurrentPage(1);
                   }}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 rounded-full border-0 bg-[#F8F9FB] shadow-none ring-1 ring-black/5 focus:ring-2 focus:ring-[#E8A317]/35">
                     <SelectValue placeholder="Select school" />
                   </SelectTrigger>
                   <SelectContent>
@@ -755,261 +766,285 @@ export default function StudentsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant={!showDeleted ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setShowDeleted(false)}
-                    disabled={!selectedSchoolId}
-                  >
-                    Active
-                  </Button>
-                  <Button
-                    type="button"
-                    variant={showDeleted ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setShowDeleted(true)}
-                    disabled={!selectedSchoolId}
-                  >
-                    Deleted
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="inline-flex rounded-full bg-[#F8F9FB] p-0.5 ring-1 ring-black/5">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleted(false)}
+                  disabled={!selectedSchoolId}
+                  className={`h-8 rounded-full px-3.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                    !showDeleted
+                      ? 'bg-[#08163d] text-white'
+                      : 'text-slate-500 hover:text-[#08163d]'
+                  }`}
+                >
+                  Active
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDeleted(true)}
+                  disabled={!selectedSchoolId}
+                  className={`h-8 rounded-full px-3.5 text-xs font-medium transition-colors disabled:opacity-40 ${
+                    showDeleted
+                      ? 'bg-[#08163d] text-white'
+                      : 'text-slate-500 hover:text-[#08163d]'
+                  }`}
+                >
+                  Deleted
+                </button>
+              </div>
+            </div>
           )}
 
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>{showDeleted && isPlatformAdmin ? 'Deleted Students' : 'Student Management'}</CardTitle>
-                  <CardDescription>
-                    {totalStudents} {totalStudents === 1 ? 'student' : 'students'} total
-                    {showDeleted && isPlatformAdmin ? ' (soft-deleted)' : ''}
-                  </CardDescription>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={classFilter || 'all'}
+              onValueChange={(value) => setClassFilter(value === 'all' ? '' : value)}
+            >
+              <SelectTrigger className="h-9 w-40 rounded-full border-0 bg-white shadow-sm ring-1 ring-black/5 focus:ring-2 focus:ring-[#E8A317]/35">
+                <SelectValue placeholder="All classes" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All classes</SelectItem>
+                {schoolClasses.map((cls) => (
+                  <SelectItem key={cls} value={cls}>
+                    {cls}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={genderFilter || 'all'}
+              onValueChange={(value) => setGenderFilter(value === 'all' ? '' : value)}
+            >
+              <SelectTrigger className="h-9 w-40 rounded-full border-0 bg-white shadow-sm ring-1 ring-black/5 focus:ring-2 focus:ring-[#E8A317]/35">
+                <SelectValue placeholder="All genders" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All genders</SelectItem>
+                {GENDERS.map((gender) => (
+                  <SelectItem key={gender} value={gender}>
+                    {gender}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <PillSearch
+              placeholder="Search students…"
+              value={searchTerm}
+              onChange={setSearchTerm}
+              className="min-w-[220px] flex-1 sm:max-w-xs"
+            />
+          </div>
+
+          <DataTableShell
+            title={showDeleted && isPlatformAdmin ? 'Deleted Students' : 'All Students'}
+            description={`${totalStudents} ${totalStudents === 1 ? 'student' : 'students'} total${
+              showDeleted && isPlatformAdmin ? ' (soft-deleted)' : ''
+            }`}
+            footer={
+              students.length > 0 ? (
+                <ListPagination
+                  page={currentPage}
+                  totalPages={totalPages}
+                  total={totalStudents}
+                  loading={loading}
+                  onPageChange={setCurrentPage}
+                />
+              ) : null
+            }
+          >
+            {loading ? (
+              <LoadingState label="Loading students…" className="py-10" />
+            ) : students.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#08163d]/5">
+                  <Users className="h-6 w-6 text-[#08163d]/50" />
                 </div>
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={classFilter || 'all'}
-                    onValueChange={(value) => setClassFilter(value === 'all' ? '' : value)}
-                  >
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="All classes" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All classes</SelectItem>
-                      {schoolClasses.map((cls) => (
-                        <SelectItem key={cls} value={cls}>
-                          {cls}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Select
-                    value={genderFilter || 'all'}
-                    onValueChange={(value) => setGenderFilter(value === 'all' ? '' : value)}
-                  >
-                    <SelectTrigger className="w-40">
-                      <SelectValue placeholder="All genders" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All genders</SelectItem>
-                      {GENDERS.map((gender) => (
-                        <SelectItem key={gender} value={gender}>
-                          {gender}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                      placeholder="Search students..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9 w-64"
-                    />
+                <p className="mb-4 text-sm text-slate-400">
+                  {isPlatformAdmin && !selectedSchoolId
+                    ? 'Select a school to view students'
+                    : searchTerm
+                      ? 'No students found matching your search'
+                      : 'No students found'}
+                </p>
+                {!searchTerm && !isPlatformAdmin && (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      className="h-9 rounded-full border-slate-200"
+                      onClick={() => router.push('/dashboard/students/add')}
+                    >
+                      <Plus className="mr-1.5 h-3.5 w-3.5" />
+                      Add First Student
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="h-9 rounded-full border-slate-200"
+                      onClick={() => router.push('/dashboard/students/import')}
+                    >
+                      <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                      Import from Excel
+                    </Button>
                   </div>
-                </div>
+                )}
               </div>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <LoadingState label="Loading students…" />
-              ) : students.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <Users className="mb-4 h-12 w-12 text-muted-foreground" />
-                  <p className="text-muted-foreground mb-4">
-                    {isPlatformAdmin && !selectedSchoolId
-                      ? 'Select a school to view students'
-                      : searchTerm
-                        ? 'No students found matching your search'
-                        : 'No students found'}
-                  </p>
-                  {!searchTerm && !isPlatformAdmin && (
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => router.push('/dashboard/students/add')}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add First Student
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => router.push('/dashboard/students/import')}
-                      >
-                        <FileSpreadsheet className="mr-2 h-4 w-4" />
-                        Import from Excel
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Registration ID</TableHead>
-                          <TableHead>Name</TableHead>
-                          <TableHead>School Fees</TableHead>
-                          <TableHead>Class</TableHead>
-                          <TableHead>Gender</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Updated</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {students.map((student) => (
-                          <TableRow key={student.id}>
-                            <TableCell className="font-medium">
-                              {student.registration_id}
-                            </TableCell>
-                            <TableCell>
-                              {student.first_name} {student.last_name}
-                            </TableCell>
-                            <TableCell>
-                              {student.resolved_school_fees !== undefined && student.resolved_school_fees !== null ? (
-                                <span className="font-medium">
-                                  UGX {student.resolved_school_fees.toLocaleString()}
-                                  {student.fee_source === 'student_override' ? (
-                                    <span className="ml-1 text-xs text-muted-foreground">(override)</span>
-                                  ) : student.fee_source === 'class_fee' ? (
-                                    <span className="ml-1 text-xs text-muted-foreground">
-                                      {student.scholarship_percentage
-                                        ? `(class − ${student.scholarship_percentage}% scholarship)`
-                                        : '(class)'}
-                                    </span>
-                                  ) : null}
-                                </span>
-                              ) : student.school_fees_amount !== undefined && student.school_fees_amount !== null ? (
-                                <span className="font-medium">
-                                  UGX {student.school_fees_amount.toLocaleString()}
-                                  <span className="ml-1 text-xs text-muted-foreground">(override)</span>
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge variant="outline">{student.class}</Badge>
-                            </TableCell>
-                            <TableCell>
-                              {student.gender ? (
-                                <Badge variant="outline">{student.gender}</Badge>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <Badge
-                                variant={
-                                  student.status === 'active' ? 'default' : 'secondary'
-                                }
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>
+                      <TableHeadLabel icon={Hash}>Reg. ID</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Users}>Name</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={DollarSign}>School Fees</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={GraduationCap}>Class</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Gender</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={CircleDot}>Status</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Calendar}>Updated</TableHeadLabel>
+                    </TableHead>
+                    <TableHead className="text-right">
+                      <TableHeadLabel icon={MoreHorizontal} className="justify-end">
+                        Actions
+                      </TableHeadLabel>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {students.map((student) => (
+                    <TableRow key={student.id}>
+                      <TableCell className="font-mono text-xs text-slate-500">
+                        {student.registration_id}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#08163d]/5 text-[11px] font-semibold text-[#08163d]">
+                            {(student.first_name || '?').charAt(0).toUpperCase()}
+                          </div>
+                          <div className="font-medium text-[#08163d]">
+                            {student.first_name} {student.last_name}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {student.resolved_school_fees !== undefined && student.resolved_school_fees !== null ? (
+                          <span className="text-sm font-medium text-[#08163d]">
+                            UGX {student.resolved_school_fees.toLocaleString()}
+                            {student.fee_source === 'student_override' ? (
+                              <span className="ml-1 text-[10px] text-slate-400">(override)</span>
+                            ) : student.fee_source === 'class_fee' ? (
+                              <span className="ml-1 text-[10px] text-slate-400">
+                                {student.scholarship_percentage
+                                  ? `(class − ${student.scholarship_percentage}%)`
+                                  : '(class)'}
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : student.school_fees_amount !== undefined && student.school_fees_amount !== null ? (
+                          <span className="text-sm font-medium text-[#08163d]">
+                            UGX {student.school_fees_amount.toLocaleString()}
+                            <span className="ml-1 text-[10px] text-slate-400">(override)</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <StatusPill tone="info">{student.class}</StatusPill>
+                      </TableCell>
+                      <TableCell>
+                        {student.gender ? (
+                          <span className="text-xs text-slate-600">{student.gender}</span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <StatusPill tone={toneFromStatus(student.status)} dot>
+                          {student.status}
+                        </StatusPill>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-400">
+                        {student.updated_at
+                          ? new Date(student.updated_at).toLocaleDateString()
+                          : new Date(student.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          {isPlatformAdmin && showDeleted ? (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Restore student"
+                              className="h-7 px-2 text-xs text-[#08163d] hover:bg-[#FFF4C2]/50"
+                              onClick={() => setRestoreStudent(student)}
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : null}
+                          {!isPlatformAdmin && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Change class"
+                                className="h-7 px-2 text-xs text-[#08163d] hover:bg-[#FFF4C2]/50"
+                                onClick={() => {
+                                  setClassChangeStudent(student);
+                                  setNewClass(student.class);
+                                }}
                               >
-                                {student.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {student.updated_at
-                                ? new Date(student.updated_at).toLocaleDateString()
-                                : new Date(student.created_at).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-1">
-                                {isPlatformAdmin && showDeleted ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    title="Restore student"
-                                    onClick={() => setRestoreStudent(student)}
-                                  >
-                                    <RotateCcw className="h-4 w-4" />
-                                  </Button>
-                                ) : null}
-                                {!isPlatformAdmin && (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      title="Change class"
-                                      onClick={() => {
-                                        setClassChangeStudent(student);
-                                        setNewClass(student.class);
-                                      }}
-                                    >
-                                      <GraduationCap className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      title="Edit student"
-                                      onClick={() => openEditStudent(student)}
-                                    >
-                                      <Pencil className="h-4 w-4" />
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      title="Delete student"
-                                      className="text-destructive hover:text-destructive"
-                                      onClick={() => setDeleteStudent(student)}
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </>
-                                )}
-                                {!showDeleted && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleViewStudent(student)}
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                  <ListPagination
-                    className="mt-4"
-                    page={currentPage}
-                    totalPages={totalPages}
-                    total={totalStudents}
-                    loading={loading}
-                    onPageChange={setCurrentPage}
-                  />
-                </>
-              )}
-            </CardContent>
-          </Card>
+                                <GraduationCap className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Edit student"
+                                className="h-7 px-2 text-xs text-[#08163d] hover:bg-[#FFF4C2]/50"
+                                onClick={() => openEditStudent(student)}
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                title="Delete student"
+                                className="h-7 px-2 text-xs text-red-600 hover:bg-red-50"
+                                onClick={() => setDeleteStudent(student)}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </>
+                          )}
+                          {!showDeleted && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-xs text-[#08163d] hover:bg-[#FFF4C2]/50"
+                              onClick={() => handleViewStudent(student)}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </DataTableShell>
         </div>
 
         {/* View Student Modal */}

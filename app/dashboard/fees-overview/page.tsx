@@ -7,9 +7,24 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
+import {
+  DataTableShell,
+  StatusPill,
+  TableHeadLabel,
+} from '@/components/data-table';
+import { StatSummaryCard } from '@/components/dashboard/StatSummaryCard';
 import { paymentsAPI, schoolsAPI } from '@/lib/api';
-import { Download, Loader2 } from 'lucide-react';
+import {
+  Download,
+  Loader2,
+  Users,
+  Wallet,
+  Receipt,
+  CircleDollarSign,
+  AlertCircle,
+  GraduationCap,
+  CircleDot,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { ListPagination } from '@/components/ListPagination';
@@ -212,16 +227,16 @@ export default function FeesOverviewPage() {
   };
 
   const statusBadge = (value: OverviewStudentRow['payment_status']) => {
-    if (value === 'full') return <Badge className="bg-green-500">Paid</Badge>;
-    if (value === 'partial') return <Badge className="bg-yellow-500">Partial</Badge>;
-    return <Badge className="bg-red-500">Unpaid</Badge>;
+    if (value === 'full') return <StatusPill tone="success" dot>Paid</StatusPill>;
+    if (value === 'partial') return <StatusPill tone="pending" dot>Partial</StatusPill>;
+    return <StatusPill tone="danger" dot>Unpaid</StatusPill>;
   };
 
   const dueTypeBadge = (value?: OverviewStudentRow['due_type']) => {
-    if (value === 'both') return <Badge variant="destructive">Both</Badge>;
-    if (value === 'fees') return <Badge variant="secondary">Fees</Badge>;
-    if (value === 'one_off') return <Badge className="bg-rose-500">Additional</Badge>;
-    return <Badge variant="outline">Clear</Badge>;
+    if (value === 'both') return <StatusPill tone="danger" dot>Both</StatusPill>;
+    if (value === 'fees') return <StatusPill tone="info" dot>Fees</StatusPill>;
+    if (value === 'one_off') return <StatusPill tone="warning" dot>Additional</StatusPill>;
+    return <StatusPill tone="neutral" dot>Clear</StatusPill>;
   };
 
   const classes = schoolClasses;
@@ -244,7 +259,7 @@ export default function FeesOverviewPage() {
   return (
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
-        <div className="space-y-6">
+        <div className="space-y-4">
           {schoolSetupRequired && (
             <Card className="border-amber-200 bg-amber-50">
               <CardHeader>
@@ -264,170 +279,245 @@ export default function FeesOverviewPage() {
             </Card>
           )}
 
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <h1 className="text-3xl font-bold">Fees Overview</h1>
-              <p className="mt-2 text-muted-foreground">Paid/unpaid visibility by class and term (includes carry-forward)</p>
-            </div>
-            <Button variant="outline" onClick={exportCsv}>
-              <Download className="mr-2 h-4 w-4" />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              Paid/unpaid visibility by class and term (includes carry-forward)
+            </p>
+            <Button
+              variant="outline"
+              onClick={exportCsv}
+              className="h-9 rounded-full border-slate-200 px-3 text-xs"
+            >
+              <Download className="mr-1.5 h-3.5 w-3.5" />
               Export CSV
             </Button>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Filters</CardTitle>
-              <CardDescription>Filter by academic year, term, class, gender, and payment status</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-6">
-              <Select
-                value={academicYear}
-                onValueChange={setAcademicYear}
-              >
-                <SelectTrigger><SelectValue placeholder="Academic year" /></SelectTrigger>
-                <SelectContent>
-                  {academicYearOptions.map((year) => (
-                    <SelectItem key={year} value={year}>{year}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={term} onValueChange={setTerm}>
-                <SelectTrigger><SelectValue placeholder="Term" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All terms</SelectItem>
-                  <SelectItem value="Term 1">Term 1</SelectItem>
-                  <SelectItem value="Term 2">Term 2</SelectItem>
-                  <SelectItem value="Term 3">Term 3</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={className || 'all'} onValueChange={handleClassChange}>
-                <SelectTrigger><SelectValue placeholder="Class" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All classes</SelectItem>
-                  {classes.map((cls) => (
-                    <SelectItem key={cls} value={cls}>{cls}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={gender || 'all'} onValueChange={handleGenderChange}>
-                <SelectTrigger><SelectValue placeholder="Gender" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All genders</SelectItem>
-                  <SelectItem value="Male">Male</SelectItem>
-                  <SelectItem value="Female">Female</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={status} onValueChange={(v) => setStatus(v as OverviewStatus)}>
-                <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All</SelectItem>
-                  <SelectItem value="paid">Paid</SelectItem>
-                  <SelectItem value="partial">Partial</SelectItem>
-                  <SelectItem value="unpaid">Unpaid</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button onClick={applyFilters} disabled={loading}>
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Total Students</p><p className="text-2xl font-bold">{loading ? '—' : (overview?.total_students || 0)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Collected</p><p className="text-2xl font-bold text-green-600">{loading ? '—' : formatCurrency(overview?.total_collected || 0)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">School Fees</p><p className="text-2xl font-bold">{loading ? '—' : formatCurrency(overview?.total_school_fees || 0)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Other Fees</p><p className="text-2xl font-bold">{loading ? '—' : formatCurrency(overview?.total_other_fees || 0)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Fee Outstanding</p><p className="text-2xl font-bold text-amber-600">{loading ? '—' : formatCurrency(overview?.total_fee_outstanding || 0)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Additional Charges</p><p className="text-2xl font-bold text-rose-600">{loading ? '—' : formatCurrency(overview?.total_one_off_outstanding || 0)}</p></CardContent></Card>
-            <Card><CardContent className="pt-6"><p className="text-sm text-muted-foreground">Outstanding</p><p className="text-2xl font-bold text-red-600">{loading ? '—' : formatCurrency(overview?.total_outstanding || 0)}</p></CardContent></Card>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select value={academicYear} onValueChange={setAcademicYear}>
+              <SelectTrigger className="h-9 w-[120px] rounded-full border-0 bg-white shadow-sm ring-1 ring-black/5 focus:ring-2 focus:ring-[#E8A317]/35">
+                <SelectValue placeholder="Academic year" />
+              </SelectTrigger>
+              <SelectContent>
+                {academicYearOptions.map((year) => (
+                  <SelectItem key={year} value={year}>
+                    {year}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={term} onValueChange={setTerm}>
+              <SelectTrigger className="h-9 w-[130px] rounded-full border-0 bg-white shadow-sm ring-1 ring-black/5 focus:ring-2 focus:ring-[#E8A317]/35">
+                <SelectValue placeholder="Term" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All terms</SelectItem>
+                <SelectItem value="Term 1">Term 1</SelectItem>
+                <SelectItem value="Term 2">Term 2</SelectItem>
+                <SelectItem value="Term 3">Term 3</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={className || 'all'} onValueChange={handleClassChange}>
+              <SelectTrigger className="h-9 w-[140px] rounded-full border-0 bg-white shadow-sm ring-1 ring-black/5 focus:ring-2 focus:ring-[#E8A317]/35">
+                <SelectValue placeholder="Class" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All classes</SelectItem>
+                {classes.map((cls) => (
+                  <SelectItem key={cls} value={cls}>
+                    {cls}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={gender || 'all'} onValueChange={handleGenderChange}>
+              <SelectTrigger className="h-9 w-[140px] rounded-full border-0 bg-white shadow-sm ring-1 ring-black/5 focus:ring-2 focus:ring-[#E8A317]/35">
+                <SelectValue placeholder="Gender" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All genders</SelectItem>
+                <SelectItem value="Male">Male</SelectItem>
+                <SelectItem value="Female">Female</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={status} onValueChange={(v) => setStatus(v as OverviewStatus)}>
+              <SelectTrigger className="h-9 w-[130px] rounded-full border-0 bg-white shadow-sm ring-1 ring-black/5 focus:ring-2 focus:ring-[#E8A317]/35">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="partial">Partial</SelectItem>
+                <SelectItem value="unpaid">Unpaid</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={applyFilters}
+              disabled={loading}
+              className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+            </Button>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Student Breakdown</CardTitle>
-              <CardDescription>
-                Track fee balances, additional charges, and students who owe both in one place
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <LoadingState label="Loading fees overview…" />
-              ) : (
-                <>
-              <div className="mb-4 flex flex-wrap gap-2 text-sm">
-                <Badge variant="secondary">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+            <StatSummaryCard
+              title="Total Students"
+              value={loading ? '—' : overview?.total_students || 0}
+              icon={Users}
+              accent="navy"
+            />
+            <StatSummaryCard
+              title="Collected"
+              value={loading ? '—' : formatCurrency(overview?.total_collected || 0)}
+              icon={Wallet}
+              accent="emerald"
+            />
+            <StatSummaryCard
+              title="School Fees"
+              value={loading ? '—' : formatCurrency(overview?.total_school_fees || 0)}
+              icon={Receipt}
+              accent="navy"
+            />
+            <StatSummaryCard
+              title="Other Fees"
+              value={loading ? '—' : formatCurrency(overview?.total_other_fees || 0)}
+              icon={CircleDollarSign}
+              accent="muted"
+            />
+            <StatSummaryCard
+              title="Fee Outstanding"
+              value={loading ? '—' : formatCurrency(overview?.total_fee_outstanding || 0)}
+              icon={AlertCircle}
+              accent="gold"
+            />
+            <StatSummaryCard
+              title="Additional Charges"
+              value={loading ? '—' : formatCurrency(overview?.total_one_off_outstanding || 0)}
+              icon={Receipt}
+              accent="gold"
+            />
+            <StatSummaryCard
+              title="Outstanding"
+              value={loading ? '—' : formatCurrency(overview?.total_outstanding || 0)}
+              icon={AlertCircle}
+              accent="muted"
+            />
+          </div>
+
+          <DataTableShell
+            title="Student Breakdown"
+            description="Track fee balances, additional charges, and students who owe both in one place"
+            toolbar={
+              <div className="flex flex-wrap gap-2">
+                <StatusPill tone="info">
                   Fees due: {overview?.students_with_fee_outstanding || 0}
-                </Badge>
-                <Badge className="bg-rose-500">
+                </StatusPill>
+                <StatusPill tone="warning">
                   Additional due: {overview?.students_with_one_off_outstanding || 0}
-                </Badge>
-                <Badge variant="destructive">
+                </StatusPill>
+                <StatusPill tone="danger">
                   Both due: {overview?.students_with_both_balances || 0}
-                </Badge>
+                </StatusPill>
               </div>
+            }
+            footer={
+              !loading ? (
+                <ListPagination
+                  page={page}
+                  totalPages={normalizePaginationMeta(overview || {}, page).totalPages}
+                  total={overview?.total_students}
+                  loading={loading}
+                  onPageChange={(nextPage) => void loadOverview(nextPage)}
+                />
+              ) : null
+            }
+          >
+            {loading ? (
+              <LoadingState label="Loading fees overview…" className="py-10" />
+            ) : (
               <Table>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Student</TableHead>
-                    <TableHead>Class</TableHead>
-                    <TableHead>Gender</TableHead>
-                    <TableHead>School Fees</TableHead>
-                    <TableHead>Other Fees</TableHead>
-                    <TableHead>Fee outstanding</TableHead>
-                    <TableHead>Additional Charges</TableHead>
-                    <TableHead>Paid</TableHead>
-                    <TableHead>Carry-Forward</TableHead>
-                    <TableHead>Outstanding</TableHead>
-                    <TableHead>Due Type</TableHead>
-                    <TableHead>Status</TableHead>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>
+                      <TableHeadLabel icon={Users}>Student</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={GraduationCap}>Class</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Gender</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>School Fees</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Other Fees</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Fee outstanding</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Additional</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Paid</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Carry-Forward</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Outstanding</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Due Type</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={CircleDot}>Status</TableHeadLabel>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {(overview?.students || []).length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
+                      <TableCell colSpan={12} className="py-10 text-center text-slate-400">
                         No students found for these filters
                         {academicYear ? ` (no fee activity for ${academicYear})` : ''}
                       </TableCell>
                     </TableRow>
                   ) : (
                     (overview?.students || []).map((row) => (
-                    <TableRow key={row.student_id}>
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{row.student_name}</p>
-                          <p className="text-xs text-muted-foreground">{row.registration_id}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>{row.class}</TableCell>
-                      <TableCell>{row.gender || '—'}</TableCell>
-                      <TableCell>{formatCurrency(row.school_fee_total || 0)}</TableCell>
-                      <TableCell>{formatCurrency(row.other_fee_total || 0)}</TableCell>
-                      <TableCell>{formatCurrency(row.fee_outstanding || 0)}</TableCell>
-                      <TableCell className="text-red-700">{formatCurrency(row.one_off_outstanding || 0)}</TableCell>
-                      <TableCell className="text-green-700">{formatCurrency(row.total_paid)}</TableCell>
-                      <TableCell>{formatCurrency(row.carry_forward_balance)}</TableCell>
-                      <TableCell className="text-red-700">{formatCurrency(row.outstanding)}</TableCell>
-                      <TableCell>{dueTypeBadge(row.due_type)}</TableCell>
-                      <TableCell>{statusBadge(row.payment_status)}</TableCell>
-                    </TableRow>
-                  ))
+                      <TableRow key={row.student_id}>
+                        <TableCell>
+                          <div>
+                            <p className="font-medium text-[#08163d]">{row.student_name}</p>
+                            <p className="font-mono text-[11px] text-slate-400">{row.registration_id}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs text-slate-600">{row.class}</TableCell>
+                        <TableCell className="text-xs text-slate-500">{row.gender || '—'}</TableCell>
+                        <TableCell className="text-xs">{formatCurrency(row.school_fee_total || 0)}</TableCell>
+                        <TableCell className="text-xs">{formatCurrency(row.other_fee_total || 0)}</TableCell>
+                        <TableCell className="text-xs">{formatCurrency(row.fee_outstanding || 0)}</TableCell>
+                        <TableCell className="text-xs text-red-600">
+                          {formatCurrency(row.one_off_outstanding || 0)}
+                        </TableCell>
+                        <TableCell className="text-xs text-emerald-600">
+                          {formatCurrency(row.total_paid)}
+                        </TableCell>
+                        <TableCell className="text-xs">{formatCurrency(row.carry_forward_balance)}</TableCell>
+                        <TableCell className="text-xs font-medium text-red-600">
+                          {formatCurrency(row.outstanding)}
+                        </TableCell>
+                        <TableCell>{dueTypeBadge(row.due_type)}</TableCell>
+                        <TableCell>{statusBadge(row.payment_status)}</TableCell>
+                      </TableRow>
+                    ))
                   )}
                 </TableBody>
               </Table>
-              <ListPagination
-                className="mt-4"
-                page={page}
-                totalPages={normalizePaginationMeta(overview || {}, page).totalPages}
-                total={overview?.total_students}
-                loading={loading}
-                onPageChange={(nextPage) => void loadOverview(nextPage)}
-              />
-                </>
-              )}
-            </CardContent>
-          </Card>
+            )}
+          </DataTableShell>
         </div>
       </DashboardLayout>
     </ProtectedRoute>

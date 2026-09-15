@@ -5,7 +5,7 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { CreditCard, Search, CheckCircle, XCircle, Clock, Loader2, Wallet } from 'lucide-react';
+import { CreditCard, Search, CheckCircle, Loader2, Wallet, Users, Calendar, CircleDot, Hash } from 'lucide-react';
 import { LoadingState } from '@/components/LoadingState';
 import { useEffect, useState } from 'react';
 import { paymentsAPI, studentsAPI, schoolsAPI, API_BASE_URL } from '@/lib/api';
@@ -13,7 +13,12 @@ import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
 import { useAuth } from '@/contexts/AuthContext';
 import { normalizeUgandaPhoneForStorage } from '@/lib/utils';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import {
+  DataTableShell,
+  StatusPill,
+  TableHeadLabel,
+  toneFromStatus,
+} from '@/components/data-table';
 import { toast } from 'sonner';
 import { ListPagination } from '@/components/ListPagination';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
@@ -409,21 +414,17 @@ export default function PaymentsPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status.toLowerCase()) {
-      case 'completed':
-      case 'paid':
-      case 'success':
-        return <Badge className="bg-green-500 hover:bg-green-600"><CheckCircle className="h-3 w-3 mr-1" />Paid</Badge>;
-      case 'processing':
-        return <Badge className="bg-blue-500 hover:bg-blue-600"><Loader2 className="h-3 w-3 mr-1 animate-spin" />Processing</Badge>;
-      case 'failed':
-      case 'error':
-        return <Badge className="bg-red-500 hover:bg-red-600"><XCircle className="h-3 w-3 mr-1" />Failed</Badge>;
-      case 'pending':
-        return <Badge className="bg-yellow-500 hover:bg-yellow-600"><Clock className="h-3 w-3 mr-1" />Initiated</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
+    const label =
+      status.toLowerCase() === 'completed' || status.toLowerCase() === 'paid' || status.toLowerCase() === 'success'
+        ? 'Paid'
+        : status.toLowerCase() === 'pending'
+          ? 'Initiated'
+          : status;
+    return (
+      <StatusPill tone={toneFromStatus(status)} dot>
+        {label}
+      </StatusPill>
+    );
   };
 
   const formatDate = (dateString?: string) => {
@@ -444,7 +445,7 @@ export default function PaymentsPage() {
   return (
     <ProtectedRoute allowedRoles={['school_admin']}>
       <DashboardLayout>
-        <div className="space-y-6">
+        <div className="space-y-4">
           {schoolSetupRequired && (
             <Card className="border-amber-200 bg-amber-50">
               <CardHeader>
@@ -464,63 +465,59 @@ export default function PaymentsPage() {
             </Card>
           )}
 
-          <div>
-            <h1 className="text-3xl font-bold">Payments</h1>
-            <p className="mt-2 text-muted-foreground">View and manage payment transactions</p>
-            {payments.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-4 text-sm">
-                <span className="text-muted-foreground">
-                  <span className="font-semibold text-foreground">{totalPayments || payments.length}</span> total payment(s)
-                </span>
-                <span className="text-muted-foreground">
-                  <span className="font-semibold text-foreground">
-                    {payments.filter((p) => p.status === 'pending' || p.status === 'processing').length}
-                  </span> pending
-                </span>
-                <span className="text-muted-foreground">
-                  <span className="font-semibold text-green-600">
-                    {payments.filter((p) => p.status === 'completed' || p.status === 'paid').length}
-                  </span> completed
-                </span>
-              </div>
-            )}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs text-slate-500">View and manage payment transactions</p>
+              {payments.length > 0 && (
+                <>
+                  <StatusPill tone="neutral">{totalPayments || payments.length} total</StatusPill>
+                  <StatusPill tone="pending">
+                    {payments.filter((p) => p.status === 'pending' || p.status === 'processing').length} pending
+                  </StatusPill>
+                  <StatusPill tone="success">
+                    {payments.filter((p) => p.status === 'completed' || p.status === 'paid').length} completed
+                  </StatusPill>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Collect Payment Card */}
-          <Card className="border-2 border-emerald-200 bg-linear-to-br from-white to-emerald-50">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Wallet className="h-5 w-5 text-emerald-600" />
+          <div className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] ring-1 ring-black/3">
+            <div className="border-b border-slate-100 px-4 py-3.5">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#08163d]">
+                <Wallet className="h-4 w-4 text-[#E8A317]" />
                 Collect Payment
-              </CardTitle>
-              <CardDescription>
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-400">
                 Look up a student and collect fees via Mobile Money
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+              </p>
+            </div>
+            <div className="space-y-4 px-4 py-4">
               {/* Step 1: Lookup */}
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                 <div className="flex-1 space-y-2">
-                  <label className="text-sm font-medium">Student Registration ID</label>
+                  <label className="text-xs font-medium text-slate-500">Student Registration ID</label>
                   <Input
                     placeholder="e.g. STU001"
                     value={lookupRegistrationId}
                     onChange={(e) => setLookupRegistrationId(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handlePaymentLookup()}
+                    className="h-10 rounded-full border-0 bg-[#F8F9FB] shadow-none ring-1 ring-black/5 focus-visible:ring-2 focus-visible:ring-[#E8A317]/35"
                   />
                 </div>
                 {schoolCode && studentLookupData?.school?.name && (
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-xs text-slate-400">
                     School: {studentLookupData.school.name} ({schoolCode})
                   </div>
                 )}
                 {schoolCode && !studentLookupData && (
-                  <div className="text-sm text-muted-foreground">School: {schoolCode}</div>
+                  <div className="text-xs text-slate-400">School: {schoolCode}</div>
                 )}
                 <Button
                   onClick={() => void handlePaymentLookup()}
                   disabled={lookupLoading || !schoolCode}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
                 >
                   {lookupLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -610,12 +607,12 @@ export default function PaymentsPage() {
                                 Outstanding: UGX {fee.outstanding.toLocaleString()}
                               </p>
                               {fee.is_locked && (
-                                <Badge className="mt-1 bg-amber-500 hover:bg-amber-600">Locked</Badge>
+                                <StatusPill tone="warning" dot className="mt-1">Locked</StatusPill>
                               )}
                               {fee.fee_type === 'school_fees' && (
-                                <Badge variant="outline" className="mt-1 text-[11px] uppercase tracking-wide">
+                                <StatusPill tone="info" className="mt-1">
                                   School Fees
-                                </Badge>
+                                </StatusPill>
                               )}
                             </div>
                             {selectedFee?.id === fee.id && (
@@ -665,7 +662,9 @@ export default function PaymentsPage() {
                         {studentLookupData.one_off_charges.filter((charge) => ['paid', 'waived', 'pending'].includes(charge.status)).map((charge) => (
                           <div key={`history-${charge.id}`} className="flex items-center justify-between text-sm">
                             <span>{charge.name}{charge.external_ref ? ` · ${charge.external_ref}` : ''}</span>
-                            <Badge variant={charge.status === 'paid' ? 'default' : 'secondary'}>{charge.status}</Badge>
+                            <StatusPill tone={toneFromStatus(charge.status)} dot>
+                              {charge.status}
+                            </StatusPill>
                           </div>
                         ))}
                       </div>
@@ -712,7 +711,7 @@ export default function PaymentsPage() {
                         <Button
                           onClick={handleProcessPayment}
                           disabled={processingPayment || amountExceeded || !paymentAmount || !Number.isFinite(enteredAmount) || enteredAmount <= 0}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                          className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
                         >
                           {processingPayment ? (
                             <>
@@ -742,20 +741,22 @@ export default function PaymentsPage() {
               {!schoolCode && (
                 <p className="text-sm text-amber-600">Loading school information...</p>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
           {/* Student Search Card */}
-          <Card className="border-2 border-primary/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Search className="h-5 w-5" />
+          <div className="overflow-hidden rounded-2xl bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] ring-1 ring-black/3">
+            <div className="border-b border-slate-100 px-4 py-3.5">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[#08163d]">
+                <Search className="h-4 w-4 text-[#E8A317]" />
                 Search Student Payment Status
-              </CardTitle>
-              <CardDescription>Enter student ID, phone number, or name to check payment status</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex gap-2">
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Enter student ID, phone number, or name to check payment status
+              </p>
+            </div>
+            <div className="px-4 py-4">
+              <div className="flex flex-wrap gap-2">
                 <Input
                   placeholder="Enter student ID, phone, or name..."
                   value={searchQuery}
@@ -765,12 +766,12 @@ export default function PaymentsPage() {
                       handleStudentSearch();
                     }
                   }}
-                  className="flex-1"
+                  className="h-10 min-w-[220px] flex-1 rounded-full border-0 bg-[#F8F9FB] shadow-none ring-1 ring-black/5 focus-visible:ring-2 focus-visible:ring-[#E8A317]/35"
                 />
                 <Button
                   onClick={handleStudentSearch}
                   disabled={searching}
-                  className="bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+                  className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
                 >
                   {searching ? (
                     <>
@@ -788,69 +789,70 @@ export default function PaymentsPage() {
 
               {/* Search Results */}
               {searchResults && (
-                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                  <h3 className="font-semibold text-lg mb-3">Payment Summary</h3>
+                <div className="mt-4 rounded-2xl bg-[#F8F9FB] p-4 ring-1 ring-black/5">
+                  <h3 className="mb-3 text-sm font-semibold text-[#08163d]">Payment Summary</h3>
                   <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <div>
-                      <p className="text-sm text-muted-foreground">Student</p>
-                      <p className="font-semibold">{searchResults.student_name}</p>
-                      <p className="text-xs text-muted-foreground">ID: {searchResults.registration_id}</p>
-                      <p className="text-xs text-muted-foreground">Class: {searchResults.class}</p>
+                      <p className="text-xs text-slate-400">Student</p>
+                      <p className="font-semibold text-[#08163d]">{searchResults.student_name}</p>
+                      <p className="text-[11px] text-slate-400">ID: {searchResults.registration_id}</p>
+                      <p className="text-[11px] text-slate-400">Class: {searchResults.class}</p>
                       {searchResults.school_fees_amount !== undefined && (
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-[11px] text-slate-400">
                           School Fees: UGX {searchResults.school_fees_amount.toLocaleString()}
                         </p>
                       )}
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Total Fees</p>
-                      <p className="font-semibold text-lg">UGX {searchResults.total_fees.toLocaleString()}</p>
+                      <p className="text-xs text-slate-400">Total Fees</p>
+                      <p className="text-lg font-semibold text-[#08163d]">UGX {searchResults.total_fees.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Total Paid</p>
-                      <p className="font-semibold text-lg text-green-600">UGX {searchResults.total_paid.toLocaleString()}</p>
-                      <p className="text-xs text-muted-foreground">{searchResults.payment_count} payment(s)</p>
+                      <p className="text-xs text-slate-400">Total Paid</p>
+                      <p className="text-lg font-semibold text-emerald-600">UGX {searchResults.total_paid.toLocaleString()}</p>
+                      <p className="text-[11px] text-slate-400">{searchResults.payment_count} payment(s)</p>
                     </div>
                     <div>
-                      <p className="text-sm text-muted-foreground">Outstanding</p>
-                      <p className={`font-semibold text-lg ${searchResults.outstanding > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      <p className="text-xs text-slate-400">Outstanding</p>
+                      <p className={`text-lg font-semibold ${searchResults.outstanding > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
                         UGX {searchResults.outstanding.toLocaleString()}
                       </p>
-                      <Badge
-                        className={
+                      <StatusPill
+                        tone={
                           searchResults.payment_status === 'full'
-                            ? 'bg-green-500'
+                            ? 'success'
                             : searchResults.payment_status === 'partial'
-                            ? 'bg-yellow-500'
-                            : 'bg-red-500'
+                              ? 'pending'
+                              : 'danger'
                         }
+                        dot
                       >
                         {searchResults.payment_status === 'full'
                           ? 'Fully Paid'
                           : searchResults.payment_status === 'partial'
-                          ? 'Partially Paid'
-                          : 'Outstanding'}
-                      </Badge>
+                            ? 'Partially Paid'
+                            : 'Outstanding'}
+                      </StatusPill>
                     </div>
                   </div>
                   {Array.isArray(searchResults.fees) && searchResults.fees.length > 0 && (
-                    <div className="mt-4 rounded-lg border border-blue-200 bg-white p-4">
-                      <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    <div className="mt-4 rounded-xl bg-white p-4 ring-1 ring-black/5">
+                      <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                         Fee Breakdown
                       </h4>
                       <div className="space-y-2">
                         {searchResults.fees.map((fee) => (
-                          <div key={`${fee.fee_id || fee.fee_name}-${fee.fee_type || 'fee'}`} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
+                          <div key={`${fee.fee_id || fee.fee_name}-${fee.fee_type || 'fee'}`} className="flex items-center justify-between gap-3 rounded-xl bg-[#F8F9FB] px-3 py-2">
                             <div>
-                              <p className="font-medium">
+                              <p className="text-sm font-medium text-[#08163d]">
                                 {fee.fee_name}
                                 {fee.fee_type === 'school_fees' ? ' (School Fees)' : fee.fee_type ? ' (Other Fee)' : ''}
                               </p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-[11px] text-slate-400">
                                 Paid: UGX {(fee.paid || 0).toLocaleString()} · Outstanding: UGX {(fee.outstanding || 0).toLocaleString()}
                               </p>
                             </div>
-                            <div className="text-right font-semibold">
+                            <div className="text-right text-sm font-semibold text-[#08163d]">
                               UGX {(fee.amount || 0).toLocaleString()}
                             </div>
                           </div>
@@ -859,8 +861,8 @@ export default function PaymentsPage() {
                     </div>
                   )}
                   {searchResults.last_payment_at && (
-                    <div className="mt-3 pt-3 border-t border-blue-200">
-                      <p className="text-sm text-muted-foreground">
+                    <div className="mt-3 border-t border-slate-200/80 pt-3">
+                      <p className="text-xs text-slate-400">
                         Last Payment: {formatDate(searchResults.last_payment_at)}
                       </p>
                     </div>
@@ -869,116 +871,130 @@ export default function PaymentsPage() {
               )}
 
               {searchQuery && !searchResults && !searching && (
-                <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200 text-sm text-yellow-800">
+                <div className="mt-4 rounded-xl bg-amber-50 p-3 text-sm text-amber-800 ring-1 ring-amber-200/80">
                   No payment information found for this student.
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
-          {/* Payments List Card */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <CreditCard className="h-5 w-5" />
-                    Payment Transactions
-                  </CardTitle>
-                  <CardDescription>All payment transactions for your school</CardDescription>
+          <DataTableShell
+            title="Payment Transactions"
+            description="All payment transactions for your school"
+            toolbar={
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => loadPayments()}
+                disabled={loading}
+                className="h-8 rounded-full border-slate-200 px-3 text-xs"
+              >
+                <Loader2 className={`mr-1.5 h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            }
+            footer={
+              payments.length > 0 ? (
+                <ListPagination
+                  page={page}
+                  totalPages={totalPages}
+                  total={totalPayments}
+                  loading={loading}
+                  onPageChange={setPage}
+                />
+              ) : null
+            }
+          >
+            {loading ? (
+              <LoadingState label="Loading payments…" className="py-10" />
+            ) : payments.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-14">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#08163d]/5">
+                  <CreditCard className="h-6 w-6 text-[#08163d]/50" />
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => loadPayments()}
-                  disabled={loading}
-                >
-                  <Loader2 className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
+                <p className="text-sm text-slate-400">No payments found</p>
               </div>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <LoadingState label="Loading payments…" />
-              ) : payments.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <CreditCard className="mb-4 h-12 w-12 text-muted-foreground" />
-                  <p className="text-muted-foreground">No payments found</p>
-                </div>
-              ) : (
-                <>
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Reference</TableHead>
-                          <TableHead>Student</TableHead>
-                          <TableHead>Fee</TableHead>
-                          <TableHead>Amount</TableHead>
-                          <TableHead>Method</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Date</TableHead>
-                          <TableHead>Updated</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {payments.map((payment) => (
-                          <TableRow key={payment.id}>
-                            <TableCell className="font-mono text-sm">
-                              <a
-                                href={`${API_BASE_URL}/receipts/${payment.reference}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline"
-                                title="View receipt"
-                              >
-                                {payment.reference}
-                              </a>
-                            </TableCell>
-                            <TableCell>
-                              <div>
-                                <p className="font-medium">{payment.student_name || 'N/A'}</p>
-                                <p className="text-xs text-muted-foreground">ID: {payment.registration_id}</p>
-                                {payment.school_name && (
-                                  <p className="text-xs text-muted-foreground">{payment.school_name}</p>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>{payment.fee_name || 'N/A'}</TableCell>
-                            <TableCell className="font-semibold">
-                              {payment.currency} {payment.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </TableCell>
-                            <TableCell>
-                              {payment.payment_method === 'MOBILE_MONEY' ? 'Mobile Money' : payment.payment_method || 'N/A'}
-                            </TableCell>
-                            <TableCell>{getStatusBadge(payment.status)}</TableCell>
-                            <TableCell className="text-sm text-muted-foreground">
-                              {formatDate(payment.paid_at || payment.created_at)}
-                            </TableCell>
-                            <TableCell className="text-xs text-muted-foreground">
-                              {payment.updated_at
-                                ? new Date(payment.updated_at).toLocaleDateString()
-                                : new Date(payment.created_at).toLocaleDateString()}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  <ListPagination
-                    className="mt-4"
-                    page={page}
-                    totalPages={totalPages}
-                    total={totalPayments}
-                    loading={loading}
-                    onPageChange={setPage}
-                  />
-                </>
-              )}
-            </CardContent>
-          </Card>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>
+                      <TableHeadLabel icon={Hash}>Reference</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Users}>Student</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Fee</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Amount</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel>Method</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={CircleDot}>Status</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Calendar}>Date</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Calendar}>Updated</TableHeadLabel>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {payments.map((payment) => (
+                    <TableRow key={payment.id}>
+                      <TableCell className="font-mono text-xs">
+                        <a
+                          href={`${API_BASE_URL}/receipts/${payment.reference}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#08163d] hover:text-[#E8A317] hover:underline"
+                          title="View receipt"
+                        >
+                          {payment.reference}
+                        </a>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="font-medium text-[#08163d]">{payment.student_name || 'N/A'}</p>
+                          <p className="text-[11px] text-slate-400">ID: {payment.registration_id}</p>
+                          {payment.school_name && (
+                            <p className="text-[11px] text-slate-400">{payment.school_name}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600">{payment.fee_name || 'N/A'}</TableCell>
+                      <TableCell className="text-sm font-semibold text-[#08163d]">
+                        {payment.currency}{' '}
+                        {payment.amount.toLocaleString('en-US', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500">
+                        {payment.payment_method === 'MOBILE_MONEY'
+                          ? 'Mobile Money'
+                          : payment.payment_method || 'N/A'}
+                      </TableCell>
+                      <TableCell>{getStatusBadge(payment.status)}</TableCell>
+                      <TableCell className="text-xs text-slate-400">
+                        {formatDate(payment.paid_at || payment.created_at)}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-400">
+                        {payment.updated_at
+                          ? new Date(payment.updated_at).toLocaleDateString()
+                          : new Date(payment.created_at).toLocaleDateString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </DataTableShell>
         </div>
       </DashboardLayout>
     </ProtectedRoute>

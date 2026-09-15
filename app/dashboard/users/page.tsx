@@ -4,9 +4,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
 import { adminAPI } from '@/lib/api';
-import { Users, Shield, UserCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useRouter } from 'next/navigation';
+import { Users, Shield, UserCircle, Mail, School, Calendar, BadgeCheck } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -15,11 +13,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { ListPagination } from '@/components/ListPagination';
 import { LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
+import {
+  DataTableShell,
+  StatusPill,
+  TableHeadLabel,
+} from '@/components/data-table';
 
 interface UserData {
   id: string;
@@ -33,7 +34,6 @@ interface UserData {
 }
 
 export default function UsersPage() {
-  const router = useRouter();
   const [users, setUsers] = useState<UserData[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
@@ -61,111 +61,94 @@ export default function UsersPage() {
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <DashboardLayout>
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-[#08163d] to-[#0a1f4f] bg-clip-text text-transparent">
-                Users
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Platform admins and school admins
-              </p>
-            </div>
-          </div>
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500">Platform admins and school admins</p>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                All Users
-              </CardTitle>
-              <CardDescription>
-                {total} users registered on the platform
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <LoadingState label="Loading users…" />
-              ) : users.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <Users className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="font-medium text-muted-foreground">No users yet</p>
-                </div>
-              ) : (
-                <>
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-gradient-to-r from-primary/10 to-primary/5 border-b-2 border-primary/20">
-                        <TableHead className="font-semibold">User</TableHead>
-                        <TableHead className="font-semibold">Role</TableHead>
-                        <TableHead className="font-semibold">School</TableHead>
-                        <TableHead className="font-semibold">Created</TableHead>
-                        <TableHead className="font-semibold">Updated</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {users.map((u) => (
-                        <TableRow key={u.id} className="hover:bg-primary/5">
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10">
-                                {u.role === 'admin' ? (
-                                  <Shield className="h-4 w-4 text-primary" />
-                                ) : (
-                                  <UserCircle className="h-4 w-4 text-primary" />
-                                )}
-                              </div>
-                              <div>
-                                <div className="font-medium">{u.email}</div>
-                                <div className="text-xs text-muted-foreground">{u.phone}</div>
-                              </div>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant="outline"
-                              className={
-                                u.role === 'admin'
-                                  ? 'bg-blue-100 text-blue-700 border-blue-300'
-                                  : 'bg-green-100 text-green-700 border-green-300'
-                              }
-                            >
-                              {u.role === 'admin' ? 'Platform Admin' : 'School Admin'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {u.school_name || '—'}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground text-sm">
-                            {u.created_at
-                              ? new Date(u.created_at).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                  year: 'numeric',
-                                })
-                              : '—'}
-                          </TableCell>
-                          <TableCell className="text-xs text-muted-foreground">
-                            {u.updated_at
-                              ? new Date(u.updated_at).toLocaleDateString()
-                              : '—'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  <ListPagination
-                    className="mt-4"
-                    page={page}
-                    totalPages={totalPages}
-                    total={total}
-                    loading={loading}
-                    onPageChange={setPage}
-                  />
-                </>
-              )}
-            </CardContent>
-          </Card>
+          <DataTableShell
+            title="All Users"
+            description={`${total} users registered on the platform`}
+            footer={
+              users.length > 0 ? (
+                <ListPagination
+                  page={page}
+                  totalPages={totalPages}
+                  total={total}
+                  loading={loading}
+                  onPageChange={setPage}
+                />
+              ) : undefined
+            }
+          >
+            {loading ? (
+              <LoadingState label="Loading users…" className="py-10" />
+            ) : users.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Users className="mb-3 h-10 w-10 text-slate-300" />
+                <p className="text-sm font-medium text-slate-400">No users yet</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead>
+                      <TableHeadLabel icon={Mail}>User</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={BadgeCheck}>Role</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={School}>School</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Calendar}>Created</TableHeadLabel>
+                    </TableHead>
+                    <TableHead>
+                      <TableHeadLabel icon={Calendar}>Updated</TableHeadLabel>
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#08163d]/5">
+                            {u.role === 'admin' ? (
+                              <Shield className="h-3.5 w-3.5 text-[#08163d]" />
+                            ) : (
+                              <UserCircle className="h-3.5 w-3.5 text-[#08163d]" />
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-sm font-medium text-[#08163d]">{u.email}</div>
+                            <div className="text-[11px] text-slate-400">{u.phone}</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <StatusPill tone={u.role === 'admin' ? 'info' : 'success'} dot>
+                          {u.role === 'admin' ? 'Platform Admin' : 'School Admin'}
+                        </StatusPill>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500">{u.school_name || '—'}</TableCell>
+                      <TableCell className="text-xs text-slate-400">
+                        {u.created_at
+                          ? new Date(u.created_at).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                            })
+                          : '—'}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-400">
+                        {u.updated_at ? new Date(u.updated_at).toLocaleDateString() : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </DataTableShell>
         </div>
       </DashboardLayout>
     </ProtectedRoute>
