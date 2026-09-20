@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { firstAccessiblePath } from '@/lib/app-home';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -37,7 +38,7 @@ export default function LoginPage() {
       router.replace('/dashboard/schools/onboard');
       return;
     }
-    router.replace('/dashboard');
+    router.replace(firstAccessiblePath(user));
   }, [user, authLoading, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -47,8 +48,6 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      router.push('/dashboard');
     } catch (err: unknown) {
       setError(getApiErrorMessage(err, 'Login failed. Please try again.'));
     } finally {

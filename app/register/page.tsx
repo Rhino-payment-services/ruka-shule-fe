@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
+import { firstAccessiblePath } from '@/lib/app-home';
 import { Mail, Lock, Phone, Eye, EyeOff, User, School, ChevronRight, ChevronLeft, CreditCard, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -62,7 +63,7 @@ export default function RegisterPage() {
       router.replace('/dashboard/schools/onboard');
       return;
     }
-    router.replace('/dashboard');
+    router.replace(firstAccessiblePath(user));
   }, [user, authLoading, accountCreated, router]);
 
   const steps: { id: RegistrationStep; title: string; icon: React.ReactNode }[] = [
@@ -353,7 +354,7 @@ export default function RegisterPage() {
         toast.success('School created successfully');
       }
 
-      router.push('/dashboard');
+      router.push(firstAccessiblePath(user));
     } catch (err: unknown) {
       const errorMsg = getApiErrorMessage(err, 'Registration failed. Please try again.');
       if (/email already exists/i.test(errorMsg)) {

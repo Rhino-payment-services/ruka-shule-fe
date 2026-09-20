@@ -32,7 +32,7 @@ export function LoadingState({
       aria-busy="true"
     >
       <Loader2 className={cn('animate-spin text-current text-primary', sizeClass[size])} />
-      {label ? <p className="text-sm text-muted-foreground">{label}</p> : null}
+      {label ? <p className="text-sm text-slate-500">{label}</p> : null}
     </div>
   );
 }

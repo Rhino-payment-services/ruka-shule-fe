@@ -463,21 +463,26 @@
 
 .modal-textarea {
   width: 100%;
+  min-height: 88px;
   padding: 0.5rem 0.75rem;
-  border: 1px solid hsl(var(--border));
-  border-radius: 0.375rem;
+  border: 0;
+  border-radius: 0.75rem;
   font-size: 0.875rem;
-  background-color: hsl(var(--background));
-  color: hsl(var(--foreground));
+  line-height: 1.4;
+  background-color: #f8f9fb;
+  color: #08163d;
+  outline: none;
   resize: vertical;
-  min-height: 100px;
-  transition: border-color 0.15s ease-in-out;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05);
 }
 
 .modal-textarea:focus {
   outline: none;
-  border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2);
+  box-shadow: 0 0 0 2px rgba(232, 163, 23, 0.35);
+}
+
+.modal-textarea::placeholder {
+  color: #94a3b8;
 }
 
 .modal-checkbox {

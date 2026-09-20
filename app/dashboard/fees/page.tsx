@@ -51,6 +51,8 @@ import { dueDateToApi, isFutureDueDate } from '@/lib/dates';
 import { toast } from 'sonner';
 import { ListPagination } from '@/components/ListPagination';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 interface Fee {
   id: string;
@@ -76,6 +78,8 @@ const STREAMS = ['General', 'Arts', 'Sciences', 'Business', 'Technical'];
 const TERMS = ['Term 1', 'Term 2', 'Term 3'];
 const BILLING_FREQUENCIES = ['daily', 'weekly', 'monthly', 'termly', 'annual', 'one_off'] as const;
 export default function FeesPage() {
+  const { user } = useAuth();
+  const canWriteFees = hasPermission(user, PERMISSIONS.feesWrite);
   const [fees, setFees] = useState<Fee[]>([]);
   const [loading, setLoading] = useState(true);
   const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
@@ -370,7 +374,7 @@ export default function FeesPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['school_admin']}>
+    <ProtectedRoute requiredPermission={PERMISSIONS.feesRead}>
       <DashboardLayout>
         <div className="space-y-4">
           {schoolSetupRequired && (
@@ -394,13 +398,15 @@ export default function FeesPage() {
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-slate-500">Set and manage school fees structure</p>
-            <Button
-              onClick={() => setIsCreateDialogOpen(true)}
-              className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              Add Fee
-            </Button>
+            {canWriteFees && (
+              <Button
+                onClick={() => setIsCreateDialogOpen(true)}
+                className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                Add Fee
+              </Button>
+            )}
           </div>
 
           <DataTableShell
@@ -426,14 +432,16 @@ export default function FeesPage() {
                   <Receipt className="h-6 w-6 text-[#08163d]/50" />
                 </div>
                 <p className="mb-4 text-sm text-slate-400">No fees configured yet</p>
-                <Button
-                  onClick={() => setIsCreateDialogOpen(true)}
-                  variant="outline"
-                  className="h-9 rounded-full border-slate-200"
-                >
-                  <Plus className="mr-1.5 h-3.5 w-3.5" />
-                  Create First Fee
-                </Button>
+                {canWriteFees && (
+                  <Button
+                    onClick={() => setIsCreateDialogOpen(true)}
+                    variant="outline"
+                    className="h-9 rounded-full border-slate-200"
+                  >
+                    <Plus className="mr-1.5 h-3.5 w-3.5" />
+                    Create First Fee
+                  </Button>
+                )}
               </div>
             ) : (
               <Table>
@@ -478,11 +486,13 @@ export default function FeesPage() {
                     <TableHead>
                       <TableHeadLabel icon={Calendar}>Updated</TableHeadLabel>
                     </TableHead>
-                    <TableHead className="text-right">
-                      <TableHeadLabel icon={MoreHorizontal} className="justify-end">
-                        Actions
-                      </TableHeadLabel>
-                    </TableHead>
+                    {canWriteFees && (
+                      <TableHead className="text-right">
+                        <TableHeadLabel icon={MoreHorizontal} className="justify-end">
+                          Actions
+                        </TableHeadLabel>
+                      </TableHead>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -523,6 +533,7 @@ export default function FeesPage() {
                           ? new Date(fee.updated_at).toLocaleDateString()
                           : new Date(fee.created_at).toLocaleDateString()}
                       </TableCell>
+                      {canWriteFees && (
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button
@@ -562,6 +573,7 @@ export default function FeesPage() {
                           </Button>
                         </div>
                       </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -599,7 +611,7 @@ export default function FeesPage() {
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   />
                   {formData.billing_frequency === 'monthly' && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Charged as one month (the amount entered above).
                     </p>
                   )}
@@ -667,7 +679,7 @@ export default function FeesPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Leave empty for annual fees that apply to all terms
                     </p>
                   </div>
@@ -696,7 +708,7 @@ export default function FeesPage() {
                         ) : null}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Leave as All if fee applies to every class
                     </p>
                   </div>
@@ -718,7 +730,7 @@ export default function FeesPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Different streams may have different fees (Arts vs Sciences)
                     </p>
                   </div>
@@ -738,7 +750,7 @@ export default function FeesPage() {
                       <SelectItem value="Female">Female</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-slate-500">
                     Limit this fee to boys, girls, or both
                   </p>
                 </div>
@@ -750,7 +762,7 @@ export default function FeesPage() {
                     onChange={(due_date) => setFormData({ ...formData, due_date })}
                     placeholder="Select a future due date"
                   />
-                  <p className="text-xs text-muted-foreground">Today and past dates cannot be selected.</p>
+                  <p className="text-xs text-slate-500">Today and past dates cannot be selected.</p>
                 </div>
               </div>
               </DialogBody>
@@ -759,12 +771,14 @@ export default function FeesPage() {
                   variant="outline"
                   disabled={confirmLoading}
                   onClick={() => setIsCreateDialogOpen(false)}
+                  className="h-9 rounded-full border-slate-200"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={() => handleCreate()}
                   disabled={confirmLoading}
+                  className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
                 >
                   {confirmLoading ? (
                     <>
@@ -807,7 +821,7 @@ export default function FeesPage() {
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
                   />
                   {formData.billing_frequency === 'monthly' && (
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Charged as one month (the amount entered above).
                     </p>
                   )}
@@ -935,7 +949,7 @@ export default function FeesPage() {
                     onChange={(due_date) => setFormData({ ...formData, due_date })}
                     placeholder="Select a future due date"
                   />
-                  <p className="text-xs text-muted-foreground">Today and past dates cannot be selected.</p>
+                  <p className="text-xs text-slate-500">Today and past dates cannot be selected.</p>
                 </div>
               </div>
               </DialogBody>
@@ -944,12 +958,14 @@ export default function FeesPage() {
                   variant="outline"
                   disabled={confirmLoading}
                   onClick={() => setIsEditDialogOpen(false)}
+                  className="h-9 rounded-full border-slate-200"
                 >
                   Cancel
                 </Button>
                 <Button
                   onClick={() => handleUpdate()}
                   disabled={confirmLoading}
+                  className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
                 >
                   {confirmLoading ? (
                     <>
@@ -969,7 +985,7 @@ export default function FeesPage() {
             onOpenChange={(open) => {
               if (!open) setOverrideConfirm(null);
             }}
-            description={`Are you sure you want to continue? ${overrideConfirm?.count ?? 0} student(s) in this class already have fee overrides, and those overrides will be kept.`}
+            description={`Are you sure you want to continue? ${overrideConfirm?.count ?? 0} student(s) in this class already have custom school fees, and those amounts will be kept.`}
             confirmLabel={overrideConfirm?.mode === 'update' ? 'Update fee' : 'Create fee'}
             loading={confirmLoading}
             onConfirm={async () => {

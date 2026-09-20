@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuth } from '@/contexts/AuthContext';
+import { firstAccessiblePath } from '@/lib/app-home';
 import { Button } from '@/components/ui/button';
 import { HeroBackdrop } from '@/components/landing/HeroBackdrop';
 import { SiteHeader } from '@/components/landing/SiteHeader';
@@ -24,7 +25,7 @@ const GOLD = '#E8A317';
 
 export default function Home() {
   const { user, loading } = useAuth();
-  const startHref = user ? '/dashboard' : '/login';
+  const startHref = user ? firstAccessiblePath(user) : '/login';
 
   useEffect(() => {
     if (typeof window === 'undefined') return;

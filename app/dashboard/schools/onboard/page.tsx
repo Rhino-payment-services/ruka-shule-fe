@@ -7,12 +7,13 @@ import { useRouter } from 'next/navigation';
 import { schoolsAPI } from '@/lib/api';
 import { getApiErrorMessage } from '@/lib/api/errors';
 import { useAuth } from '@/contexts/AuthContext';
+import { firstAccessiblePath } from '@/lib/app-home';
 import { School, ArrowLeft, Loader2, User, Building2, CreditCard, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PanelShell } from '@/components/data-table';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
@@ -228,7 +229,7 @@ export default function OnboardSchoolPage() {
       toast.success('School created successfully');
       // Redirect to the appropriate destination after 2 seconds
       setTimeout(() => {
-        router.push(user?.role === 'school_admin' ? '/dashboard' : '/dashboard/schools');
+        router.push(user?.role === 'school_admin' ? firstAccessiblePath(user) : '/dashboard/schools');
       }, 2000);
     } catch (err: unknown) {
       const msg = getApiErrorMessage(err, 'Failed to create school');
@@ -242,26 +243,20 @@ export default function OnboardSchoolPage() {
   return (
     <ProtectedRoute allowedRoles={['admin', 'school_admin']}>
       <DashboardLayout>
-        <div className="space-y-6 max-w-4xl mx-auto">
-          {/* Header */}
-          <div className="flex items-center gap-4">
+        <div className="mx-auto max-w-4xl space-y-4">
+          <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => router.back()}
-              className="text-muted-foreground hover:text-foreground"
+              className="h-9 rounded-full text-slate-500 hover:text-[#08163d]"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back
             </Button>
-            <div>
-              <h1 className="text-3xl font-bold bg-linear-to-r from-[#08163d] to-[#0a1f4f] bg-clip-text text-transparent">
-                Onboard New School
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                Add a new school. Choose quick signup or complete merchant onboarding now.
-              </p>
-            </div>
+            <p className="text-xs text-slate-500">
+              Add a new school. Choose quick signup or complete merchant onboarding now.
+            </p>
           </div>
 
           {/* Progress Steps - Only show if full onboarding */}
@@ -284,15 +279,15 @@ export default function OnboardSchoolPage() {
                           : isCompleted
                           ? 'bg-green-100 text-green-700 hover:bg-green-200'
                           : isAccessible
-                          ? 'bg-muted text-muted-foreground hover:bg-muted/80'
-                          : 'bg-muted/50 text-muted-foreground cursor-not-allowed'
+                          ? 'bg-[#F8F9FB] text-slate-500 hover:bg-white'
+                          : 'bg-[#F8F9FB]/70 text-slate-400 cursor-not-allowed'
                       }`}
                     >
                       {section.icon}
                       <span className="hidden sm:inline text-sm font-medium">{section.title}</span>
                     </button>
                     {index < sections.length - 1 && (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground mx-2" />
+                      <ChevronRight className="h-4 w-4 text-slate-500 mx-2" />
                     )}
                   </div>
                 );
@@ -319,39 +314,38 @@ export default function OnboardSchoolPage() {
           )}
 
           {/* Form Card */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-linear-to-br from-blue-100 to-blue-200 border border-blue-300">
-                  {quickSignup ? (
-                    <School className="h-6 w-6 text-blue-600" />
-                  ) : (
-                    <>
-                      {currentSection === 'school' && <School className="h-6 w-6 text-blue-600" />}
-                      {currentSection === 'owner' && <User className="h-6 w-6 text-blue-600" />}
-                      {currentSection === 'business' && <Building2 className="h-6 w-6 text-blue-600" />}
-                      {currentSection === 'financial' && <CreditCard className="h-6 w-6 text-blue-600" />}
-                    </>
-                  )}
-                </div>
-                <div>
-                  <CardTitle>
-                    {quickSignup 
-                      ? 'School Information' 
-                      : sections.find(s => s.id === currentSection)?.title}
-                  </CardTitle>
-                  <CardDescription>
-                    {quickSignup 
-                      ? 'Enter the school details below. The school code is required and must be unique. You can complete merchant onboarding later.'
-                      : currentSection === 'school' && 'Enter the school details below. The school code is required and must be unique.'}
-                    {!quickSignup && currentSection === 'owner' && 'Enter the owner or representative information for merchant KYC.'}
-                    {!quickSignup && currentSection === 'business' && 'Enter business registration details required for merchant onboarding.'}
-                    {!quickSignup && currentSection === 'financial' && 'Enter bank account information (optional). This can be added later.'}
-                  </CardDescription>
-                </div>
+          <PanelShell
+            title={
+              quickSignup
+                ? 'School Information'
+                : sections.find((s) => s.id === currentSection)?.title
+            }
+            description={
+              quickSignup
+                ? 'Enter the school details below. The school code is required and must be unique. You can complete merchant onboarding later.'
+                : currentSection === 'school'
+                  ? 'Enter the school details below. The school code is required and must be unique.'
+                  : currentSection === 'owner'
+                    ? 'Enter the owner or representative information for merchant KYC.'
+                    : currentSection === 'business'
+                      ? 'Enter business registration details required for merchant onboarding.'
+                      : 'Enter bank account information (optional). This can be added later.'
+            }
+            toolbar={
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#08163d]/5">
+                {quickSignup ? (
+                  <School className="h-5 w-5 text-[#08163d]" />
+                ) : (
+                  <>
+                    {currentSection === 'school' && <School className="h-5 w-5 text-[#08163d]" />}
+                    {currentSection === 'owner' && <User className="h-5 w-5 text-[#08163d]" />}
+                    {currentSection === 'business' && <Building2 className="h-5 w-5 text-[#08163d]" />}
+                    {currentSection === 'financial' && <CreditCard className="h-5 w-5 text-[#08163d]" />}
+                  </>
+                )}
               </div>
-            </CardHeader>
-            <CardContent>
+            }
+          >
               <form onSubmit={handleSubmit} className="space-y-6">
                 {/* School Information Section */}
                 {(quickSignup || currentSection === 'school') && (
@@ -385,7 +379,7 @@ export default function OnboardSchoolPage() {
                         required
                         className="h-11"
                       />
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-slate-500">
                         This school code must be unique and will be used throughout the system.
                       </p>
                     </div>
@@ -587,7 +581,7 @@ export default function OnboardSchoolPage() {
                         maxLength={20}
                         className="h-11"
                       />
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-slate-500">
                         National ID number of the school owner or representative
                       </p>
                     </div>
@@ -640,7 +634,7 @@ export default function OnboardSchoolPage() {
                         />
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-slate-500">
                       Used for Rukapay wallet/app actions — not for logging into Shule.
                     </p>
                   </div>
@@ -912,8 +906,7 @@ export default function OnboardSchoolPage() {
                   )}
                 </div>
               </form>
-            </CardContent>
-          </Card>
+          </PanelShell>
         </div>
       </DashboardLayout>
     </ProtectedRoute>

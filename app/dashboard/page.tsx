@@ -30,6 +30,7 @@ import { StatSummaryCard } from '@/components/dashboard/StatSummaryCard';
 import { RevenueBarChart } from '@/components/dashboard/RevenueBarChart';
 import { GenderDonutChart } from '@/components/dashboard/GenderDonutChart';
 import { ActivityListCard } from '@/components/dashboard/ActivityListCard';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 interface SchoolData {
   id: string;
@@ -78,7 +79,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (authLoading) return;
     if (!user && typeof window !== 'undefined') {
-      window.location.replace('/');
+      window.location.replace('/login');
     }
   }, [user, authLoading]);
 
@@ -111,14 +112,16 @@ export default function DashboardPage() {
   useEffect(() => {
     if (user?.role === 'admin') {
       loadAdminStats();
-    } else if (user?.role === 'school_admin') {
-      loadSchoolAdminStats();
+    } else if (hasPermission(user, PERMISSIONS.dashboardView)) {
+      void loadSchoolAdminStats();
+    } else {
+      setLoading(false);
     }
   }, [user]);
 
   if (authLoading || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
+      <div className="flex min-h-screen items-center justify-center bg-[#F4F5F7]">
         <LoadingState label="Loading…" size="lg" />
       </div>
     );
@@ -172,76 +175,90 @@ export default function DashboardPage() {
   };
 
   const loadSchoolAdminStats = async () => {
+    const canSettings = hasPermission(user, PERMISSIONS.settingsRead);
+    const canStudents = hasPermission(user, PERMISSIONS.studentsRead);
+    const canFees = hasPermission(user, PERMISSIONS.feesRead);
+    const canPayments = hasPermission(user, PERMISSIONS.paymentsRead);
+
     try {
       let school: SchoolData | null = null;
-      try {
-        const schoolRes = await schoolsAPI.getMySchool();
-        school = schoolRes.data.data;
-      } catch (err: unknown) {
-        const status = (err as { response?: { status?: number } })?.response?.status;
-        if (status === 404) {
-          setSchoolSetupRequired(true);
-          setLoading(false);
-          return;
+      if (canSettings) {
+        try {
+          const schoolRes = await schoolsAPI.getMySchool();
+          school = schoolRes.data.data;
+        } catch (err: unknown) {
+          const status = (err as { response?: { status?: number } })?.response?.status;
+          if (status === 404) {
+            setSchoolSetupRequired(true);
+            setLoading(false);
+            return;
+          }
+          if (status !== 403) {
+            toast.error(getApiErrorMessage(err, 'Failed to load school profile'));
+          }
         }
-        toast.error(getApiErrorMessage(err, 'Failed to load school profile'));
       }
 
       if (school) {
         setSchoolData(school);
       }
 
+      const emptyList = { data: { data: [] as never[], total: 0 } };
       const [studentsRes, paymentsRes, feesRes, monthlyRes, genderRes] = await Promise.all([
-        studentsAPI.list(1, 1),
-        paymentsAPI.list(1, 5),
-        feesAPI.list(1, 200),
-        paymentsAPI.getMonthlyInsights().catch(() => ({ data: { data: null } })),
-        studentsAPI.getGenderInsights().catch(() => ({ data: { data: null } })),
+        canStudents ? studentsAPI.list(1, 1).catch(() => emptyList) : Promise.resolve(emptyList),
+        canPayments ? paymentsAPI.list(1, 5).catch(() => emptyList) : Promise.resolve(emptyList),
+        canFees ? feesAPI.list(1, 200).catch(() => ({ data: { data: [] as never[] } })) : Promise.resolve({ data: { data: [] as never[] } }),
+        canPayments ? paymentsAPI.getMonthlyInsights().catch(() => ({ data: { data: null } })) : Promise.resolve({ data: { data: null } }),
+        canStudents ? studentsAPI.getGenderInsights().catch(() => ({ data: { data: null } })) : Promise.resolve({ data: { data: null } }),
       ]);
 
       let totalStudents = 0;
-      if (studentsRes.data.total !== undefined) {
-        totalStudents = studentsRes.data.total || 0;
-      } else {
-        totalStudents = studentsRes.data.data?.length || 0;
+      if (canStudents) {
+        totalStudents =
+          studentsRes.data.total !== undefined
+            ? studentsRes.data.total || 0
+            : studentsRes.data.data?.length || 0;
       }
 
       let totalPayments = 0;
-      if (paymentsRes.data.total !== undefined) {
-        totalPayments = paymentsRes.data.total || 0;
-      } else {
-        totalPayments = paymentsRes.data.data?.length || 0;
+      if (canPayments) {
+        totalPayments =
+          paymentsRes.data.total !== undefined
+            ? paymentsRes.data.total || 0
+            : paymentsRes.data.data?.length || 0;
       }
 
       let revenue = 0;
-      try {
-        const allPaymentsRes = await paymentsAPI.list(1, 100);
-        const payments = allPaymentsRes.data.data || [];
-        revenue = payments.reduce((sum: number, p: { amount: number; status: string }) => {
-          if (p.status === 'completed' || p.status === 'paid') {
-            return sum + (p.amount || 0);
-          }
-          return sum;
-        }, 0);
-      } catch (err: unknown) {
-        toast.error(getApiErrorMessage(err, 'Failed to calculate revenue'));
+      if (canPayments) {
+        try {
+          const allPaymentsRes = await paymentsAPI.list(1, 100);
+          const payments = allPaymentsRes.data.data || [];
+          revenue = payments.reduce((sum: number, p: { amount: number; status: string }) => {
+            if (p.status === 'completed' || p.status === 'paid') {
+              return sum + (p.amount || 0);
+            }
+            return sum;
+          }, 0);
+        } catch (err: unknown) {
+          toast.error(getApiErrorMessage(err, 'Failed to calculate revenue'));
+        }
       }
 
       const fees = feesRes.data.data || [];
-      const totalActiveFees = fees.filter((f: { status?: string }) => f.status === 'active').length;
+      const totalActiveFees = canFees
+        ? fees.filter((f: { status?: string }) => f.status === 'active').length
+        : 0;
 
       setStats({
         totalSchools: 0,
-        totalStudents: totalStudents,
-        totalPayments: totalPayments,
+        totalStudents,
+        totalPayments,
         totalRevenue: revenue,
-        totalActiveFees: totalActiveFees,
+        totalActiveFees,
       });
       setMonthlyInsights(monthlyRes.data?.data || null);
       setGenderInsights(genderRes.data?.data || null);
-
-      const recent = paymentsRes.data.data || [];
-      setRecentPayments(recent);
+      setRecentPayments(canPayments ? paymentsRes.data.data || [] : []);
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Failed to load dashboard data'));
     } finally {
@@ -249,10 +266,10 @@ export default function DashboardPage() {
     }
   };
 
-  if (user?.role === 'admin') {
-    return (
-      <ProtectedRoute allowedRoles={['admin']}>
-        <DashboardLayout>
+  return (
+    <ProtectedRoute allowedRoles={['admin']} requiredPermission={PERMISSIONS.dashboardView}>
+      <DashboardLayout>
+        {user?.role === 'admin' ? (
           <AdminDashboard
             stats={stats}
             loading={loading}
@@ -262,24 +279,19 @@ export default function DashboardPage() {
             monthlyInsights={monthlyInsights}
             genderInsights={genderInsights}
           />
-        </DashboardLayout>
-      </ProtectedRoute>
-    );
-  }
-
-  return (
-    <ProtectedRoute allowedRoles={['school_admin']}>
-      <DashboardLayout>
-        <SchoolAdminDashboard
-          stats={stats}
-          loading={loading}
-          router={router}
-          schoolData={schoolData}
-          recentPayments={recentPayments}
-          schoolSetupRequired={schoolSetupRequired}
-          monthlyInsights={monthlyInsights}
-          genderInsights={genderInsights}
-        />
+        ) : (
+          <SchoolAdminDashboard
+            stats={stats}
+            loading={loading}
+            router={router}
+            schoolData={schoolData}
+            recentPayments={recentPayments}
+            schoolSetupRequired={schoolSetupRequired}
+            monthlyInsights={monthlyInsights}
+            genderInsights={genderInsights}
+            user={user}
+          />
+        )}
       </DashboardLayout>
     </ProtectedRoute>
   );
@@ -453,6 +465,7 @@ function SchoolAdminDashboard({
   schoolSetupRequired = false,
   monthlyInsights,
   genderInsights,
+  user,
 }: {
   stats: {
     totalSchools: number;
@@ -475,12 +488,92 @@ function SchoolAdminDashboard({
   schoolSetupRequired?: boolean;
   monthlyInsights: MonthlyRevenueInsights | null;
   genderInsights: GenderInsights | null;
+  user: { role?: string; permissions?: string[] } | null;
 }) {
+  const canStudents = hasPermission(user, PERMISSIONS.studentsRead);
+  const canStudentsWrite = hasPermission(user, PERMISSIONS.studentsWrite);
+  const canFees = hasPermission(user, PERMISSIONS.feesRead);
+  const canFeesWrite = hasPermission(user, PERMISSIONS.feesWrite);
+  const canChargesWrite = hasPermission(user, PERMISSIONS.chargesWrite);
+  const canPayments = hasPermission(user, PERMISSIONS.paymentsRead);
+  const canSettlements = hasPermission(user, PERMISSIONS.settlementsRead);
+  const canSettings = hasPermission(user, PERMISSIONS.settingsRead);
+  const canSeeWallet = canSettlements || canPayments;
+  const canSeeSchoolCard = canSettings && !!schoolData;
+
   if (loading) {
     return <LoadingState label="Loading dashboard…" className="py-24" size="lg" />;
   }
 
   const feeBreakdown = collectionFeeBreakdown(stats.totalRevenue);
+  const quickActions = [
+    canStudentsWrite
+      ? {
+          key: 'add-student',
+          primary: true,
+          label: 'Add Student',
+          icon: UserPlus,
+          onClick: () => router.push('/dashboard/students/add'),
+        }
+      : null,
+    canFeesWrite
+      ? {
+          key: 'set-fees',
+          primary: false,
+          label: 'Set Fees',
+          icon: Receipt,
+          onClick: () => router.push('/dashboard/fees'),
+        }
+      : null,
+    canChargesWrite
+      ? {
+          key: 'charges',
+          primary: false,
+          label: 'Charges',
+          icon: Receipt,
+          onClick: () => router.push('/dashboard/one-off-charges'),
+        }
+      : null,
+    canPayments
+      ? {
+          key: 'collect',
+          primary: false,
+          label: 'Collect Payment',
+          icon: Wallet,
+          onClick: () => router.push('/dashboard/payments'),
+        }
+      : null,
+    canSettlements
+      ? {
+          key: 'settlements',
+          primary: false,
+          label: 'Settlements',
+          icon: Wallet,
+          onClick: () => router.push('/dashboard/settlements'),
+        }
+      : null,
+    canStudents
+      ? {
+          key: 'students',
+          primary: false,
+          label: 'View Students',
+          icon: Users,
+          onClick: () => router.push('/dashboard/students'),
+        }
+      : null,
+  ].filter(Boolean) as Array<{
+    key: string;
+    primary: boolean;
+    label: string;
+    icon: typeof Users;
+    onClick: () => void;
+  }>;
+
+  const hasStats = canStudents || canFees || canPayments;
+  const hasCharts = canPayments || canStudents;
+  const hasLower = canPayments || quickActions.length > 0;
+  const chartCols = canPayments && canStudents;
+  const lowerCols = canPayments && quickActions.length > 0;
 
   return (
     <div className="space-y-6">
@@ -500,19 +593,21 @@ function SchoolAdminDashboard({
             >
               Onboard School
             </Button>
-            <Button variant="outline" onClick={() => router.push('/dashboard/settings')}>
-              Open Settings
-            </Button>
+            {canSettings && (
+              <Button variant="outline" onClick={() => router.push('/dashboard/settings')}>
+                Open Settings
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
 
       <div className="sm:hidden">
         <h2 className="text-lg font-semibold text-[#08163d]">Dashboard</h2>
-        <p className="mt-0.5 text-xs text-slate-500">Manage your school&apos;s fees and students</p>
+        <p className="mt-0.5 text-xs text-slate-500">Overview of what you can access at this school</p>
       </div>
 
-      {schoolData && (
+      {canSeeSchoolCard && schoolData && (
         <div className="rounded-2xl bg-white p-4 shadow-[0_4px_14px_rgba(8,22,61,0.04)] ring-1 ring-black/3">
           <div className="mb-3 flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#FFF4C2]">
@@ -540,6 +635,7 @@ function SchoolAdminDashboard({
                 </p>
               </div>
             )}
+            {canSeeWallet && (
             <div className="md:col-span-2 lg:col-span-3">
               {schoolData.wallet ? (
                 <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
@@ -616,11 +712,14 @@ function SchoolAdminDashboard({
                 </div>
               )}
             </div>
+            )}
           </div>
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      {hasStats && (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[repeat(auto-fit,minmax(180px,1fr))]">
+        {canStudents && (
         <StatSummaryCard
           title="Students"
           value={stats.totalStudents}
@@ -629,6 +728,8 @@ function SchoolAdminDashboard({
           accent="gold"
           onClick={() => router.push('/dashboard/students')}
         />
+        )}
+        {canFees && (
         <StatSummaryCard
           title="Active Fees"
           value={stats.totalActiveFees}
@@ -637,6 +738,8 @@ function SchoolAdminDashboard({
           accent="navy"
           onClick={() => router.push('/dashboard/fees')}
         />
+        )}
+        {canPayments && (
         <StatSummaryCard
           title="Payments"
           value={stats.totalPayments}
@@ -645,6 +748,8 @@ function SchoolAdminDashboard({
           accent="muted"
           onClick={() => router.push('/dashboard/payments')}
         />
+        )}
+        {canPayments && (
         <StatSummaryCard
           title="Revenue"
           value={`UGX ${stats.totalRevenue.toLocaleString()}`}
@@ -652,6 +757,8 @@ function SchoolAdminDashboard({
           icon={TrendingUp}
           accent="emerald"
         />
+        )}
+        {canPayments && (
         <StatSummaryCard
           title="Processing fee"
           value={`UGX ${feeBreakdown.processingFee.toLocaleString('en-US', {
@@ -662,9 +769,13 @@ function SchoolAdminDashboard({
           icon={TrendingUp}
           accent="gold"
         />
+        )}
       </div>
+      )}
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.7fr)_minmax(240px,1fr)]">
+      {hasCharts && (
+      <div className={`grid gap-3 ${chartCols ? 'xl:grid-cols-[minmax(0,1.7fr)_minmax(240px,1fr)]' : ''}`}>
+        {canPayments && (
         <RevenueBarChart
           title="Collections"
           year={monthlyInsights?.year}
@@ -672,10 +783,14 @@ function SchoolAdminDashboard({
           primaryLabel="Collected"
           secondaryLabel="Processing fee"
         />
-        <GenderDonutChart data={genderInsights} title="Students" />
+        )}
+        {canStudents && <GenderDonutChart data={genderInsights} title="Students" />}
       </div>
+      )}
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(240px,0.9fr)]">
+      {hasLower && (
+      <div className={`grid gap-3 ${lowerCols ? 'xl:grid-cols-[minmax(0,1.4fr)_minmax(240px,0.9fr)]' : ''}`}>
+        {canPayments && (
         <ActivityListCard
           title="Recent Payments"
           icon={
@@ -751,45 +866,44 @@ function SchoolAdminDashboard({
             };
           })}
         />
+        )}
 
+        {quickActions.length > 0 && (
         <div className="rounded-2xl bg-[#08163d] p-4 text-white shadow-[0_6px_18px_rgba(8,22,61,0.22)]">
           <h3 className="text-sm font-semibold">Quick Actions</h3>
           <p className="mt-0.5 text-[11px] text-white/75">Keep school operations moving.</p>
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <Button
-              onClick={() => router.push('/dashboard/students/add')}
-              className="h-auto flex-col gap-1 bg-[#E8A317] py-2.5 text-[#08163d] hover:bg-[#d49414]"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-medium">Add Student</span>
-            </Button>
-            <Button
-              onClick={() => router.push('/dashboard/fees')}
-              variant="outline"
-              className="h-auto flex-col gap-1 border-white/20 bg-white/5 py-2.5 text-white hover:bg-white/10 hover:text-white"
-            >
-              <Receipt className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-medium">Set Fees</span>
-            </Button>
-            <Button
-              onClick={() => router.push('/dashboard/payments')}
-              variant="outline"
-              className="h-auto flex-col gap-1 border-white/20 bg-white/5 py-2.5 text-white hover:bg-white/10 hover:text-white"
-            >
-              <Wallet className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-medium">Collect Payment</span>
-            </Button>
-            <Button
-              onClick={() => router.push('/dashboard/students')}
-              variant="outline"
-              className="h-auto flex-col gap-1 border-white/20 bg-white/5 py-2.5 text-white hover:bg-white/10 hover:text-white"
-            >
-              <Users className="h-3.5 w-3.5" />
-              <span className="text-[10px] font-medium">View Students</span>
-            </Button>
+            {quickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Button
+                  key={action.key}
+                  onClick={action.onClick}
+                  className={
+                    action.primary
+                      ? 'h-auto flex-col gap-1 bg-[#E8A317] py-2.5 text-[#08163d] hover:bg-[#d49414]'
+                      : 'h-auto flex-col gap-1 border-white/20 bg-white/5 py-2.5 text-white hover:bg-white/10 hover:text-white'
+                  }
+                  variant={action.primary ? 'default' : 'outline'}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span className="text-[10px] font-medium">{action.label}</span>
+                </Button>
+              );
+            })}
           </div>
         </div>
+        )}
       </div>
+      )}
+
+      {!hasStats && !hasCharts && !hasLower && !canSeeSchoolCard && !schoolSetupRequired && (
+        <div className="rounded-2xl bg-white px-6 py-10 text-center shadow-[0_4px_14px_rgba(8,22,61,0.04)] ring-1 ring-black/3">
+          <p className="text-sm text-slate-500">
+            This dashboard is limited to what you can access. Use the menu to open your allowed pages.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

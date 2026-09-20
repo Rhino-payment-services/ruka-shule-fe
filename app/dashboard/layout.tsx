@@ -14,13 +14,13 @@ export default function DashboardLayout({
   useEffect(() => {
     if (loading) return;
     if (!user && typeof window !== 'undefined') {
-      window.location.replace('/');
+      window.location.replace('/login');
     }
   }, [user, loading]);
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
+      <div className="flex min-h-screen items-center justify-center bg-[#F4F5F7]">
         <LoadingState label="Loading…" size="lg" />
       </div>
     );
@@ -28,7 +28,7 @@ export default function DashboardLayout({
 
   if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-white">
+      <div className="flex min-h-screen items-center justify-center bg-[#F4F5F7]">
         <LoadingState label="Redirecting…" size="lg" />
       </div>
     );

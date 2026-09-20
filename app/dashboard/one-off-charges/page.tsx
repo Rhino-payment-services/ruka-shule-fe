@@ -13,16 +13,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { PillSearch, StatusPill, toneFromStatus, DataTableShell, TableHeadLabel } from '@/components/data-table';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Plus, Pencil, List, Trash2, Receipt, CircleDot, Calendar, MoreHorizontal, Hash } from 'lucide-react';
 import { ListPagination } from '@/components/ListPagination';
 import { ButtonSpinner, LoadingState } from '@/components/LoadingState';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta, useDebouncedValue } from '@/lib/hooks/useServerPagination';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 const formatUgx = (amount: number) => `UGX ${Number(amount || 0).toLocaleString()}`;
 
@@ -67,6 +79,8 @@ interface StudentCharge {
 }
 
 export default function OneOffChargesPage() {
+  const { user } = useAuth();
+  const canWriteCharges = hasPermission(user, PERMISSIONS.chargesWrite);
   const [charges, setCharges] = useState<OneOffCharge[]>([]);
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [history, setHistory] = useState<StudentCharge[]>([]);
@@ -446,20 +460,22 @@ export default function OneOffChargesPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['school_admin']}>
+    <ProtectedRoute requiredPermission={PERMISSIONS.chargesRead}>
       <DashboardLayout>
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-xs text-slate-500">
               Registration, uniforms, ID cards, photos, and other non-recurring charges.
             </p>
-            <Button
-              onClick={() => setCreateOpen(true)}
-              className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
-            >
-              <Plus className="mr-1.5 h-4 w-4" />
-              New Charge
-            </Button>
+            {canWriteCharges && (
+              <Button
+                onClick={() => setCreateOpen(true)}
+                className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+              >
+                <Plus className="mr-1.5 h-4 w-4" />
+                New Charge
+              </Button>
+            )}
           </div>
 
           <DataTableShell
@@ -538,6 +554,8 @@ export default function OneOffChargesPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-wrap justify-end gap-1">
+                          {canWriteCharges && (
+                            <>
                           <Button
                             size="sm"
                             variant="outline"
@@ -555,6 +573,8 @@ export default function OneOffChargesPage() {
                             <Pencil className="mr-1 h-3 w-3" />
                             Edit
                           </Button>
+                            </>
+                          )}
                           <Button
                             size="sm"
                             variant="outline"
@@ -564,6 +584,7 @@ export default function OneOffChargesPage() {
                             <List className="mr-1 h-3 w-3" />
                             Assignments
                           </Button>
+                          {canWriteCharges && (
                           <Button
                             size="sm"
                             variant="outline"
@@ -573,6 +594,7 @@ export default function OneOffChargesPage() {
                             <Trash2 className="mr-1 h-3 w-3" />
                             Delete
                           </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -587,18 +609,22 @@ export default function OneOffChargesPage() {
             description="Check whether an additional charge has already been paid for a student."
             toolbar={
               <div className="flex w-full max-w-xl flex-col gap-2 sm:flex-row sm:items-center">
-                <select
-                  className="h-9 rounded-full border-0 bg-[#F8F9FB] px-3 text-xs shadow-none ring-1 ring-black/5 outline-none focus:ring-2 focus:ring-[#E8A317]/35"
+                <Select
                   value={historyClassFilter || 'all'}
-                  onChange={(e) => handleHistoryClassChange(e.target.value)}
+                  onValueChange={handleHistoryClassChange}
                 >
-                  <option value="all">Select a class</option>
-                  {schoolClasses.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger className="h-9 rounded-full text-xs">
+                    <SelectValue placeholder="Select a class" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Select a class</SelectItem>
+                    {schoolClasses.map((cls) => (
+                      <SelectItem key={cls} value={cls}>
+                        {cls}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {historyClassFilter ? (
                   <>
                     <PillSearch
@@ -607,18 +633,22 @@ export default function OneOffChargesPage() {
                       placeholder="Search students…"
                       className="min-w-[160px] flex-1"
                     />
-                    <select
-                      className="h-9 min-w-[180px] rounded-full border-0 bg-[#F8F9FB] px-3 text-xs shadow-none ring-1 ring-black/5 outline-none focus:ring-2 focus:ring-[#E8A317]/35"
-                      value={historyStudentId}
-                      onChange={(e) => loadHistory(e.target.value)}
+                    <Select
+                      value={historyStudentId || 'none'}
+                      onValueChange={(value) => loadHistory(value === 'none' ? '' : value)}
                     >
-                      <option value="">Select student</option>
-                      {historyStudents.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.registration_id} — {s.first_name} {s.last_name}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger className="h-9 min-w-[180px] rounded-full text-xs">
+                        <SelectValue placeholder="Select student" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Select student</SelectItem>
+                        {historyStudents.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.registration_id} — {s.first_name} {s.last_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </>
                 ) : null}
               </div>
@@ -689,7 +719,7 @@ export default function OneOffChargesPage() {
                         {row.external_ref || '—'}
                       </TableCell>
                       <TableCell className="text-right">
-                        {['unpaid', 'pending'].includes(row.status) ? (
+                        {canWriteCharges && ['unpaid', 'pending'].includes(row.status) ? (
                           <div className="flex justify-end gap-1">
                             <Button
                               size="sm"
@@ -725,68 +755,100 @@ export default function OneOffChargesPage() {
         </div>
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogContent>
+          <DialogContent className="max-w-xl">
             <DialogHeader>
               <DialogTitle>Create additional charge</DialogTitle>
+              <DialogDescription>
+                Add a one-off charge such as uniform, trips, or books.
+              </DialogDescription>
             </DialogHeader>
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  placeholder="Uniform"
-                />
+            <DialogBody>
+              <div className="grid gap-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="charge-name">Name</Label>
+                    <Input
+                      id="charge-name"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                      placeholder="Uniform"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="charge-amount">Amount (UGX)</Label>
+                    <Input
+                      id="charge-amount"
+                      type="number"
+                      value={form.amount}
+                      onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Class (optional)</Label>
+                    <Select
+                      value={form.class || 'all'}
+                      onValueChange={(value) =>
+                        setForm({ ...form, class: value === 'all' ? '' : value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All classes" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All classes</SelectItem>
+                        {schoolClasses.map((cls) => (
+                          <SelectItem key={cls} value={cls}>
+                            {cls}
+                          </SelectItem>
+                        ))}
+                        {form.class && !schoolClasses.includes(form.class) ? (
+                          <SelectItem value={form.class}>{form.class}</SelectItem>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Gender (optional)</Label>
+                    <Select
+                      value={form.gender || 'all'}
+                      onValueChange={(value) =>
+                        setForm({ ...form, gender: value === 'all' ? '' : value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All genders" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All genders</SelectItem>
+                        <SelectItem value="Male">Male</SelectItem>
+                        <SelectItem value="Female">Female</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="charge-description">Description</Label>
+                  <Textarea
+                    id="charge-description"
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    placeholder="Optional details"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Amount (UGX)</Label>
-                <Input
-                  type="number"
-                  value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Class (optional)</Label>
-                <select
-                  className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
-                  value={form.class || 'all'}
-                  onChange={(e) =>
-                    setForm({ ...form, class: e.target.value === 'all' ? '' : e.target.value })
-                  }
-                >
-                  <option value="all">All classes</option>
-                  {schoolClasses.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls}
-                    </option>
-                  ))}
-                  {form.class && !schoolClasses.includes(form.class) ? (
-                    <option value={form.class}>{form.class}</option>
-                  ) : null}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label>Gender (optional)</Label>
-                <select
-                  className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
-                  value={form.gender}
-                  onChange={(e) => setForm({ ...form, gender: e.target.value })}
-                >
-                  <option value="">All genders</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Input
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                />
-              </div>
-            </div>
+            </DialogBody>
             <DialogFooter>
+              <Button
+                variant="outline"
+                disabled={saving}
+                onClick={() => setCreateOpen(false)}
+                className="h-9 rounded-full border-slate-200"
+              >
+                Cancel
+              </Button>
               <Button
                 disabled={saving}
                 onClick={handleCreate}
@@ -799,78 +861,113 @@ export default function OneOffChargesPage() {
         </Dialog>
 
         <Dialog open={editOpen} onOpenChange={setEditOpen}>
-          <DialogContent>
+          <DialogContent className="max-w-xl">
             <DialogHeader>
               <DialogTitle>Edit additional charge</DialogTitle>
+              <DialogDescription>Update the charge details and whether it is still active.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
-                />
+            <DialogBody>
+              <div className="grid gap-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-charge-name">Name</Label>
+                    <Input
+                      id="edit-charge-name"
+                      value={form.name}
+                      onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-charge-amount">Amount (UGX)</Label>
+                    <Input
+                      id="edit-charge-amount"
+                      type="number"
+                      value={form.amount}
+                      onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Class (optional)</Label>
+                    <Select
+                      value={form.class || 'all'}
+                      onValueChange={(value) =>
+                        setForm({ ...form, class: value === 'all' ? '' : value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All classes" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All classes</SelectItem>
+                        {schoolClasses.map((cls) => (
+                          <SelectItem key={cls} value={cls}>
+                            {cls}
+                          </SelectItem>
+                        ))}
+                        {form.class && !schoolClasses.includes(form.class) ? (
+                          <SelectItem value={form.class}>{form.class}</SelectItem>
+                        ) : null}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Gender (optional)</Label>
+                    <Select
+                      value={form.gender || 'all'}
+                      onValueChange={(value) =>
+                        setForm({ ...form, gender: value === 'all' ? '' : value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All genders" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All genders</SelectItem>
+                        <SelectItem value="Male">Male</SelectItem>
+                        <SelectItem value="Female">Female</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>Status</Label>
+                    <Select
+                      value={form.status}
+                      onValueChange={(value) => setForm({ ...form, status: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="inactive">Inactive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-charge-description">Description</Label>
+                  <Textarea
+                    id="edit-charge-description"
+                    value={form.description}
+                    onChange={(e) => setForm({ ...form, description: e.target.value })}
+                    placeholder="Optional details"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Amount (UGX)</Label>
-                <Input
-                  type="number"
-                  value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Class (optional)</Label>
-                <select
-                  className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
-                  value={form.class || 'all'}
-                  onChange={(e) =>
-                    setForm({ ...form, class: e.target.value === 'all' ? '' : e.target.value })
-                  }
-                >
-                  <option value="all">All classes</option>
-                  {schoolClasses.map((cls) => (
-                    <option key={cls} value={cls}>
-                      {cls}
-                    </option>
-                  ))}
-                  {form.class && !schoolClasses.includes(form.class) ? (
-                    <option value={form.class}>{form.class}</option>
-                  ) : null}
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label>Gender (optional)</Label>
-                <select
-                  className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
-                  value={form.gender}
-                  onChange={(e) => setForm({ ...form, gender: e.target.value })}
-                >
-                  <option value="">All genders</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                </select>
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Input
-                  value={form.description}
-                  onChange={(e) => setForm({ ...form, description: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <select
-                  className="w-full rounded border px-3 py-2 text-sm"
-                  value={form.status}
-                  onChange={(e) => setForm({ ...form, status: e.target.value })}
-                >
-                  <option value="active">active</option>
-                  <option value="inactive">inactive</option>
-                </select>
-              </div>
-            </div>
+            </DialogBody>
             <DialogFooter>
+              <Button
+                variant="outline"
+                disabled={saving}
+                onClick={() => setEditOpen(false)}
+                className="h-9 rounded-full border-slate-200"
+              >
+                Cancel
+              </Button>
               <Button
                 disabled={saving}
                 onClick={handleUpdate}
@@ -897,16 +994,17 @@ export default function OneOffChargesPage() {
           <DialogContent className="max-w-xl">
             <DialogHeader>
               <DialogTitle>Assign {selectedCharge?.name}</DialogTitle>
+              <DialogDescription>Choose the students who should receive this charge.</DialogDescription>
             </DialogHeader>
-            <div className="space-y-3">
+            <DialogBody className="space-y-4">
               {selectedCharge?.class ? (
-                <p className="text-sm text-muted-foreground">
-                  Charge is scoped to class <span className="font-medium">{selectedCharge.class}</span>
+                <p className="text-sm text-slate-500">
+                  Charge is scoped to class <span className="font-medium text-[#08163d]">{selectedCharge.class}</span>
                 </p>
               ) : null}
               {selectedCharge?.gender ? (
-                <p className="text-sm text-muted-foreground">
-                  Charge targets <span className="font-medium">{selectedCharge.gender}</span> students
+                <p className="text-sm text-slate-500">
+                  Charge targets <span className="font-medium text-[#08163d]">{selectedCharge.gender}</span> students
                 </p>
               ) : null}
               <PillSearch
@@ -914,42 +1012,50 @@ export default function OneOffChargesPage() {
                 onChange={setStudentSearch}
                 placeholder="Search by name, registration ID, or phone…"
               />
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
                   <Label>Filter by class</Label>
-                  <select
-                    className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
+                  <Select
                     value={assignClassFilter || 'all'}
                     disabled={!!selectedCharge?.class}
-                    onChange={(e) =>
-                      setAssignClassFilter(e.target.value === 'all' ? '' : e.target.value)
+                    onValueChange={(value) =>
+                      setAssignClassFilter(value === 'all' ? '' : value)
                     }
                   >
-                    <option value="all">All classes</option>
-                    {schoolClasses.map((cls) => (
-                      <option key={cls} value={cls}>
-                        {cls}
-                      </option>
-                    ))}
-                    {assignClassFilter && !schoolClasses.includes(assignClassFilter) ? (
-                      <option value={assignClassFilter}>{assignClassFilter}</option>
-                    ) : null}
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All classes" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All classes</SelectItem>
+                      {schoolClasses.map((cls) => (
+                        <SelectItem key={cls} value={cls}>
+                          {cls}
+                        </SelectItem>
+                      ))}
+                      {assignClassFilter && !schoolClasses.includes(assignClassFilter) ? (
+                        <SelectItem value={assignClassFilter}>{assignClassFilter}</SelectItem>
+                      ) : null}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Filter by gender</Label>
-                  <select
-                    className="flex h-10 w-full overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-[0_4px_14px_rgba(8,22,61,0.04)] border-input bg-background px-3 py-2 text-sm"
+                  <Select
                     value={assignGenderFilter || 'all'}
                     disabled={!!selectedCharge?.gender}
-                    onChange={(e) =>
-                      setAssignGenderFilter(e.target.value === 'all' ? '' : e.target.value)
+                    onValueChange={(value) =>
+                      setAssignGenderFilter(value === 'all' ? '' : value)
                     }
                   >
-                    <option value="all">All genders</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                  </select>
+                    <SelectTrigger>
+                      <SelectValue placeholder="All genders" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All genders</SelectItem>
+                      <SelectItem value="Male">Male</SelectItem>
+                      <SelectItem value="Female">Female</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -957,6 +1063,7 @@ export default function OneOffChargesPage() {
                   type="button"
                   size="sm"
                   variant="outline"
+                  className="h-8 rounded-full border-slate-200"
                   onClick={selectAllVisible}
                   disabled={assignLoading || visibleSelectableIds.length === 0 || allVisibleSelected}
                 >
@@ -966,6 +1073,7 @@ export default function OneOffChargesPage() {
                   type="button"
                   size="sm"
                   variant="outline"
+                  className="h-8 rounded-full border-slate-200"
                   onClick={unselectAllVisible}
                   disabled={
                     assignLoading || !students.some((s) => selectedStudentIds.includes(s.id))
@@ -977,20 +1085,21 @@ export default function OneOffChargesPage() {
                   type="button"
                   size="sm"
                   variant="ghost"
+                  className="h-8 rounded-full"
                   onClick={clearSelection}
                   disabled={selectedStudentIds.length === 0}
                 >
                   Clear all
                 </Button>
-                <span className="text-sm text-muted-foreground ml-auto">
+                <span className="ml-auto text-sm text-slate-500">
                   {selectedStudentIds.length} selected
                 </span>
               </div>
-              <div className="max-h-72 space-y-2 overflow-auto rounded border p-2">
+              <div className="max-h-72 space-y-2 overflow-auto rounded-xl bg-[#F8F9FB] p-3 ring-1 ring-black/5">
                 {assignLoading ? (
                   <LoadingState label="Loading students…" className="py-6" size="sm" />
                 ) : students.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">No students found</p>
+                  <p className="py-6 text-center text-sm text-slate-500">No students found</p>
                 ) : (
                   students.map((s) => {
                     const alreadyAssigned = alreadyAssignedIds.has(s.id);
@@ -999,7 +1108,7 @@ export default function OneOffChargesPage() {
                       <label
                         key={s.id}
                         className={`flex items-center gap-2 text-sm ${
-                          alreadyAssigned ? 'text-muted-foreground' : ''
+                          alreadyAssigned ? 'text-slate-500' : ''
                         }`}
                       >
                         <input
@@ -1033,8 +1142,15 @@ export default function OneOffChargesPage() {
                 loading={assignLoading}
                 onPageChange={setAssignPage}
               />
-            </div>
+            </DialogBody>
             <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setAssignOpen(false)}
+                className="h-9 rounded-full border-slate-200"
+              >
+                Cancel
+              </Button>
               <Button
                 onClick={() => {
                   if (selectedStudentIds.length === 0) {
@@ -1056,6 +1172,7 @@ export default function OneOffChargesPage() {
             <DialogHeader>
               <DialogTitle>Assignments — {selectedCharge?.name}</DialogTitle>
             </DialogHeader>
+            <DialogBody>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1069,7 +1186,7 @@ export default function OneOffChargesPage() {
               <TableBody>
                 {assignments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-muted-foreground">
+                    <TableCell colSpan={5} className="text-slate-500">
                       No assignments yet.
                     </TableCell>
                   </TableRow>
@@ -1087,18 +1204,18 @@ export default function OneOffChargesPage() {
                           {row.status}
                         </StatusPill>
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
+                      <TableCell className="text-xs text-slate-500">
                         {row.external_ref || row.payment_note || '-'}
                       </TableCell>
                       <TableCell>
-                        {['unpaid', 'pending'].includes(row.status) ? (
+                        {canWriteCharges && ['unpaid', 'pending'].includes(row.status) ? (
                           <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => {
+                            <Button size="sm" variant="outline" className="h-8 rounded-full border-slate-200" onClick={() => {
                               setMarkPaidAssignment(row);
                               setMarkPaidNote('');
                               setMarkPaidReference('');
                             }}>Mark as paid</Button>
-                            <Button size="sm" variant="outline" onClick={() => setWaiveConfirmId(row.id)}>Waive</Button>
+                            <Button size="sm" variant="outline" className="h-8 rounded-full border-slate-200" onClick={() => setWaiveConfirmId(row.id)}>Waive</Button>
                           </div>
                         ) : (
                           '-'
@@ -1109,6 +1226,7 @@ export default function OneOffChargesPage() {
                 )}
               </TableBody>
             </Table>
+            </DialogBody>
           </DialogContent>
         </Dialog>
 
@@ -1130,22 +1248,24 @@ export default function OneOffChargesPage() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Mark charge as paid</DialogTitle>
+              <DialogDescription>
+                Confirm the full offline payment for {markPaidAssignment?.charge_name}.
+              </DialogDescription>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground">
-              Confirm the full offline payment for {markPaidAssignment?.charge_name}.
-            </p>
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="mark-paid-reference">External reference (optional)</Label>
-                <Input id="mark-paid-reference" value={markPaidReference} onChange={(e) => setMarkPaidReference(e.target.value)} placeholder="Receipt or transaction reference" />
+            <DialogBody>
+              <div className="grid gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="mark-paid-reference">External reference (optional)</Label>
+                  <Input id="mark-paid-reference" value={markPaidReference} onChange={(e) => setMarkPaidReference(e.target.value)} placeholder="Receipt or transaction reference" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="mark-paid-note">Note (optional)</Label>
+                  <Textarea id="mark-paid-note" value={markPaidNote} onChange={(e) => setMarkPaidNote(e.target.value)} placeholder="Payment note" />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="mark-paid-note">Note (optional)</Label>
-                <Input id="mark-paid-note" value={markPaidNote} onChange={(e) => setMarkPaidNote(e.target.value)} placeholder="Payment note" />
-              </div>
-            </div>
+            </DialogBody>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setMarkPaidAssignment(null)}>Cancel</Button>
+              <Button variant="outline" onClick={() => setMarkPaidAssignment(null)} className="h-9 rounded-full border-slate-200">Cancel</Button>
               <Button
                 disabled={actionLoading}
                 onClick={handleMarkPaid}

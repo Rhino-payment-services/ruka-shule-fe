@@ -4,11 +4,10 @@ import { ProtectedRoute } from '@/components/ProtectedRoute';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { useState, useEffect } from 'react';
 import { schoolsAPI } from '@/lib/api';
-import { School, Mail, Phone, MapPin, Wallet, Building2 } from 'lucide-react';
+import { Mail, Phone, MapPin, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams } from 'next/navigation';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { PanelShell, StatusPill, toneFromStatus } from '@/components/data-table';
 import { LoadingState } from '@/components/LoadingState';
 
 interface SchoolData {
@@ -62,30 +61,18 @@ export default function SchoolDetailsPage() {
   };
 
   const getMerchantStatusBadge = (status?: string) => {
-    if (!status) return <Badge variant="outline">Unknown</Badge>;
-    const map: Record<string, { className: string; label: string }> = {
-      pending_onboarding: {
-        className: 'bg-orange-100 text-orange-700 border-orange-300',
-        label: 'Pending Onboarding',
-      },
-      kyc_submitted: {
-        className: 'bg-amber-100 text-amber-700 border-amber-300',
-        label: 'KYC Submitted',
-      },
-      approved: {
-        className: 'bg-green-100 text-green-700 border-green-300',
-        label: 'Approved',
-      },
-      rejected: {
-        className: 'bg-red-100 text-red-700 border-red-300',
-        label: 'Rejected',
-      },
+    if (!status) return <StatusPill tone="neutral" dot>Unknown</StatusPill>;
+    const map: Record<string, { tone: 'pending' | 'success' | 'danger' | 'neutral'; label: string }> = {
+      pending_onboarding: { tone: 'pending', label: 'Pending Onboarding' },
+      kyc_submitted: { tone: 'pending', label: 'KYC Submitted' },
+      approved: { tone: 'success', label: 'Approved' },
+      rejected: { tone: 'danger', label: 'Rejected' },
     };
-    const config = map[status] || { className: 'bg-gray-100 text-gray-700', label: status };
+    const config = map[status] || { tone: 'neutral' as const, label: status };
     return (
-      <Badge variant="outline" className={config.className}>
+      <StatusPill tone={config.tone} dot>
         {config.label}
-      </Badge>
+      </StatusPill>
     );
   };
 
@@ -105,20 +92,20 @@ export default function SchoolDetailsPage() {
     return (
       <ProtectedRoute allowedRoles={['admin']}>
         <DashboardLayout>
-        <div className="space-y-6">
-          <Card className="border-red-200">
-              <CardContent className="py-12 text-center">
-                <p className="text-destructive font-medium">{error || 'School not found'}</p>
-                <Button
-                  variant="outline"
-                  className="mt-4"
-                  onClick={() => router.push('/dashboard/schools')}
-                >
-                  View All Schools
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+        <div className="space-y-4">
+          <PanelShell title="Could not load school">
+            <div className="py-8 text-center">
+              <p className="font-medium text-red-600">{error || 'School not found'}</p>
+              <Button
+                variant="outline"
+                className="mt-4 h-9 rounded-full border-slate-200"
+                onClick={() => router.push('/dashboard/schools')}
+              >
+                View All Schools
+              </Button>
+            </div>
+          </PanelShell>
+        </div>
         </DashboardLayout>
       </ProtectedRoute>
     );
@@ -127,78 +114,56 @@ export default function SchoolDetailsPage() {
   return (
     <ProtectedRoute allowedRoles={['admin']}>
       <DashboardLayout>
-        <div className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold bg-gradient-to-r from-[#08163d] to-[#0a1f4f] bg-clip-text text-transparent">
-                {school.name}
-              </h1>
-              <p className="mt-2 text-muted-foreground">
-                School code: <span className="font-mono font-medium">{school.code}</span>
-              </p>
-            </div>
-          </div>
+        <div className="space-y-4">
+          <p className="text-xs text-slate-500">
+            School code: <span className="font-mono font-medium text-[#08163d]">{school.code}</span>
+          </p>
 
-          {/* School Information */}
-          <Card className="border-2 border-primary/20">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-primary" />
-                School Information
-              </CardTitle>
-              <CardDescription>Basic details and contact information</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-6 md:grid-cols-2">
+          <PanelShell title="School Information" description="Basic details and contact information">
+            <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">School Name</p>
-                  <p className="text-lg font-semibold">{school.name}</p>
+                  <p className="text-xs font-medium text-slate-500">School Name</p>
+                  <p className="text-sm font-semibold text-[#08163d]">{school.name}</p>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">School Code</p>
-                  <p className="font-mono font-semibold">{school.code}</p>
+                  <p className="text-xs font-medium text-slate-500">School Code</p>
+                  <p className="font-mono text-sm font-semibold text-[#08163d]">{school.code}</p>
                 </div>
                 {school.address && (
                   <div className="flex items-start gap-2">
-                    <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground shrink-0" />
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                     <div>
-                      <p className="text-sm font-medium text-muted-foreground">Address</p>
-                      <p>{school.address}</p>
+                      <p className="text-xs font-medium text-slate-500">Address</p>
+                      <p className="text-sm text-[#08163d]">{school.address}</p>
                     </div>
                   </div>
                 )}
               </div>
               <div className="space-y-4">
                 <div className="flex items-start gap-2">
-                  <Mail className="mt-0.5 h-4 w-4 text-muted-foreground shrink-0" />
+                  <Mail className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Email</p>
-                    <p>{school.email}</p>
+                    <p className="text-xs font-medium text-slate-500">Email</p>
+                    <p className="text-sm text-[#08163d]">{school.email}</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
-                  <Phone className="mt-0.5 h-4 w-4 text-muted-foreground shrink-0" />
+                  <Phone className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">Phone</p>
-                    <p>{school.phone}</p>
+                    <p className="text-xs font-medium text-slate-500">Phone</p>
+                    <p className="text-sm text-[#08163d]">{school.phone}</p>
                   </div>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Status</p>
-                  <Badge
-                    variant="outline"
-                    className={
-                      school.status === 'active'
-                        ? 'bg-green-100 text-green-700 border-green-300'
-                        : 'bg-gray-100 text-gray-700 border-gray-300'
-                    }
-                  >
+                  <p className="text-xs font-medium text-slate-500">Status</p>
+                  <StatusPill tone={toneFromStatus(school.status)} dot>
                     {school.status}
-                  </Badge>
+                  </StatusPill>
                 </div>
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Created</p>
-                  <p className="text-sm">
+                  <p className="text-xs font-medium text-slate-500">Created</p>
+                  <p className="text-sm text-[#08163d]">
                     {school.created_at
                       ? new Date(school.created_at).toLocaleDateString('en-US', {
                           dateStyle: 'medium',
@@ -207,92 +172,64 @@ export default function SchoolDetailsPage() {
                   </p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </PanelShell>
 
-          {/* Merchant & Wallet */}
-          <Card className="border-2 border-blue-200">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Wallet className="h-5 w-5 text-blue-600" />
-                Merchant & Wallet
-              </CardTitle>
-              <CardDescription>
-                Payment integration and wallet information
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+          <PanelShell title="Merchant & Wallet" description="Payment integration and wallet information">
+            <div className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 {school.merchant_code && (
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Merchant Code
-                    </p>
-                    <p className="font-mono font-semibold">{school.merchant_code}</p>
+                    <p className="text-xs font-medium text-slate-500">Merchant Code</p>
+                    <p className="font-mono text-sm font-semibold text-[#08163d]">{school.merchant_code}</p>
                   </div>
                 )}
                 {school.merchant_id && (
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Merchant ID
-                    </p>
-                    <p className="font-mono text-sm break-all">{school.merchant_id}</p>
+                    <p className="text-xs font-medium text-slate-500">Merchant ID</p>
+                    <p className="break-all font-mono text-sm text-[#08163d]">{school.merchant_id}</p>
                   </div>
                 )}
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">
-                    Merchant Status
-                  </p>
+                  <p className="text-xs font-medium text-slate-500">Merchant Status</p>
                   {getMerchantStatusBadge(school.merchant_status)}
                 </div>
                 {school.business_wallet_id && (
                   <div>
-                    <p className="text-sm font-medium text-muted-foreground">
-                      Business Wallet ID
-                    </p>
-                    <p className="font-mono text-sm break-all">
-                      {school.business_wallet_id}
-                    </p>
+                    <p className="text-xs font-medium text-slate-500">Business Wallet ID</p>
+                    <p className="break-all font-mono text-sm text-[#08163d]">{school.business_wallet_id}</p>
                   </div>
                 )}
               </div>
 
               {school.wallet ? (
-                <div className="flex items-center gap-4 p-4 rounded-lg bg-emerald-50 border-2 border-emerald-200">
-                  <div className="rounded-full bg-emerald-100 p-3">
-                    <Wallet className="h-6 w-6 text-emerald-600" />
+                <div className="flex items-center gap-4 rounded-2xl bg-[#F8F9FB] p-4 ring-1 ring-black/3">
+                  <div className="rounded-full bg-[#08163d]/5 p-3">
+                    <Wallet className="h-6 w-6 text-[#08163d]" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-emerald-900">Wallet Balance</p>
-                    <p className="text-2xl font-bold text-emerald-700">
+                    <p className="text-xs font-medium text-slate-500">Wallet Balance</p>
+                    <p className="text-xl font-bold text-[#08163d]">
                       {school.wallet.currency}{' '}
                       {school.wallet.balance.toLocaleString('en-US', {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
                     </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge
-                        className={
-                          school.wallet.is_active
-                            ? 'bg-green-500 hover:bg-green-600'
-                            : 'bg-gray-500'
-                        }
-                      >
+                    <div className="mt-2 flex items-center gap-2">
+                      <StatusPill tone={school.wallet.is_active ? 'success' : 'neutral'} dot>
                         {school.wallet.is_active ? 'Active' : 'Inactive'}
-                      </Badge>
-                      <span className="text-xs text-emerald-600">
-                        {school.wallet.wallet_type} Wallet
-                      </span>
+                      </StatusPill>
+                      <span className="text-xs text-slate-500">{school.wallet.wallet_type} Wallet</span>
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="flex items-center gap-4 p-4 rounded-lg bg-amber-50 border-2 border-amber-200">
+                <div className="flex items-center gap-4 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200/80">
                   <Wallet className="h-6 w-6 text-amber-600" />
                   <div>
-                    <p className="font-medium text-amber-900">Wallet not available</p>
-                    <p className="text-sm text-amber-700">
+                    <p className="text-sm font-medium text-amber-900">Wallet not available</p>
+                    <p className="text-xs text-amber-700">
                       {school.merchant_status === 'pending_onboarding'
                         ? 'Merchant onboarding in progress.'
                         : school.merchant_status === 'kyc_submitted'
@@ -302,8 +239,8 @@ export default function SchoolDetailsPage() {
                   </div>
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </PanelShell>
         </div>
       </DashboardLayout>
     </ProtectedRoute>

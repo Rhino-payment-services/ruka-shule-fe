@@ -2,17 +2,17 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import { authAPI, tokenStore } from '@/lib/api';
+import type { User, UserRole } from '@/lib/api/types';
 
-interface User {
-  id: string;
-  email: string;
-  phone: string;
-  role: 'admin' | 'school_admin' | 'parent';
-  school_id?: string;
-  school_code?: string;
-  first_name?: string;
-  last_name?: string;
-}
+const VALID_ROLES: UserRole[] = [
+  'admin',
+  'school_admin',
+  'owner',
+  'headteacher',
+  'bursar',
+  'teacher',
+  'parent',
+];
 
 interface AuthContextType {
   user: User | null;
@@ -39,16 +39,22 @@ function mapUser(raw: unknown): User | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.id !== 'string' || typeof r.email !== 'string') return null;
-  const role = r.role as User['role'];
-  if (!role || !['admin', 'school_admin', 'parent'].includes(role)) return null;
+  const role = r.role as UserRole;
+  if (!role || !VALID_ROLES.includes(role)) return null;
+  const permissions = Array.isArray(r.permissions)
+    ? r.permissions.filter((p): p is string => typeof p === 'string')
+    : [];
   return {
     id: r.id,
     email: r.email,
     phone: (r.phone as string) || '',
     role,
+    status: (r.status as User['status']) || 'active',
     school_id: (r.school_id as string) || undefined,
     first_name: (r.first_name as string) || undefined,
     last_name: (r.last_name as string) || undefined,
+    permissions,
+    created_at: typeof r.created_at === 'string' ? r.created_at : '',
   };
 }
 
@@ -83,7 +89,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return true;
       }
     } catch (meErr) {
-      // Older prod builds may not have /auth/me — keep the login session.
       if (httpStatus(meErr) === 404 && restoreFromLoginCache()) {
         return true;
       }
@@ -106,7 +111,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return true;
         }
       } catch (refreshErr) {
-        // Older builds may also lack /auth/refresh — still allow access with cached login user.
         if (
           (httpStatus(refreshErr) === 404 || httpStatus(meErr) === 404) &&
           restoreFromLoginCache()
@@ -160,7 +164,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (authData?.token && authData?.refresh_token) {
       tokenStore.set(authData.token, authData.refresh_token);
     } else if (authData?.token) {
-      // Older APIs may only return an access token.
       tokenStore.set(authData.token, authData.refresh_token || authData.token);
     }
     const fromBody = mapUser(authData?.user);
