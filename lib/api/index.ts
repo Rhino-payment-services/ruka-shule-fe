@@ -17,6 +17,7 @@ export { paymentsAPI } from './payments';
 export { feesAPI } from './fees';
 export { oneOffChargesAPI } from './one-off-charges';
 export { adminAPI } from './admin';
+export { membersAPI } from './members';
 export { getApiErrorMessage, mapSchoolCreateFieldErrors } from './errors';
 
 // All shared types — import with `import type { ... } from '@/lib/api'`
@@ -59,4 +60,8 @@ export type {
   // Admin
   AdminStats,
   AdminUser,
+  SchoolMember,
+  PermissionCatalogItem,
+  RolePermissions,
+  InvitationPreview,
 } from './types';

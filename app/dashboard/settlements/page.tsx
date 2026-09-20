@@ -27,6 +27,8 @@ import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { ListPagination } from '@/components/ListPagination';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
+import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 
 interface SchoolProfile {
   bank_name?: string;
@@ -68,6 +70,8 @@ function parseAmount(raw: string): number | undefined {
 
 export default function SettlementsPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const canWriteSettlements = hasPermission(user, PERMISSIONS.settlementsWrite);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [funding, setFunding] = useState(false);
@@ -280,7 +284,7 @@ export default function SettlementsPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['school_admin']}>
+    <ProtectedRoute requiredPermission={PERMISSIONS.settlementsRead}>
       <DashboardLayout>
         <div className="space-y-4">
           {schoolSetupRequired && (
@@ -409,6 +413,7 @@ export default function SettlementsPage() {
                   }}
                   className="h-10 rounded-full border-0 bg-[#F8F9FB] shadow-none ring-1 ring-black/5 focus-visible:ring-2 focus-visible:ring-[#E8A317]/35"
                 />
+                {canWriteSettlements && (
                 <Button
                   onClick={openFundConfirm}
                   disabled={funding || loading || availableBusiness <= 0}
@@ -416,6 +421,7 @@ export default function SettlementsPage() {
                 >
                   {funding ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Fund escrow'}
                 </Button>
+                )}
                 <Button
                   variant="outline"
                   onClick={() => loadData()}
@@ -456,6 +462,7 @@ export default function SettlementsPage() {
                   }}
                   className="h-10 rounded-full border-0 bg-[#F8F9FB] shadow-none ring-1 ring-black/5 focus-visible:ring-2 focus-visible:ring-[#E8A317]/35"
                 />
+                {canWriteSettlements && (
                 <Button
                   onClick={openRunConfirm}
                   disabled={running || loading || !hasBankProfile || escrowBalance <= 0}
@@ -463,6 +470,7 @@ export default function SettlementsPage() {
                 >
                   {running ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send to bank'}
                 </Button>
+                )}
               </div>
               {runError && <p className="text-sm text-red-600">{runError}</p>}
               {!hasBankProfile && (
