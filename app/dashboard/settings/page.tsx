@@ -427,6 +427,9 @@ export default function SettingsPage() {
                           value={formData[key]}
                           onChange={(e) => setFormData((s) => ({ ...s, [key]: e.target.value }))}
                         />
+                        {key === 'phone' ? (
+                          <p className="text-xs text-slate-500">Required for school bank settlements.</p>
+                        ) : null}
                       </div>
                     ))}
                     <div className="space-y-2">
