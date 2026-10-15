@@ -15,7 +15,6 @@ import {
   Menu,
   X,
   Clock,
-  Search,
   ChevronRight,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -23,18 +22,22 @@ import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { RukapayLogo } from '@/components/RukapayLogo';
+import { hasPermission, PERMISSIONS, roleLabel } from '@/lib/permissions';
+import { firstAccessiblePath } from '@/lib/app-home';
+import type { UserRole } from '@/lib/api/types';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
-type NavGroup = 'school' | 'finance';
+type NavGroup = 'school' | 'finance' | 'account';
 
 type MenuItem = {
   name: string;
   icon: typeof LayoutDashboard;
   href: string;
-  roles: Array<'admin' | 'school_admin'>;
+  roles?: UserRole[];
+  permission?: string;
   group?: NavGroup;
 };
 
@@ -44,6 +47,7 @@ const SIDEBAR_PL = 'lg:pl-[220px]';
 const GROUPS: { id: NavGroup; label: string }[] = [
   { id: 'school', label: 'School' },
   { id: 'finance', label: 'Finance' },
+  { id: 'account', label: 'Account' },
 ];
 
 const MENU_ITEMS: MenuItem[] = [
@@ -51,7 +55,8 @@ const MENU_ITEMS: MenuItem[] = [
     name: 'Dashboard',
     icon: LayoutDashboard,
     href: '/dashboard',
-    roles: ['admin', 'school_admin'],
+    roles: ['admin'],
+    permission: PERMISSIONS.dashboardView,
   },
   {
     name: 'Schools',
@@ -75,31 +80,39 @@ const MENU_ITEMS: MenuItem[] = [
     group: 'school',
   },
   {
+    name: 'Members',
+    icon: Users,
+    href: '/dashboard/members',
+    permission: PERMISSIONS.membersRead,
+    group: 'account',
+  },
+  {
     name: 'Students',
     icon: Users,
     href: '/dashboard/students',
-    roles: ['admin', 'school_admin'],
+    roles: ['admin'],
+    permission: PERMISSIONS.studentsRead,
     group: 'school',
   },
   {
     name: 'Fees',
     icon: Receipt,
     href: '/dashboard/fees',
-    roles: ['school_admin'],
+    permission: PERMISSIONS.feesRead,
     group: 'school',
   },
   {
     name: 'Additional Charges',
     icon: Receipt,
     href: '/dashboard/one-off-charges',
-    roles: ['school_admin'],
+    permission: PERMISSIONS.chargesRead,
     group: 'school',
   },
   {
     name: 'Fees Overview',
     icon: Receipt,
     href: '/dashboard/fees-overview',
-    roles: ['school_admin'],
+    permission: PERMISSIONS.feesRead,
     group: 'school',
   },
   {
@@ -113,21 +126,23 @@ const MENU_ITEMS: MenuItem[] = [
     name: 'Payments',
     icon: CreditCard,
     href: '/dashboard/payments',
-    roles: ['school_admin'],
+    permission: PERMISSIONS.paymentsRead,
     group: 'finance',
   },
   {
     name: 'Settlements',
     icon: Wallet,
     href: '/dashboard/settlements',
-    roles: ['school_admin'],
+    permission: PERMISSIONS.settlementsRead,
     group: 'finance',
   },
   {
     name: 'Settings',
     icon: Settings,
     href: '/dashboard/settings',
-    roles: ['admin', 'school_admin'],
+    roles: ['admin'],
+    permission: PERMISSIONS.settingsRead,
+    group: 'account',
   },
 ];
 
@@ -143,6 +158,12 @@ function isActivePath(pathname: string, href: string) {
 function pageTitleFromPath(pathname: string): string {
   const normalized = pathname.replace(/\/$/, '') || '/dashboard';
   if (normalized === '/dashboard') return 'Dashboard';
+  if (normalized.startsWith('/dashboard/students/add')) return 'Add Student';
+  if (normalized.startsWith('/dashboard/students/import')) return 'Import Students';
+  if (normalized.startsWith('/dashboard/schools/onboard')) return 'Onboard School';
+  if (/^\/dashboard\/schools\/[^/]+$/.test(normalized)) return 'School Details';
+  if (normalized.startsWith('/dashboard/members')) return 'Members';
+  if (normalized.startsWith('/dashboard/no-access')) return 'Access';
 
   const match = MENU_ITEMS.find(
     (item) =>
@@ -158,21 +179,15 @@ function pageTitleFromPath(pathname: string): string {
     .join(' ');
 }
 
-function roleLabel(role?: string) {
-  if (role === 'admin') return 'Admin';
-  if (role === 'school_admin') return 'School Admin';
-  return 'User';
-}
-
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname() || '';
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [query, setQuery] = useState('');
   const [openGroups, setOpenGroups] = useState<Record<NavGroup, boolean>>({
     school: true,
     finance: true,
+    account: true,
   });
 
   const handleLogout = async () => {
@@ -180,7 +195,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     router.push('/');
   };
 
-  const role = (user?.role || '') as 'admin' | 'school_admin' | '';
   const pageTitle = pageTitleFromPath(pathname);
   const displayName =
     [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
@@ -188,14 +202,14 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     'User';
 
   const visibleItems = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return MENU_ITEMS.filter((item) => item.roles.includes(role as 'admin' | 'school_admin')).filter(
-      (item) => !q || item.name.toLowerCase().includes(q)
-    );
-  }, [role, query]);
+    return MENU_ITEMS.filter((item) => {
+      if (item.permission && hasPermission(user, item.permission)) return true;
+      if (item.roles && user?.role && item.roles.includes(user.role)) return true;
+      return false;
+    });
+  }, [user]);
 
-  const topItems = visibleItems.filter((item) => !item.group && item.href !== '/dashboard/settings');
-  const settingsItem = visibleItems.find((item) => item.href === '/dashboard/settings');
+  const topItems = visibleItems.filter((item) => !item.group);
 
   const toggleGroup = (id: NavGroup) => {
     setOpenGroups((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -238,7 +252,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         )}
       >
         <div className="flex h-14 items-center justify-between px-4 pt-1">
-          <RukapayLogo size="sm" className="text-[#08163d]" />
+          <Link href={firstAccessiblePath(user)} className="flex items-center">
+            <RukapayLogo size="sm" className="text-[#08163d]" />
+          </Link>
           <Button
             variant="ghost"
             size="icon"
@@ -256,7 +272,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           {GROUPS.map((group) => {
             const items = visibleItems.filter((item) => item.group === group.id);
             if (items.length === 0) return null;
-            const open = query.trim() ? true : openGroups[group.id];
+            const open = openGroups[group.id];
             return (
               <div key={group.id} className="pt-2.5">
                 <button
@@ -271,12 +287,6 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </div>
             );
           })}
-
-          {settingsItem && <div className="pt-2.5">{renderLink(settingsItem)}</div>}
-
-          {visibleItems.length === 0 && (
-            <p className="px-2.5 py-6 text-center text-xs text-slate-400">No matching pages</p>
-          )}
         </nav>
 
         <div className="px-2.5 pb-4">
@@ -303,22 +313,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <Menu className="h-5 w-5" />
           </Button>
 
-          <h1 className="hidden shrink-0 text-lg font-semibold tracking-tight text-[#08163d] sm:block">
+          <h1 className="min-w-0 flex-1 text-lg font-semibold tracking-tight text-[#08163d]">
             {pageTitle}
           </h1>
-
-          <div className="mx-auto w-full max-w-sm flex-1">
-            <label className="relative block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search menu…"
-                className="h-9 w-full rounded-full border-0 bg-white pl-9 pr-3 text-xs text-[#08163d] shadow-sm placeholder:text-slate-400 outline-none ring-1 ring-black/5 focus:ring-2 focus:ring-[#E8A317]/35"
-              />
-            </label>
-          </div>
 
           <div className="flex shrink-0 items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#08163d] text-xs font-semibold text-white">

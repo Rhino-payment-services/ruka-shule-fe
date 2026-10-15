@@ -15,7 +15,8 @@ import {
 } from '@/lib/students/import';
 import { Upload, FileSpreadsheet, ArrowLeft, Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PanelShell } from '@/components/data-table';
+import { PERMISSIONS } from '@/lib/permissions';
 import { Input } from '@/components/ui/input';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import * as XLSX from 'xlsx';
@@ -275,36 +276,34 @@ export default function ImportStudentsPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['school_admin']}>
+    <ProtectedRoute requiredPermission={PERMISSIONS.studentsWrite}>
       <DashboardLayout>
-        <div className="space-y-6">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => router.push('/dashboard/students')}>
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push('/dashboard/students')}
+              className="h-9 rounded-full text-slate-500 hover:text-[#08163d]"
+            >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back
             </Button>
-            <div>
-              <h1 className="text-3xl font-bold">Import Students</h1>
-              <p className="mt-2 text-muted-foreground">
-                Upload an Excel file. Include School Fees Amount for per-student overrides.
-              </p>
-            </div>
+            <p className="text-xs text-slate-500">
+              Upload an Excel file. Include School Fees Amount for a student’s custom school fees.
+            </p>
           </div>
 
-          <Card className="overflow-hidden">
-            <CardHeader>
-              <CardTitle>Upload Excel</CardTitle>
-              <CardDescription>
-                Required: First Name, Last Name, Class, and Phone or Parent Phone. Optional: Stream,
-                School Fees Amount, Scholarship fields, Parent fields.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <PanelShell
+            title="Upload Excel"
+            description="Required: First Name, Last Name, Class, and Phone or Parent Phone. Optional: Stream, School Fees Amount, Scholarship fields, Parent fields."
+          >
+              <div className="space-y-4">
               <div
-                className="cursor-pointer rounded-lg border-2 border-dashed p-8 text-center hover:bg-muted/40"
+                className="cursor-pointer rounded-2xl border border-dashed border-slate-200 bg-[#F8F9FB] p-8 text-center hover:bg-white"
                 onClick={() => fileInputRef.current?.click()}
               >
-                <Upload className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
+                <Upload className="mx-auto mb-3 h-10 w-10 text-slate-500" />
                 <p className="font-medium">
                   {file ? file.name : 'Select an Excel file (.xlsx or .xls)'}
                 </p>
@@ -320,11 +319,15 @@ export default function ImportStudentsPage() {
               {preview.length > 0 && (
                 <div className="min-w-0 space-y-3">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-slate-500">
                       Previewing {preview.length} students
                       {preview.length > 20 ? ' (showing first 20)' : ''}
                     </p>
-                    <Button onClick={openImportConfirm} disabled={importing}>
+                    <Button
+                      onClick={openImportConfirm}
+                      disabled={importing}
+                      className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+                    >
                       {importing ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -343,10 +346,10 @@ export default function ImportStudentsPage() {
                       Some rows need edits before import. Invalid rows are highlighted below.
                     </p>
                   )}
-                  <div className="max-h-[500px] overflow-x-auto overflow-y-auto rounded border text-sm">
+                  <div className="max-h-[500px] overflow-x-auto overflow-y-auto rounded-xl ring-1 ring-slate-100 text-sm">
                     <table className="min-w-[1800px]">
                       <thead>
-                        <tr className="bg-muted/50 text-left">
+                        <tr className="bg-[#F8F9FB] text-left text-xs font-medium text-slate-500">
                           <th className="p-2">First Name</th>
                           <th className="p-2">Last Name</th>
                           <th className="p-2">Class</th>
@@ -483,7 +486,7 @@ export default function ImportStudentsPage() {
                                 onClick={() => {
                                   setPreview((prev) => prev.filter((_, i) => i !== idx));
                                 }}
-                                className="cursor-pointer rounded p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                                className="cursor-pointer rounded p-1 text-slate-500 hover:bg-destructive/10 hover:text-destructive"
                                 title="Remove student"
                               >
                                 <X className="h-4 w-4" />
@@ -498,7 +501,7 @@ export default function ImportStudentsPage() {
               )}
 
               {result && (
-                <div className="space-y-3 rounded border p-4 text-sm">
+                <div className="space-y-3 rounded-2xl ring-1 ring-slate-100 p-4 text-sm">
                   <p>
                     Success: {result.success} · Failed: {result.failed}
                   </p>
@@ -513,7 +516,7 @@ export default function ImportStudentsPage() {
                         Row {e.row}: {e.error}
                       </p>
                       {e.candidates && e.candidates.length > 0 && (
-                        <ul className="list-disc space-y-0.5 pl-5 text-muted-foreground">
+                        <ul className="list-disc space-y-0.5 pl-5 text-slate-500">
                           {e.candidates.map((c) => (
                             <li key={c.id || formatCandidate(c)}>
                               Matches existing: {formatCandidate(c)}
@@ -525,8 +528,8 @@ export default function ImportStudentsPage() {
                   ))}
                 </div>
               )}
-            </CardContent>
-          </Card>
+              </div>
+          </PanelShell>
 
           <ConfirmDialog
             open={importConfirmOpen}

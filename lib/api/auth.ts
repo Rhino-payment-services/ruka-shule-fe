@@ -1,5 +1,5 @@
 import { api, tokenStore } from './client';
-import type { ApiSuccessResponse, AuthResponse, User } from './types';
+import type { ApiSuccessResponse, AuthResponse, InvitationPreview, User } from './types';
 
 export const authAPI = {
   register: (data: {
@@ -42,4 +42,18 @@ export const authAPI = {
     api.get<ApiSuccessResponse<{ exists: boolean }>>(
       `/auth/check-email?email=${encodeURIComponent(email)}`,
     ),
+
+  changePassword: (data: {
+    current_password: string;
+    new_password: string;
+    confirm_password: string;
+  }) => api.put<ApiSuccessResponse<{ message: string }>>('/auth/password', data),
+
+  verifyInvitation: (token: string) =>
+    api.get<ApiSuccessResponse<InvitationPreview>>(
+      `/auth/invitations/verify?token=${encodeURIComponent(token)}`,
+    ),
+
+  setPassword: (data: { token: string; new_password: string; confirm_password: string }) =>
+    api.post<ApiSuccessResponse<{ message: string }>>('/auth/set-password', data),
 };

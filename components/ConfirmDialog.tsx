@@ -51,6 +51,7 @@ export function ConfirmDialog({
             variant="outline"
             disabled={loading}
             onClick={() => onOpenChange(false)}
+            className="h-9 rounded-full border-slate-200"
           >
             {cancelLabel}
           </Button>
@@ -59,6 +60,11 @@ export function ConfirmDialog({
             variant={variant === 'destructive' ? 'destructive' : 'default'}
             disabled={loading}
             onClick={handleConfirm}
+            className={
+              variant === 'destructive'
+                ? 'h-9 rounded-full'
+                : 'h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]'
+            }
           >
             {loading ? (
               <>

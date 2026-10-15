@@ -14,6 +14,7 @@ import {
 } from '@/components/data-table';
 import { StatSummaryCard } from '@/components/dashboard/StatSummaryCard';
 import { paymentsAPI, schoolsAPI } from '@/lib/api';
+import { PERMISSIONS } from '@/lib/permissions';
 import {
   Download,
   Loader2,
@@ -257,7 +258,7 @@ export default function FeesOverviewPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['school_admin']}>
+    <ProtectedRoute requiredPermission={PERMISSIONS.feesRead}>
       <DashboardLayout>
         <div className="space-y-4">
           {schoolSetupRequired && (

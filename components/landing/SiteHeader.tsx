@@ -3,12 +3,13 @@
 import Link from 'next/link';
 import { Search } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { firstAccessiblePath } from '@/lib/app-home';
 import { Button } from '@/components/ui/button';
 import { RukapayLogo } from '@/components/RukapayLogo';
 
 export function SiteHeader() {
   const { user } = useAuth();
-  const startHref = user ? '/dashboard' : '/login';
+  const startHref = user ? firstAccessiblePath(user) : '/login';
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-100 bg-white/95 backdrop-blur-sm">
@@ -21,7 +22,7 @@ export function SiteHeader() {
 
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" className="rounded-full border-slate-200 px-4">
-            <Link href={startHref}>{user ? 'Dashboard' : 'Sign In'}</Link>
+            <Link href={startHref}>{user ? 'Continue' : 'Sign In'}</Link>
           </Button>
           <Button
             asChild

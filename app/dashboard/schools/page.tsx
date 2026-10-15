@@ -16,10 +16,13 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogFooter,
@@ -281,33 +284,40 @@ export default function SchoolsPage() {
                   Approve this rejected school for merchant onboarding. Optionally add an approval note.
                 </DialogDescription>
               </DialogHeader>
-              <div className="mt-4">
-                <p className="mb-3 text-sm font-medium">
+              <DialogBody className="space-y-4">
+                <p className="text-sm text-[#08163d]">
                   School:{' '}
-                  {approveSchoolId
-                    ? (schools.find((s) => s.id === approveSchoolId)?.name ?? '—')
-                    : '—'}
+                  <span className="font-medium">
+                    {approveSchoolId
+                      ? (schools.find((s) => s.id === approveSchoolId)?.name ?? '—')
+                      : '—'}
+                  </span>
                 </p>
-                <textarea
-                  className="modal-textarea w-full"
-                  value={approveReason}
-                  onChange={(e) => setApproveReason(e.target.value)}
-                  placeholder="Enter approval note (optional)"
-                />
-              </div>
-              <DialogFooter>
-                <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setApproveDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={submitApproveRejected}
-                    disabled={approving}
-                    className="bg-emerald-600 text-white hover:bg-emerald-700"
-                  >
-                    {approving ? 'Approving...' : 'Approve'}
-                  </Button>
+                <div className="space-y-1.5">
+                  <Label htmlFor="reapprove-note">Approval note (optional)</Label>
+                  <Textarea
+                    id="reapprove-note"
+                    value={approveReason}
+                    onChange={(e) => setApproveReason(e.target.value)}
+                    placeholder="Enter approval note"
+                  />
                 </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setApproveDialogOpen(false)}
+                  className="h-9 rounded-full border-slate-200"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={submitApproveRejected}
+                  disabled={approving}
+                  className="h-9 rounded-full bg-emerald-600 px-4 text-white hover:bg-emerald-700"
+                >
+                  {approving ? 'Approving...' : 'Approve'}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

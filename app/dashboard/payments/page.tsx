@@ -22,6 +22,7 @@ import {
 import { toast } from 'sonner';
 import { ListPagination } from '@/components/ListPagination';
 import { DEFAULT_PAGE_SIZE, normalizePaginationMeta } from '@/lib/hooks/useServerPagination';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import {
   Select,
   SelectContent,
@@ -443,7 +444,7 @@ export default function PaymentsPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['school_admin']}>
+    <ProtectedRoute requiredPermission={PERMISSIONS.paymentsRead}>
       <DashboardLayout>
         <div className="space-y-4">
           {schoolSetupRequired && (
@@ -532,48 +533,48 @@ export default function PaymentsPage() {
 
               {/* Step 2: Fees & Payment */}
               {studentLookupData && (
-                  <div className="mt-4 space-y-4 rounded-lg border border-emerald-200 bg-white p-4">
+                  <div className="mt-4 space-y-4 rounded-2xl bg-[#F8F9FB] p-4 ring-1 ring-black/3">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="font-semibold">
+                      <h3 className="font-semibold text-[#08163d]">
                         {studentLookupData.student.full_name} — {studentLookupData.student.class}
                         {studentLookupData.student.gender
                           ? ` (${studentLookupData.student.gender})`
                           : ''}
                       </h3>
                       {studentLookupData.school?.name && (
-                        <p className="text-xs text-muted-foreground mt-0.5">{studentLookupData.school.name}</p>
+                        <p className="mt-0.5 text-xs text-slate-500">{studentLookupData.school.name}</p>
                       )}
                     </div>
-                    <Button variant="ghost" size="sm" onClick={resetPaymentFlow}>
+                    <Button variant="ghost" size="sm" onClick={resetPaymentFlow} className="rounded-full">
                       Change student
                     </Button>
                   </div>
                   <div className="grid gap-2 text-sm">
                     {studentLookupData.payment_summary.school_fees_amount !== undefined && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">School Fees</span>
-                        <span className="font-semibold text-emerald-700">
+                        <span className="text-slate-500">School Fees</span>
+                        <span className="font-semibold text-[#08163d]">
                           UGX {studentLookupData.payment_summary.school_fees_amount.toLocaleString()}
                         </span>
                       </div>
                     )}
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Carry-forward</span>
+                      <span className="text-slate-500">Carry-forward</span>
                       <span className="font-semibold text-amber-700">
                         UGX {(studentLookupData.payment_summary.carry_forward_balance || 0).toLocaleString()}
                       </span>
                     </div>
                     {studentLookupData.payment_summary.one_off_outstanding !== undefined && (
                       <div className="flex justify-between">
-                        <span className="text-muted-foreground">Additional Charges</span>
+                        <span className="text-slate-500">Additional Charges</span>
                         <span className="font-semibold text-red-600">
                           UGX {studentLookupData.payment_summary.one_off_outstanding.toLocaleString()}
                         </span>
                       </div>
                     )}
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Total outstanding</span>
+                      <span className="text-slate-500">Total outstanding</span>
                       <span className="font-semibold text-red-600">
                         UGX {studentLookupData.payment_summary.total_outstanding.toLocaleString()}
                       </span>
@@ -595,15 +596,15 @@ export default function PaymentsPage() {
                               // Locked fees require full outstanding; otherwise user types the amount.
                               setPaymentAmount(fee.is_locked ? fee.outstanding.toString() : '');
                             }}
-                            className={`flex items-center justify-between rounded-lg border-2 p-3 text-left transition-colors ${
+                            className={`flex items-center justify-between rounded-xl p-3 text-left ring-1 transition-colors ${
                               selectedFee?.id === fee.id
-                                ? 'border-emerald-500 bg-emerald-50'
-                                : 'border-gray-200 hover:border-emerald-300'
+                                ? 'bg-white ring-[#08163d]/20'
+                                : 'bg-white ring-slate-200 hover:ring-[#08163d]/15'
                             }`}
                           >
                             <div>
                               <p className="font-medium">{fee.name}</p>
-                              <p className="text-xs text-muted-foreground">
+                              <p className="text-xs text-slate-500">
                                 Outstanding: UGX {fee.outstanding.toLocaleString()}
                               </p>
                               {fee.is_locked && (
@@ -616,13 +617,13 @@ export default function PaymentsPage() {
                               )}
                             </div>
                             {selectedFee?.id === fee.id && (
-                              <CheckCircle className="h-5 w-5 text-emerald-600" />
+                              <CheckCircle className="h-5 w-5 text-[#08163d]" />
                             )}
                           </button>
                         ))}
                     </div>
                     {studentLookupData.available_fees.filter((f) => !!f.id && !f.is_paid && f.outstanding > 0).length === 0 && (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-slate-500">
                         No payable fee structure for this student. Create an active school fees fee for their class, or all fees are paid.
                       </p>
                     )}
@@ -643,12 +644,12 @@ export default function PaymentsPage() {
                                 setSelectedFee(null);
                                 setPaymentAmount(charge.outstanding.toString());
                               }}
-                              className={`flex items-center justify-between rounded-lg border-2 p-3 text-left transition-colors ${
-                                selectedOneOff?.id === charge.id ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-emerald-300'
+                              className={`flex items-center justify-between rounded-xl p-3 text-left ring-1 transition-colors ${
+                                selectedOneOff?.id === charge.id ? 'bg-white ring-[#08163d]/20' : 'bg-white ring-slate-200 hover:ring-[#08163d]/15'
                               }`}
                             >
-                              <div><p className="font-medium">{charge.name}</p><p className="text-xs text-muted-foreground">Outstanding: UGX {charge.outstanding.toLocaleString()}</p></div>
-                              {selectedOneOff?.id === charge.id && <CheckCircle className="h-5 w-5 text-emerald-600" />}
+                              <div><p className="font-medium">{charge.name}</p><p className="text-xs text-slate-500">Outstanding: UGX {charge.outstanding.toLocaleString()}</p></div>
+                              {selectedOneOff?.id === charge.id && <CheckCircle className="h-5 w-5 text-[#08163d]" />}
                             </button>
                           ))}
                       </div>
@@ -656,7 +657,7 @@ export default function PaymentsPage() {
                   )}
 
                   {Array.isArray(studentLookupData.one_off_charges) && studentLookupData.one_off_charges.some((charge) => ['paid', 'waived', 'pending'].includes(charge.status)) && (
-                    <div className="rounded-lg border bg-muted/30 p-3">
+                    <div className="rounded-xl bg-white p-3 ring-1 ring-slate-100">
                       <h4 className="mb-2 text-sm font-semibold">Additional charge history</h4>
                       <div className="space-y-2">
                         {studentLookupData.one_off_charges.filter((charge) => ['paid', 'waived', 'pending'].includes(charge.status)).map((charge) => (
@@ -686,7 +687,7 @@ export default function PaymentsPage() {
                             disabled={!!selectedOneOff || !!selectedFee?.is_locked}
                             placeholder={(selectedOneOff || selectedFee)!.outstanding.toString()}
                           />
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-slate-500">
                             {selectedOneOff
                               ? `Additional charge: full amount of UGX ${selectedOneOff.outstanding.toLocaleString()} is required`
                               : selectedFee?.is_locked
@@ -702,7 +703,7 @@ export default function PaymentsPage() {
                             readOnly
                             disabled
                           />
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-slate-500">
                             Uses the school payment phone saved in Settings.
                           </p>
                         </div>
