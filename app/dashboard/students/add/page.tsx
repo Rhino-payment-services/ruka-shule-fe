@@ -9,7 +9,8 @@ import { getApiErrorMessage } from '@/lib/api/errors';
 import { isValidClassLabel } from '@/lib/students/import';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { PanelShell } from '@/components/data-table';
+import { PERMISSIONS } from '@/lib/permissions';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -60,6 +61,16 @@ export default function AddStudentPage() {
         description: 'Enter a class label up to 50 characters (e.g. P1, KG1, Nursery).',
       });
       return;
+    }
+
+    if (formData.scholarship_percentage) {
+      const pct = parseFloat(formData.scholarship_percentage);
+      if (Number.isNaN(pct) || pct < 0 || pct > 100) {
+        toast.error('Invalid scholarship percentage', {
+          description: 'Enter a number between 0 and 100, e.g. 50 for 50% off class school fees.',
+        });
+        return;
+      }
     }
 
     setLoading(true);
@@ -142,39 +153,29 @@ export default function AddStudentPage() {
   };
 
   return (
-    <ProtectedRoute allowedRoles={['school_admin']}>
+    <ProtectedRoute requiredPermission={PERMISSIONS.studentsWrite}>
       <DashboardLayout>
-        <div className="space-y-6 max-w-3xl mx-auto">
-          <div className="flex items-center gap-4">
+        <div className="mx-auto max-w-6xl space-y-4">
+          <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => router.push('/dashboard/students')}
-              className="text-muted-foreground hover:text-foreground"
+              className="h-9 rounded-full text-slate-500 hover:text-[#08163d]"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back
             </Button>
-            <div>
-              <h1 className="text-3xl font-bold">Add Student</h1>
-              <p className="mt-2 text-muted-foreground">
-                Add a new student to your school
-              </p>
-            </div>
+            <p className="text-xs text-slate-500">Add a new student to your school</p>
           </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Student Information</CardTitle>
-              <CardDescription>
-                Fill in the required information to add a new student. Registration ID will be automatically generated.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Student Basics */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
+          <PanelShell
+            title="Student Information"
+            description="Fill in the required details. Registration ID is generated automatically."
+          >
+              <form onSubmit={handleSubmit} className="space-y-5">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1.5">
                     <Label htmlFor="first_name">
                       First Name <span className="text-red-500">*</span>
                     </Label>
@@ -187,7 +188,7 @@ export default function AddStudentPage() {
                       required
                     />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <Label htmlFor="last_name">
                       Last Name <span className="text-red-500">*</span>
                     </Label>
@@ -200,10 +201,18 @@ export default function AddStudentPage() {
                       required
                     />
                   </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="phone">Student Phone (Optional)</Label>
+                    <Input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      placeholder="+256700123456"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
                     <Label htmlFor="class">
                       Class <span className="text-red-500">*</span>
                     </Label>
@@ -216,41 +225,56 @@ export default function AddStudentPage() {
                       required
                       maxLength={50}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Use your school&apos;s class name (free text, max 50 characters).
-                    </p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="gender">Gender</Label>
+                    <Select
+                      value={formData.gender || 'none'}
+                      onValueChange={(value) =>
+                        handleChange({ target: { name: 'gender', value: value === 'none' ? '' : value } })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select gender (optional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Not specified</SelectItem>
+                        {GENDERS.map((gender) => (
+                          <SelectItem key={gender} value={gender}>
+                            {gender}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="stream">Stream</Label>
+                    <Select
+                      value={formData.stream || 'none'}
+                      onValueChange={(value) =>
+                        handleChange({ target: { name: 'stream', value: value === 'none' ? '' : value } })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select stream (if applicable)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {STREAMS.map((stream) => (
+                          <SelectItem key={stream} value={stream}>
+                            {stream}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 
-                {/* Contact Information */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold mb-4">Contact Information</h3>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="phone">
-                        Student Phone Number (Optional)
-                      </Label>
-                      <Input
-                        id="phone"
-                        name="phone"
-                        type="tel"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        placeholder="+256700123456"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Leave blank if student doesn't have a phone number
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Parent/Guardian Information */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold mb-4">Parent/Guardian Information</h3>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="parent_first_name">Parent First Name</Label>
+                <div className="border-t border-slate-100 pt-5">
+                  <h3 className="mb-3 text-sm font-semibold text-[#08163d]">Parent/Guardian</h3>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="parent_first_name">First Name</Label>
                       <Input
                         id="parent_first_name"
                         name="parent_first_name"
@@ -259,8 +283,8 @@ export default function AddStudentPage() {
                         placeholder="Jane"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="parent_last_name">Parent Last Name</Label>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="parent_last_name">Last Name</Label>
                       <Input
                         id="parent_last_name"
                         name="parent_last_name"
@@ -269,34 +293,31 @@ export default function AddStudentPage() {
                         placeholder="Doe"
                       />
                     </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="parent_phone">
+                        Phone <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="parent_phone"
+                        name="parent_phone"
+                        type="tel"
+                        value={formData.parent_phone}
+                        onChange={handleChange}
+                        placeholder="+256700123457"
+                        required
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="parent_phone">
-                      Parent Phone Number <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="parent_phone"
-                      name="parent_phone"
-                      type="tel"
-                      value={formData.parent_phone}
-                      onChange={handleChange}
-                      placeholder="+256700123457"
-                      required
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Required for payment notifications. Will be automatically registered on RukaPay.
-                    </p>
-                  </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Provide a student or parent phone. Parent phone is used for payment notifications.
+                  </p>
                 </div>
 
-                {/* School Fees Information */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold mb-4">School Fees</h3>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="school_fees_amount">
-                        Net Payable Amount (Optional)
-                      </Label>
+                <div className="border-t border-slate-100 pt-5">
+                  <h3 className="mb-3 text-sm font-semibold text-[#08163d]">Fees & scholarship (optional)</h3>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="school_fees_amount">School Fees Amount</Label>
                       <Input
                         id="school_fees_amount"
                         name="school_fees_amount"
@@ -305,75 +326,10 @@ export default function AddStudentPage() {
                         step="0.01"
                         value={formData.school_fees_amount}
                         onChange={handleChange}
-                        placeholder="e.g., 500000"
+                        placeholder="Leave blank for class school fees"
                       />
-                      <p className="text-xs text-muted-foreground">
-                        Student's individual fees amount. If not specified, school's default fees will apply.
-                      </p>
                     </div>
-                  </div>
-                </div>
-
-                {/* Academic Details */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold mb-4">Academic Details (Optional)</h3>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="gender">Gender</Label>
-                      <Select
-                        value={formData.gender || 'none'}
-                        onValueChange={(value) =>
-                          handleChange({ target: { name: 'gender', value: value === 'none' ? '' : value } })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select gender (optional)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Not specified</SelectItem>
-                          {GENDERS.map((gender) => (
-                            <SelectItem key={gender} value={gender}>
-                              {gender}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="stream">Stream/Subject Combination</Label>
-                      <Select
-                        value={formData.stream || 'none'}
-                        onValueChange={(value) =>
-                          handleChange({ target: { name: 'stream', value: value === 'none' ? '' : value } })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select stream (if applicable)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">None</SelectItem>
-                          {STREAMS.map((stream) => (
-                            <SelectItem key={stream} value={stream}>
-                              {stream}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        For S3-S6 students who have chosen a subject combination
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Scholarship Information */}
-                <div className="border-t pt-6">
-                  <h3 className="text-lg font-semibold mb-4">Scholarship Information (Optional)</h3>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    If a student has a scholarship, enter the net payable amount (after discount) in the "Net Payable Amount" field above.
-                  </p>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
+                    <div className="space-y-1.5">
                       <Label htmlFor="scholarship_type">Scholarship Type</Label>
                       <Select
                         value={formData.scholarship_type || 'none'}
@@ -394,19 +350,41 @@ export default function AddStudentPage() {
                         </SelectContent>
                       </Select>
                     </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="scholarship_percentage">Scholarship Percentage</Label>
+                      <Input
+                        id="scholarship_percentage"
+                        name="scholarship_percentage"
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={formData.scholarship_percentage}
+                        onChange={handleChange}
+                        placeholder="e.g. 50"
+                      />
+                    </div>
                   </div>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Leave this amount blank to use class school fees. A custom amount replaces class school fees for this student only — not other fees. Scholarship % then discounts whichever school-fees amount is used (50 = half).
+                  </p>
                 </div>
 
-                <div className="flex gap-4 pt-4">
+                <div className="flex gap-3 pt-1">
                   <Button
                     type="button"
                     variant="outline"
                     onClick={() => router.push('/dashboard/students')}
                     disabled={loading}
+                    className="h-9 rounded-full border-slate-200"
                   >
                     Cancel
                   </Button>
-                  <Button type="submit" disabled={loading} className="flex-1">
+                  <Button
+                    type="submit"
+                    disabled={loading}
+                    className="h-9 rounded-full bg-[#08163d] px-5 text-white hover:bg-[#0a1f4f]"
+                  >
                     {loading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -418,8 +396,7 @@ export default function AddStudentPage() {
                   </Button>
                 </div>
               </form>
-            </CardContent>
-          </Card>
+          </PanelShell>
         </div>
       </DashboardLayout>
     </ProtectedRoute>

@@ -6,8 +6,11 @@ import { useState, useEffect } from 'react';
 import { schoolsAPI, adminAPI } from '@/lib/api';
 import { School, Hash, Mail, BadgeCheck, MoreHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogFooter,
@@ -168,38 +171,39 @@ export default function PendingApprovalsPage() {
                   Optionally provide a reason for rejecting this school&apos;s merchant onboarding.
                 </DialogDescription>
               </DialogHeader>
-              <div className="mt-4">
-                <textarea
-                  className="modal-textarea w-full"
-                  value={rejectReason}
-                  onChange={(e) => setRejectReason(e.target.value)}
-                  placeholder="Enter rejection reason (optional)"
-                />
-              </div>
-              <DialogFooter>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={actionLoading}
-                    onClick={() => setRejectDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={actionLoading}
-                    onClick={submitReject}
-                    className="bg-red-600 text-white"
-                  >
-                    {actionLoading ? (
-                      <>
-                        <ButtonSpinner /> Rejecting…
-                      </>
-                    ) : (
-                      'Reject'
-                    )}
-                  </Button>
+              <DialogBody>
+                <div className="space-y-1.5">
+                  <Label htmlFor="reject-reason">Rejection reason (optional)</Label>
+                  <Textarea
+                    id="reject-reason"
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    placeholder="Enter rejection reason"
+                  />
                 </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  disabled={actionLoading}
+                  onClick={() => setRejectDialogOpen(false)}
+                  className="h-9 rounded-full border-slate-200"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={actionLoading}
+                  onClick={submitReject}
+                  className="h-9 rounded-full bg-red-600 px-4 text-white hover:bg-red-700"
+                >
+                  {actionLoading ? (
+                    <>
+                      <ButtonSpinner /> Rejecting…
+                    </>
+                  ) : (
+                    'Reject'
+                  )}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
@@ -213,44 +217,47 @@ export default function PendingApprovalsPage() {
                   approval note.
                 </DialogDescription>
               </DialogHeader>
-              <div className="mt-4">
-                <p className="mb-3 text-sm font-medium">
+              <DialogBody className="space-y-4">
+                <p className="text-sm text-[#08163d]">
                   School:{' '}
-                  {approveSchoolId
-                    ? (schools.find((s) => s.id === approveSchoolId)?.name ?? '—')
-                    : '—'}
+                  <span className="font-medium">
+                    {approveSchoolId
+                      ? (schools.find((s) => s.id === approveSchoolId)?.name ?? '—')
+                      : '—'}
+                  </span>
                 </p>
-                <textarea
-                  className="modal-textarea w-full"
-                  value={approveReason}
-                  onChange={(e) => setApproveReason(e.target.value)}
-                  placeholder="Enter approval note (optional)"
-                />
-              </div>
-              <DialogFooter>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={actionLoading}
-                    onClick={() => setApproveDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={actionLoading}
-                    onClick={submitApprove}
-                    className="bg-emerald-600 text-white"
-                  >
-                    {actionLoading ? (
-                      <>
-                        <ButtonSpinner /> Approving…
-                      </>
-                    ) : (
-                      'Confirm Approve'
-                    )}
-                  </Button>
+                <div className="space-y-1.5">
+                  <Label htmlFor="approve-note">Approval note (optional)</Label>
+                  <Textarea
+                    id="approve-note"
+                    value={approveReason}
+                    onChange={(e) => setApproveReason(e.target.value)}
+                    placeholder="Enter approval note"
+                  />
                 </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  disabled={actionLoading}
+                  onClick={() => setApproveDialogOpen(false)}
+                  className="h-9 rounded-full border-slate-200"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  disabled={actionLoading}
+                  onClick={submitApprove}
+                  className="h-9 rounded-full bg-emerald-600 px-4 text-white hover:bg-emerald-700"
+                >
+                  {actionLoading ? (
+                    <>
+                      <ButtonSpinner /> Approving…
+                    </>
+                  ) : (
+                    'Confirm Approve'
+                  )}
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

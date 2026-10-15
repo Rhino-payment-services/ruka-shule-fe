@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import {
   DataTableShell,
@@ -46,8 +47,10 @@ import { getApiErrorMessage, verifySchoolContextIssue } from '@/lib/api/errors';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { LoadingState } from '@/components/LoadingState';
 import { useAuth } from '@/contexts/AuthContext';
+import { hasPermission, PERMISSIONS } from '@/lib/permissions';
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -103,6 +106,10 @@ export default function StudentsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const isPlatformAdmin = user?.role === 'admin';
+  const canWriteStudents = hasPermission(user, PERMISSIONS.studentsWrite);
+  const canReadPayments = hasPermission(user, PERMISSIONS.paymentsRead);
+  const canReadCharges = hasPermission(user, PERMISSIONS.chargesRead);
+  const canWriteCharges = hasPermission(user, PERMISSIONS.chargesWrite);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [schoolSetupRequired, setSchoolSetupRequired] = useState(false);
@@ -351,9 +358,9 @@ export default function StudentsPage() {
       ['Class', 'Yes', 'Free text (e.g. P1, KG1, Nursery)'],
       ['Gender', 'No', 'Male or Female'],
       ['Stream', 'No', 'General, Arts, Sciences, Business, Technical'],
-      ['School Fees Amount', 'No', 'Per-student override. Leave blank to use class fee'],
+      ['School Fees Amount', 'No', 'Custom school fees for this student. Leave blank to use class school fees'],
       ['Scholarship Type', 'No', 'Full, Partial, Merit, Need-based, Sports'],
-      ['Scholarship Percentage', 'No', 'e.g. 50 for 50%'],
+      ['Scholarship Percentage', 'No', 'e.g. 50 for 50% off class school fees, or off School Fees Amount if that is set'],
       ['Parent First Name', 'No', ''],
       ['Parent Last Name', 'No', ''],
       ['Parent Phone', 'Yes*', 'Required if student Phone is blank'],
@@ -377,21 +384,30 @@ export default function StudentsPage() {
     setSelectedAcademicYear('');
     setSelectedTerm('');
 
+    if (!canReadPayments && !canReadCharges) {
+      setLoadingPayments(false);
+      return;
+    }
+
     try {
       const [summaryResult, oneOffResult] = await Promise.allSettled([
-        paymentsAPI.getSummary(student.id),
-        oneOffChargesAPI.listForStudent(student.id),
+        canReadPayments ? paymentsAPI.getSummary(student.id) : Promise.resolve(null),
+        canReadCharges ? oneOffChargesAPI.listForStudent(student.id) : Promise.resolve(null),
       ]);
-      if (summaryResult.status === 'fulfilled') {
-        setPaymentSummary(summaryResult.value.data.data);
-      } else {
-        toast.error(getApiErrorMessage(summaryResult.reason, 'Failed to load payment summary'));
+      if (canReadPayments) {
+        if (summaryResult.status === 'fulfilled' && summaryResult.value) {
+          setPaymentSummary(summaryResult.value.data.data);
+        } else if (summaryResult.status === 'rejected') {
+          toast.error(getApiErrorMessage(summaryResult.reason, 'Failed to load payment summary'));
+        }
       }
-      if (oneOffResult.status === 'fulfilled') {
-        setOneOffCharges(oneOffResult.value.data.data || []);
-      } else {
-        setOneOffCharges([]);
-        toast.error(getApiErrorMessage(oneOffResult.reason, 'Failed to load additional charges'));
+      if (canReadCharges) {
+        if (oneOffResult.status === 'fulfilled' && oneOffResult.value) {
+          setOneOffCharges(oneOffResult.value.data.data || []);
+        } else if (oneOffResult.status === 'rejected') {
+          setOneOffCharges([]);
+          toast.error(getApiErrorMessage(oneOffResult.reason, 'Failed to load additional charges'));
+        }
       }
     } catch (err: unknown) {
       toast.error(getApiErrorMessage(err, 'Failed to load student payment details'));
@@ -401,7 +417,7 @@ export default function StudentsPage() {
   };
 
   useEffect(() => {
-    if (!showViewModal || !selectedStudent) return;
+    if (!showViewModal || !selectedStudent || !canReadPayments) return;
     const studentId = selectedStudent.id;
     const page = paymentPage;
     let cancelled = false;
@@ -429,7 +445,7 @@ export default function StudentsPage() {
     return () => {
       cancelled = true;
     };
-  }, [paymentPage, selectedStudent, showViewModal]);
+  }, [paymentPage, selectedStudent, showViewModal, canReadPayments]);
 
   const handleCheckTermPayment = async () => {
     if (!selectedStudent || !selectedAcademicYear || !selectedTerm) {
@@ -464,11 +480,19 @@ export default function StudentsPage() {
         external_ref: markPaidReference.trim() || undefined,
       });
       const [summaryRes, oneOffRes] = await Promise.all([
-        paymentsAPI.getSummary(selectedStudent.id),
-        oneOffChargesAPI.listForStudent(selectedStudent.id),
+        canReadPayments
+          ? paymentsAPI.getSummary(selectedStudent.id)
+          : Promise.resolve(null),
+        canReadCharges
+          ? oneOffChargesAPI.listForStudent(selectedStudent.id)
+          : Promise.resolve(null),
       ]);
-      setPaymentSummary(summaryRes.data.data);
-      setOneOffCharges(oneOffRes.data.data || []);
+      if (summaryRes) {
+        setPaymentSummary(summaryRes.data.data);
+      }
+      if (oneOffRes) {
+        setOneOffCharges(oneOffRes.data.data || []);
+      }
       setMarkPaidAssignment(null);
       setMarkPaidNote('');
       setMarkPaidReference('');
@@ -684,7 +708,7 @@ export default function StudentsPage() {
   }, [oneOffCharges, paymentSummary]);
 
   return (
-    <ProtectedRoute allowedRoles={['admin', 'school_admin']}>
+    <ProtectedRoute allowedRoles={['admin']} requiredPermission={PERMISSIONS.studentsRead}>
       <DashboardLayout>
         <div className="space-y-4">
           {schoolSetupRequired && (
@@ -722,21 +746,25 @@ export default function StudentsPage() {
                   <Download className="mr-1.5 h-3.5 w-3.5" />
                   Example Excel
                 </Button>
-                <Button
-                  variant="outline"
-                  className="h-9 rounded-full border-slate-200 px-3 text-xs"
-                  onClick={() => router.push('/dashboard/students/import')}
-                >
-                  <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
-                  Import
-                </Button>
-                <Button
-                  onClick={() => router.push('/dashboard/students/add')}
-                  className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
-                >
-                  <Plus className="mr-1.5 h-4 w-4" />
-                  Add Student
-                </Button>
+                {canWriteStudents && (
+                  <>
+                    <Button
+                      variant="outline"
+                      className="h-9 rounded-full border-slate-200 px-3 text-xs"
+                      onClick={() => router.push('/dashboard/students/import')}
+                    >
+                      <FileSpreadsheet className="mr-1.5 h-3.5 w-3.5" />
+                      Import
+                    </Button>
+                    <Button
+                      onClick={() => router.push('/dashboard/students/add')}
+                      className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
+                    >
+                      <Plus className="mr-1.5 h-4 w-4" />
+                      Add Student
+                    </Button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -868,7 +896,7 @@ export default function StudentsPage() {
                       ? 'No students found matching your search'
                       : 'No students found'}
                 </p>
-                {!searchTerm && !isPlatformAdmin && (
+                {!searchTerm && !isPlatformAdmin && canWriteStudents && (
                   <div className="flex gap-2">
                     <Button
                       variant="outline"
@@ -942,19 +970,23 @@ export default function StudentsPage() {
                           <span className="text-sm font-medium text-[#08163d]">
                             UGX {student.resolved_school_fees.toLocaleString()}
                             {student.fee_source === 'student_override' ? (
-                              <span className="ml-1 text-[10px] text-slate-400">(override)</span>
+                              <span className="ml-1 text-[10px] text-slate-400">
+                                {student.scholarship_percentage
+                                  ? `(custom school fees − ${student.scholarship_percentage}%)`
+                                  : '(custom school fees)'}
+                              </span>
                             ) : student.fee_source === 'class_fee' ? (
                               <span className="ml-1 text-[10px] text-slate-400">
                                 {student.scholarship_percentage
-                                  ? `(class − ${student.scholarship_percentage}%)`
-                                  : '(class)'}
+                                  ? `(class school fees − ${student.scholarship_percentage}%)`
+                                  : '(class school fees)'}
                               </span>
                             ) : null}
                           </span>
                         ) : student.school_fees_amount !== undefined && student.school_fees_amount !== null ? (
                           <span className="text-sm font-medium text-[#08163d]">
                             UGX {student.school_fees_amount.toLocaleString()}
-                            <span className="ml-1 text-[10px] text-slate-400">(override)</span>
+                            <span className="ml-1 text-[10px] text-slate-400">(custom school fees)</span>
                           </span>
                         ) : (
                           <span className="text-slate-400">—</span>
@@ -993,7 +1025,7 @@ export default function StudentsPage() {
                               <RotateCcw className="h-3.5 w-3.5" />
                             </Button>
                           ) : null}
-                          {!isPlatformAdmin && (
+                          {!isPlatformAdmin && canWriteStudents && (
                             <>
                               <Button
                                 variant="ghost"
@@ -1049,7 +1081,7 @@ export default function StudentsPage() {
 
         {/* View Student Modal */}
         <Dialog open={showViewModal} onOpenChange={setShowViewModal}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-4xl">
             <DialogHeader>
               <DialogTitle>Student Details</DialogTitle>
               <DialogDescription>
@@ -1057,19 +1089,19 @@ export default function StudentsPage() {
               </DialogDescription>
             </DialogHeader>
             {selectedStudent && (
-              <div className="space-y-6">
+              <DialogBody className="max-h-[min(78vh,800px)] space-y-6">
                 {/* Student Information */}
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Student Information</h3>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">
+                      <label className="text-sm font-medium text-slate-500">
                         Registration ID
                       </label>
                       <p className="text-sm font-medium">{selectedStudent.registration_id}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">Status</label>
+                      <label className="text-sm font-medium text-slate-500">Status</label>
                       <div className="mt-1">
                         <Badge
                           variant={
@@ -1081,21 +1113,21 @@ export default function StudentsPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">
+                      <label className="text-sm font-medium text-slate-500">
                         First Name
                       </label>
                       <p className="text-sm font-medium">{selectedStudent.first_name}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">Last Name</label>
+                      <label className="text-sm font-medium text-slate-500">Last Name</label>
                       <p className="text-sm font-medium">{selectedStudent.last_name}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">Phone</label>
+                      <label className="text-sm font-medium text-slate-500">Phone</label>
                       <p className="text-sm font-medium">{selectedStudent.phone}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">School Fees</label>
+                      <label className="text-sm font-medium text-slate-500">School Fees</label>
                       <p className="text-sm font-medium">
                         {selectedStudent.resolved_school_fees !== undefined && selectedStudent.resolved_school_fees !== null
                           ? `UGX ${selectedStudent.resolved_school_fees.toLocaleString()}`
@@ -1103,27 +1135,29 @@ export default function StudentsPage() {
                           ? `UGX ${selectedStudent.school_fees_amount.toLocaleString()}`
                           : '-'}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="text-xs text-slate-500">
                         {selectedStudent.fee_source === 'student_override'
-                          ? 'Source: student override'
+                          ? selectedStudent.scholarship_percentage
+                            ? `Source: custom school fees with ${selectedStudent.scholarship_percentage}% scholarship`
+                            : 'Source: custom school fees'
                           : selectedStudent.fee_source === 'class_fee'
                             ? selectedStudent.scholarship_percentage
-                              ? `Source: class fee with ${selectedStudent.scholarship_percentage}% scholarship`
-                              : 'Source: class fee'
+                              ? `Source: class school fees with ${selectedStudent.scholarship_percentage}% scholarship`
+                              : 'Source: class school fees'
                             : selectedStudent.school_fees_amount != null
-                              ? 'Source: student override'
+                              ? 'Source: custom school fees'
                               : 'Source: none'}
                       </p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-muted-foreground">Class</label>
+                      <label className="text-sm font-medium text-slate-500">Class</label>
                       <div className="mt-1">
                         <Badge variant="outline">{selectedStudent.class}</Badge>
                       </div>
                     </div>
                     {selectedStudent.gender && (
                       <div>
-                        <label className="text-sm font-medium text-muted-foreground">Gender</label>
+                        <label className="text-sm font-medium text-slate-500">Gender</label>
                         <div className="mt-1">
                           <Badge variant="outline">{selectedStudent.gender}</Badge>
                         </div>
@@ -1131,7 +1165,7 @@ export default function StudentsPage() {
                     )}
                     {selectedStudent.stream && (
                       <div>
-                        <label className="text-sm font-medium text-muted-foreground">Stream</label>
+                        <label className="text-sm font-medium text-slate-500">Stream</label>
                         <div className="mt-1">
                           <Badge variant="outline" className="bg-purple-100 text-purple-700">
                             {selectedStudent.stream}
@@ -1149,7 +1183,7 @@ export default function StudentsPage() {
                     <div className="grid grid-cols-2 gap-4">
                       {selectedStudent.scholarship_type && (
                         <div>
-                          <label className="text-sm font-medium text-muted-foreground">
+                          <label className="text-sm font-medium text-slate-500">
                             Scholarship Type
                           </label>
                           <div className="mt-1">
@@ -1161,7 +1195,7 @@ export default function StudentsPage() {
                       )}
                       {selectedStudent.scholarship_percentage !== undefined && selectedStudent.scholarship_percentage > 0 && (
                         <div>
-                          <label className="text-sm font-medium text-muted-foreground">
+                          <label className="text-sm font-medium text-slate-500">
                             Discount
                           </label>
                           <p className="text-sm font-medium text-green-600">
@@ -1182,7 +1216,7 @@ export default function StudentsPage() {
                     <div className="grid grid-cols-2 gap-4">
                       {selectedStudent.parent_first_name && (
                         <div>
-                          <label className="text-sm font-medium text-muted-foreground">
+                          <label className="text-sm font-medium text-slate-500">
                             Parent First Name
                           </label>
                           <p className="text-sm font-medium">
@@ -1192,7 +1226,7 @@ export default function StudentsPage() {
                       )}
                       {selectedStudent.parent_last_name && (
                         <div>
-                          <label className="text-sm font-medium text-muted-foreground">
+                          <label className="text-sm font-medium text-slate-500">
                             Parent Last Name
                           </label>
                           <p className="text-sm font-medium">
@@ -1202,7 +1236,7 @@ export default function StudentsPage() {
                       )}
                       {selectedStudent.parent_phone && (
                         <div>
-                          <label className="text-sm font-medium text-muted-foreground">
+                          <label className="text-sm font-medium text-slate-500">
                             Parent Phone
                           </label>
                           <p className="text-sm font-medium">{selectedStudent.parent_phone}</p>
@@ -1213,6 +1247,8 @@ export default function StudentsPage() {
                 )}
 
                 {/* Payment Summary */}
+                {canReadPayments && (
+                <>
                 <div className="border-t pt-4">
                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <DollarSign className="h-5 w-5" />
@@ -1226,7 +1262,7 @@ export default function StudentsPage() {
                     <div className="space-y-4">
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
                         <div className="bg-slate-50 rounded-lg p-4">
-                          <label className="text-xs font-medium text-muted-foreground">
+                          <label className="text-xs font-medium text-slate-500">
                             School Fees
                           </label>
                           <p className="text-lg font-semibold mt-1">
@@ -1244,7 +1280,7 @@ export default function StudentsPage() {
                           </p>
                         </div>
                         <div className="bg-slate-50 rounded-lg p-4">
-                          <label className="text-xs font-medium text-muted-foreground">
+                          <label className="text-xs font-medium text-slate-500">
                             Other Fees
                           </label>
                           <p className="text-lg font-semibold mt-1">
@@ -1261,7 +1297,7 @@ export default function StudentsPage() {
                         </div>
                         {paymentSummary.one_off_outstanding !== undefined && (
                           <div className="bg-rose-50 rounded-lg p-4">
-                            <label className="text-xs font-medium text-muted-foreground">
+                            <label className="text-xs font-medium text-slate-500">
                               Additional Charges
                             </label>
                             <p className="text-lg font-semibold text-rose-700 mt-1">
@@ -1271,7 +1307,7 @@ export default function StudentsPage() {
                           </div>
                         )}
                         <div className="bg-green-50 rounded-lg p-4">
-                          <label className="text-xs font-medium text-muted-foreground">
+                          <label className="text-xs font-medium text-slate-500">
                             Total Paid
                           </label>
                           <p className="text-lg font-semibold text-green-700 mt-1">
@@ -1280,7 +1316,7 @@ export default function StudentsPage() {
                           </p>
                         </div>
                         <div className="bg-orange-50 rounded-lg p-4">
-                          <label className="text-xs font-medium text-muted-foreground">
+                          <label className="text-xs font-medium text-slate-500">
                             Outstanding
                           </label>
                           <p className="text-lg font-semibold text-orange-700 mt-1">
@@ -1290,13 +1326,13 @@ export default function StudentsPage() {
                         </div>
                       </div>
                       {paymentSummary.last_payment_at && (
-                        <div className="text-sm text-muted-foreground">
+                        <div className="text-sm text-slate-500">
                           Last payment: {new Date(paymentSummary.last_payment_at).toLocaleString()}
                         </div>
                       )}
                       {combinedPaymentItems.length > 0 && (
                         <div className="rounded-lg border bg-white p-4">
-                          <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                          <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
                             Balance Breakdown
                           </h4>
                           <div className="rounded-lg border overflow-hidden">
@@ -1352,11 +1388,12 @@ export default function StudentsPage() {
                                         {item.status}
                                       </Badge>
                                     </TableCell>
-                                    <TableCell className="text-xs text-muted-foreground">
+                                    <TableCell className="text-xs text-slate-500">
                                       {item.details || '-'}
                                     </TableCell>
                                     <TableCell className="text-right">
                                       {!isPlatformAdmin &&
+                                      canWriteCharges &&
                                       item.kind === 'Additional Charge' &&
                                       item.actionCharge?.status === 'unpaid' ? (
                                         <Button
@@ -1383,7 +1420,7 @@ export default function StudentsPage() {
                       )}
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">No payment data available</p>
+                    <p className="text-sm text-slate-500">No payment data available</p>
                   )}
                 </div>
 
@@ -1395,7 +1432,7 @@ export default function StudentsPage() {
                   </h3>
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         <label className="text-sm font-medium">Academic Year</label>
                         <Select
                           value={selectedAcademicYear}
@@ -1413,7 +1450,7 @@ export default function StudentsPage() {
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="space-y-2">
+                      <div className="space-y-1.5">
                         <label className="text-sm font-medium">Term</label>
                         <Select value={selectedTerm} onValueChange={setSelectedTerm}>
                           <SelectTrigger>
@@ -1432,7 +1469,7 @@ export default function StudentsPage() {
                     <Button
                       onClick={handleCheckTermPayment}
                       disabled={loadingTermStatus || !selectedAcademicYear || !selectedTerm}
-                      className="w-full"
+                      className="h-9 w-full rounded-full bg-[#08163d] text-white hover:bg-[#0a1f4f]"
                     >
                       {loadingTermStatus ? (
                         <>
@@ -1476,7 +1513,7 @@ export default function StudentsPage() {
                         </div>
                         <div className="grid grid-cols-3 gap-4">
                           <div>
-                            <label className="text-xs font-medium text-muted-foreground">
+                            <label className="text-xs font-medium text-slate-500">
                               Total Fees
                             </label>
                             <p className="text-sm font-semibold mt-1">
@@ -1484,7 +1521,7 @@ export default function StudentsPage() {
                             </p>
                           </div>
                           <div>
-                            <label className="text-xs font-medium text-muted-foreground">
+                            <label className="text-xs font-medium text-slate-500">
                               Total Paid
                             </label>
                             <p className="text-sm font-semibold text-green-700 mt-1">
@@ -1492,7 +1529,7 @@ export default function StudentsPage() {
                             </p>
                           </div>
                           <div>
-                            <label className="text-xs font-medium text-muted-foreground">
+                            <label className="text-xs font-medium text-slate-500">
                               Outstanding
                             </label>
                             <p className="text-sm font-semibold text-orange-700 mt-1">
@@ -1503,7 +1540,7 @@ export default function StudentsPage() {
                         {termPaymentStatus.fees && termPaymentStatus.fees.length > 0 && (
                           <div className="mt-4">
                             <h5 className="text-sm font-semibold mb-2">Fee Breakdown:</h5>
-                            <div className="space-y-2">
+                            <div className="space-y-1.5">
                               {termPaymentStatus.fees.map((fee: any) => (
                                 <div
                                   key={fee.fee_id}
@@ -1511,7 +1548,7 @@ export default function StudentsPage() {
                                 >
                                   <div className="flex-1">
                                     <p className="text-sm font-medium">{fee.fee_name}</p>
-                                    <p className="text-xs text-muted-foreground">
+                                    <p className="text-xs text-slate-500">
                                       UGX {fee.amount?.toLocaleString()} | Paid: UGX{' '}
                                       {fee.paid?.toLocaleString()} | Outstanding: UGX{' '}
                                       {fee.outstanding?.toLocaleString()}
@@ -1577,7 +1614,7 @@ export default function StudentsPage() {
                                 </TableCell>
                                 <TableCell>
                                   {payment.fee_name || (
-                                    <span className="text-muted-foreground">General</span>
+                                    <span className="text-slate-500">General</span>
                                   )}
                                 </TableCell>
                                 <TableCell>
@@ -1610,22 +1647,24 @@ export default function StudentsPage() {
                       />
                     </div>
                   ) : (
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-sm text-slate-500">
                       No payment history available
                     </p>
                   )}
                 </div>
+                </>
+                )}
 
                 {/* Created At */}
                 <div className="border-t pt-4">
-                  <label className="text-sm font-medium text-muted-foreground">
+                  <label className="text-sm font-medium text-slate-500">
                     Created At
                   </label>
                   <p className="text-sm font-medium">
                     {new Date(selectedStudent.created_at).toLocaleString()}
                   </p>
                 </div>
-              </div>
+              </DialogBody>
             )}
           </DialogContent>
         </Dialog>
@@ -1643,19 +1682,21 @@ export default function StudentsPage() {
                 Confirm the offline payment for {markPaidAssignment?.charge_name}. This marks the full assigned amount as paid.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="one-off-payment-reference">External reference (optional)</Label>
-                <Input id="one-off-payment-reference" value={markPaidReference} onChange={(e) => setMarkPaidReference(e.target.value)} placeholder="Receipt or transaction reference" />
+            <DialogBody>
+              <div className="grid gap-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="one-off-payment-reference">External reference (optional)</Label>
+                  <Input id="one-off-payment-reference" value={markPaidReference} onChange={(e) => setMarkPaidReference(e.target.value)} placeholder="Receipt or transaction reference" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="one-off-payment-note">Note (optional)</Label>
+                  <Textarea id="one-off-payment-note" value={markPaidNote} onChange={(e) => setMarkPaidNote(e.target.value)} placeholder="Payment note" />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="one-off-payment-note">Note (optional)</Label>
-                <Input id="one-off-payment-note" value={markPaidNote} onChange={(e) => setMarkPaidNote(e.target.value)} placeholder="Payment note" />
-              </div>
-            </div>
+            </DialogBody>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setMarkPaidAssignment(null)}>Cancel</Button>
-              <Button disabled={actionLoading} onClick={handleMarkOneOffPaid}>
+              <Button variant="outline" onClick={() => setMarkPaidAssignment(null)} className="h-9 rounded-full border-slate-200">Cancel</Button>
+              <Button disabled={actionLoading} onClick={handleMarkOneOffPaid} className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]">
                 {actionLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1683,22 +1724,25 @@ export default function StudentsPage() {
               <DialogTitle>Change student class</DialogTitle>
               <DialogDescription>
                 {classChangeStudent
-                  ? `Update class for ${classChangeStudent.first_name} ${classChangeStudent.last_name}. Fee resolution will follow the new class.`
+                  ? `Update class for ${classChangeStudent.first_name} ${classChangeStudent.last_name}. Class school fees will follow the new class unless this student has custom school fees.`
                   : 'Update student class'}
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-2">
-              <Label htmlFor="new-class">New class</Label>
-              <Input
-                id="new-class"
-                value={newClass}
-                onChange={(e) => setNewClass(e.target.value)}
-                placeholder="e.g. P2, KG1, S1"
-              />
-            </div>
+            <DialogBody>
+              <div className="space-y-1.5">
+                <Label htmlFor="new-class">New class</Label>
+                <Input
+                  id="new-class"
+                  value={newClass}
+                  onChange={(e) => setNewClass(e.target.value)}
+                  placeholder="e.g. P2, KG1, S1"
+                />
+              </div>
+            </DialogBody>
             <DialogFooter>
               <Button
                 variant="outline"
+                className="h-9 rounded-full border-slate-200"
                 onClick={() => {
                   setClassChangeStudent(null);
                   setNewClass('');
@@ -1718,7 +1762,7 @@ export default function StudentsPage() {
                   }
                   setClassChangeConfirmOpen(true);
                 }}
-                className="bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+                className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
               >
                 Continue
               </Button>
@@ -1760,7 +1804,7 @@ export default function StudentsPage() {
             if (!open) setEditStudent(null);
           }}
         >
-          <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Edit student</DialogTitle>
               <DialogDescription>
@@ -1768,40 +1812,41 @@ export default function StudentsPage() {
               </DialogDescription>
             </DialogHeader>
             {editStudent && (
-              <div className="grid gap-4 py-2 md:grid-cols-2">
-                <div className="space-y-2 md:col-span-2">
+              <DialogBody>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-1.5 md:col-span-2">
                   <Label>Registration ID</Label>
                   <Input value={editStudent.registration_id} disabled />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>First name</Label>
                   <Input
                     value={editForm.first_name}
                     onChange={(e) => setEditForm({ ...editForm, first_name: e.target.value })}
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Last name</Label>
                   <Input
                     value={editForm.last_name}
                     onChange={(e) => setEditForm({ ...editForm, last_name: e.target.value })}
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Phone</Label>
                   <Input
                     value={editForm.phone}
                     onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Class</Label>
                   <Input
                     value={editForm.class}
                     onChange={(e) => setEditForm({ ...editForm, class: e.target.value })}
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Gender</Label>
                   <Select
                     value={editForm.gender || 'none'}
@@ -1822,7 +1867,7 @@ export default function StudentsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Stream</Label>
                   <Select
                     value={editForm.stream || 'none'}
@@ -1843,7 +1888,7 @@ export default function StudentsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Status</Label>
                   <Select
                     value={editForm.status}
@@ -1858,18 +1903,18 @@ export default function StudentsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>School fees override</Label>
+                <div className="space-y-1.5">
+                  <Label>Custom school fees</Label>
                   <Input
                     type="number"
                     value={editForm.school_fees_amount}
                     onChange={(e) =>
                       setEditForm({ ...editForm, school_fees_amount: e.target.value })
                     }
-                    placeholder="Leave blank to use class fee"
+                    placeholder="Leave blank to use class school fees"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Scholarship type</Label>
                   <Select
                     value={editForm.scholarship_type || 'none'}
@@ -1893,17 +1938,21 @@ export default function StudentsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Scholarship %</Label>
                   <Input
                     type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
                     value={editForm.scholarship_percentage}
                     onChange={(e) =>
                       setEditForm({ ...editForm, scholarship_percentage: e.target.value })
                     }
+                    placeholder="e.g. 50"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Parent first name</Label>
                   <Input
                     value={editForm.parent_first_name}
@@ -1912,7 +1961,7 @@ export default function StudentsPage() {
                     }
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-1.5">
                   <Label>Parent last name</Label>
                   <Input
                     value={editForm.parent_last_name}
@@ -1921,7 +1970,7 @@ export default function StudentsPage() {
                     }
                   />
                 </div>
-                <div className="space-y-2 md:col-span-2">
+                <div className="space-y-1.5 md:col-span-2">
                   <Label>Parent phone</Label>
                   <Input
                     value={editForm.parent_phone}
@@ -1929,13 +1978,14 @@ export default function StudentsPage() {
                   />
                 </div>
               </div>
+              </DialogBody>
             )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEditStudent(null)}>
+              <Button variant="outline" onClick={() => setEditStudent(null)} className="h-9 rounded-full border-slate-200">
                 Cancel
               </Button>
               <Button
-                className="bg-[#08163d] hover:bg-[#0a1f4f] text-white"
+                className="h-9 rounded-full bg-[#08163d] px-4 text-white hover:bg-[#0a1f4f]"
                 onClick={() => {
                   if (hasSensitiveEditChanges()) {
                     setEditConfirmOpen(true);

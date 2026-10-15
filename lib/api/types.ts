@@ -18,16 +18,19 @@ export interface ApiPaginatedResponse<T> {
 // Auth
 // ---------------------------------------------------------------------------
 
-export type UserRole = 'admin' | 'school_admin' | 'parent';
+export type UserRole = 'admin' | 'school_admin' | 'owner' | 'headteacher' | 'bursar' | 'teacher' | 'parent';
+export type UserStatus = 'pending' | 'active' | 'inactive';
 
 export interface User {
   id: string;
   email: string;
   phone: string;
   role: UserRole;
+  status?: UserStatus;
   first_name?: string;
   last_name?: string;
   school_id?: string;
+  permissions?: string[];
   created_at: string;
 }
 
@@ -416,4 +419,41 @@ export interface AdminUser {
   school_id?: string;
   school_name?: string;
   created_at: string;
+}
+
+export interface SchoolMember {
+  id: string;
+  email: string;
+  phone: string;
+  role: UserRole;
+  status: UserStatus;
+  first_name?: string;
+  last_name?: string;
+  school_id?: string;
+  permissions?: string[];
+  invite_url?: string;
+  email_sent?: boolean;
+  created_at: string;
+}
+
+export interface PermissionCatalogItem {
+  code: string;
+  name: string;
+  description: string;
+  resource: string;
+  action: string;
+  locked: boolean;
+}
+
+export interface RolePermissions {
+  role: UserRole;
+  permissions: string[];
+}
+
+export interface InvitationPreview {
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  role: string;
+  school?: string;
 }
